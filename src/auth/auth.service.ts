@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { UserService } from 'src/user/user.service';
 import { JwtService } from '@nestjs/jwt';
-import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +11,26 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
   ) {}
+
+  async signUp(
+    name: string,
+    email: string,
+    password: string,
+  ): Promise<{ access_token: string }> {
+    const userExists = await this.userService.findByEmail(email);
+
+    if (userExists) {
+      throw new BadRequestException('User already exists');
+    }
+
+    const user = await this.userService.create({ name, email, password });
+
+    const payload = { sub: user.id, email: user.email };
+
+    return {
+      access_token: await this.jwtService.signAsync(payload),
+    };
+  }
 
   async signIn(email: string, pass: string): Promise<{ access_token: string }> {
     const user = await this.userService.findByEmail(email);
@@ -41,6 +61,13 @@ export class AuthService {
   }
 
   async createRole(name: string): Promise<Role> {
+    const roleExists = await this.prisma.role.findUnique({
+      where: { name: name },
+    });
+
+    if (roleExists) {
+      throw new BadRequestException('Role already exists');
+    }
     return this.prisma.role.create({ data: { name: name } });
   }
 

@@ -20,14 +20,15 @@ export class UserController {
 
   //@Public()
   @Get()
-  //@Roles(Role.Admin)
+  @Roles(Role.Admin)
   async findAll() {
     return this.userService.findAllUsers();
   }
 
-  @Get(':cuid')
-  async findOne(@Param('cuid') cuid: string) {
-    return this.userService.findById(cuid);
+  //@Roles(Role.Admin)
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    return this.userService.findById(id);
   }
 
   @Post()
@@ -35,13 +36,14 @@ export class UserController {
     return this.userService.create(body);
   }
 
-  @Patch(':cuid')
+  //@Roles(Role.Admin)
+  @Patch(':id')
   async updatePartial(
-    @Param('cuid') cuid: string,
+    @Param('id') id: string,
     @Body()
     data: UpdateUserDto,
   ) {
-    return this.userService.update(cuid, data);
+    return this.userService.update(id, data);
   }
 
   @Delete(':id')

@@ -11,6 +11,8 @@ import {
 //import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
+import { SignInDto } from './dto/signin.dto';
+import { SignUpDto } from './dto/signup.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -19,9 +21,15 @@ export class AuthController {
   @Public()
   @HttpCode(HttpStatus.OK)
   @Post('login')
-  //TODO: add type to sigInDto
-  async signIn(@Body() sigInDto: Record<string, any>) {
-    return this.authService.signIn(sigInDto.email, sigInDto.password);
+  async signIn(@Body() data: SignInDto) {
+    return this.authService.signIn(data.email, data.password);
+  }
+
+  @Public()
+  @HttpCode(HttpStatus.OK)
+  @Post('register')
+  async signUp(@Body() data: SignUpDto) {
+    return this.authService.signUp(data.name, data.email, data.password);
   }
 
   //@Public()
@@ -29,6 +37,11 @@ export class AuthController {
   //TODO: add type to createRoleDto and createdby user
   async createRole(@Body() createRoleDto: Record<string, any>) {
     return this.authService.createRole(createRoleDto.name);
+  }
+
+  @Get('roles')
+  async findAllRoles() {
+    return this.authService.findAllRoles();
   }
 
   //@UseGuards(AuthGuard)
