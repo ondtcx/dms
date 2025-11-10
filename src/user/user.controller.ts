@@ -30,6 +30,7 @@ export class UserController {
 
   //@Public()
   @Get()
+  @ApiBearerAuth('JWT-auth')
   @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: 'Listar todos los usuarios (Solo ADMIN)',
@@ -67,13 +68,31 @@ export class UserController {
 
   // Rutas específicas ANTES de rutas con parámetros
   @Get('me')
-  getMyProfile(@CurrentUser() user: any) {
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Obtener mi perfil',
+    description: 'Obtiene la información del perfil del usuario autenticado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil obtenido exitosamente',
+  })
+  async getMyProfile(@CurrentUser() user: any) {
     return this.userService.findById(user.sub);
   }
 
   // Cualquier usuario autenticado puede actualizar su propio perfil
   @Patch('me')
-  updateMyProfile(
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Actualizar mi perfil',
+    description: 'Actualiza la información del perfil del usuario autenticado',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Perfil actualizado exitosamente',
+  })
+  async updateMyProfile(
     @CurrentUser() user: any,
     @Body() updateUserDto: UpdateUserDto,
   ) {
@@ -81,6 +100,7 @@ export class UserController {
   }
 
   @Get(':id')
+  @ApiBearerAuth('JWT-auth')
   @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: 'Obtener usuario por ID (Solo ADMIN)',
@@ -109,12 +129,26 @@ export class UserController {
   }
 
   @Post()
+  @ApiBearerAuth('JWT-auth')
   @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Crear nuevo usuario (Solo ADMIN)',
+    description: 'Crea un nuevo usuario en el sistema',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Usuario creado exitosamente',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Acceso denegado - Se requiere rol admin',
+  })
   async create(@Body() user: CreateUserDto) {
     return this.userService.create(user);
   }
 
   @Patch(':id')
+  @ApiBearerAuth('JWT-auth')
   @Roles(UserRole.ADMIN)
   @ApiOperation({
     summary: 'Actualizar usuario (Solo ADMIN)',
@@ -146,6 +180,7 @@ export class UserController {
   }
 
   @Delete(':id')
+  @ApiBearerAuth('JWT-auth')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({

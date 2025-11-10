@@ -5,6 +5,8 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.setGlobalPrefix('api');
+
   app.useGlobalPipes(
     new ValidationPipe({
       enableDebugMessages: true,
@@ -48,7 +50,6 @@ async function bootstrap() {
     ],
   });
 
-  app.setGlobalPrefix('api');
   await app.listen(process.env.PORT ?? 3000);
   console.log(
     `🚀 Aplicación corriendo en: http://localhost:${process.env.PORT ?? 3000}`,
