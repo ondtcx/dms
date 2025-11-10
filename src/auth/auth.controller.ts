@@ -2,51 +2,39 @@ import {
   Body,
   Controller,
   Get,
-  HttpCode,
-  HttpStatus,
+  //HttpCode,
+  //HttpStatus,
   Post,
-  Request,
   //UseGuards,
 } from '@nestjs/common';
 //import { AuthGuard } from './auth.guard';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
-import { SignInDto } from './dto/signin.dto';
-import { SignUpDto } from './dto/signup.dto';
+import { LoginDto } from './dto/login.dto';
+import { RegisterDto } from './dto/register.dto';
+import { CurrentUser } from './decorators/current-user.decorator';
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
-  @HttpCode(HttpStatus.OK)
+  //@HttpCode(HttpStatus.OK)
   @Post('login')
-  async signIn(@Body() data: SignInDto) {
-    return this.authService.signIn(data.email, data.password);
+  async login(@Body() loginDto: LoginDto) {
+    return this.authService.login(loginDto);
   }
 
   @Public()
-  @HttpCode(HttpStatus.OK)
+  //@HttpCode(HttpStatus.OK)
   @Post('register')
-  async signUp(@Body() data: SignUpDto) {
-    return this.authService.signUp(data.name, data.email, data.password);
-  }
-
-  //@Public()
-  @Post('roles')
-  //TODO: add type to createRoleDto and createdby user
-  async createRole(@Body() createRoleDto: Record<string, any>) {
-    return this.authService.createRole(createRoleDto.name);
-  }
-
-  @Get('roles')
-  async findAllRoles() {
-    return this.authService.findAllRoles();
+  async register(@Body() registerDto: RegisterDto) {
+    return this.authService.register(registerDto);
   }
 
   //@UseGuards(AuthGuard)
   @Get('profile')
-  getProfile(@Request() req) {
-    return req.user;
+  getProfile(@CurrentUser() user: any) {
+    return this.authService.getProfile(user.id);
   }
 }

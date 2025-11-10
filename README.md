@@ -2,10 +2,7 @@
   <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
 </p>
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
-
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
+<p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
     <p align="center">
 <a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
 <a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
@@ -28,9 +25,265 @@
 
 ## Project setup
 
-```bash
+````bash
 $ npm install
+
+# 🌱 Seed de Base de Datos
+
+Este proyecto utiliza Prisma Seed para poblar la base de datos con datos iniciales, incluyendo el usuario administrador.
+
+## Prerequisitos
+
+Asegúrate de tener instaladas las siguientes dependencias:
+```bash
+npm install -D ts-node @types/node
+npm install dotenv
+````
+
+## Configuración
+
+### 1. Variables de Entorno
+
+Crea o actualiza tu archivo `.env` con las credenciales del administrador:
+
+```env
+# Base de datos
+DATABASE_URL="postgresql://user:password@localhost:5432/mydb"
+
+# JWT
+JWT_SECRET="tu-secreto-jwt"
+
+# Credenciales del Admin (para seed)
+ADMIN_EMAIL="admin@miempresa.com"
+ADMIN_PASSWORD="Admin123!"
+ADMIN_NAME="Administrador Principal"
+
+# Entorno
+NODE_ENV="development"
 ```
+
+### 2. Archivo de Seed
+
+El archivo de seed se encuentra en `prisma/seed.ts` y crea:
+
+- ✅ Un usuario administrador (ADMIN)
+- ✅ Usuarios de prueba (solo en desarrollo)
+
+## Ejecución del Seed
+
+### Opción 1: Comando directo (Recomendado)
+
+```bash
+npx prisma db seed
+```
+
+### Opción 2: Script de npm
+
+```bash
+npm run seed
+```
+
+### Opción 3: Con reset de base de datos
+
+⚠️ **ADVERTENCIA:** Esto eliminará todos los datos existentes.
+
+```bash
+npx prisma migrate reset
+```
+
+Este comando ejecuta:
+
+1. Elimina la base de datos
+2. Crea una nueva base de datos
+3. Ejecuta todas las migraciones
+4. Ejecuta el seed automáticamente
+
+## Verificación
+
+Después de ejecutar el seed, deberías ver un mensaje como:
+
+```
+🌱 Iniciando seed...
+✅ Admin creado: {
+  id: 1,
+  email: 'admin@miempresa.com',
+  role: 'ADMIN'
+}
+✅ Usuario de prueba creado: {
+  id: 2,
+  email: 'user@example.com'
+}
+🎉 Seed completado!
+```
+
+## Login con el Admin
+
+Una vez creado el administrador, puedes iniciar sesión:
+
+```bash
+POST http://localhost:3000/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@miempresa.com",
+  "password": "Admin123!"
+}
+```
+
+**Respuesta:**
+
+```json
+{
+  "user": {
+    "id": 1,
+    "email": "admin@miempresa.com",
+    "name": "Administrador Principal",
+    "role": "ADMIN",
+    "createdAt": "2024-01-01T00:00:00.000Z"
+  },
+  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+}
+```
+
+## Usuarios Creados por Defecto
+
+| Email                 | Password    | Rol   | Entorno          |
+| --------------------- | ----------- | ----- | ---------------- |
+| `admin@miempresa.com` | `Admin123!` | ADMIN | Todos            |
+| `user@example.com`    | `User123!`  | USER  | Solo Development |
+
+## Personalización
+
+### Cambiar credenciales del admin
+
+Edita las variables de entorno en `.env`:
+
+```env
+ADMIN_EMAIL="tu-email@empresa.com"
+ADMIN_PASSWORD="TuPasswordSegura123!"
+ADMIN_NAME="Tu Nombre"
+```
+
+Y vuelve a ejecutar:
+
+```bash
+npx prisma db seed
+```
+
+### Agregar más usuarios iniciales
+
+Edita `prisma/seed.ts` y agrega más usuarios en la función `main()`:
+
+```typescript
+const moderator = await prisma.user.upsert({
+  where: { email: 'moderator@example.com' },
+  update: {},
+  create: {
+    email: 'moderator@example.com',
+    password: await bcrypt.hash('Moderator123!', 10),
+    name: 'Moderador',
+    role: UserRole.MODERATOR,
+  },
+});
+```
+
+## Solución de Problemas
+
+### Error: "Usuario ya existe"
+
+Si el usuario admin ya existe, el seed no lo duplicará gracias a `upsert`. Para recrearlo:
+
+```bash
+# Eliminar usuario existente en Prisma Studio
+npx prisma studio
+
+# O resetear completamente la BD
+npx prisma migrate reset
+```
+
+### Error: "Cannot find module 'bcrypt'"
+
+```bash
+npm install bcrypt
+npm install -D @types/bcrypt
+```
+
+### Error: "Cannot find module 'ts-node'"
+
+```bash
+npm install -D ts-node @types/node
+```
+
+## Uso en Producción
+
+### Opción 1: Ejecutar manualmente
+
+```bash
+# En el servidor de producción
+NODE_ENV=production npx prisma db seed
+```
+
+### Opción 2: En el despliegue automático
+
+Agrega el comando al script de deploy:
+
+```json
+{
+  "scripts": {
+    "deploy": "prisma migrate deploy && prisma db seed"
+  }
+}
+```
+
+### Opción 3: Solo en primera instalación
+
+```bash
+# Ejecutar solo si no existe ningún admin
+npx prisma db seed
+```
+
+## Seguridad
+
+⚠️ **IMPORTANTE:**
+
+- Cambia la contraseña del admin inmediatamente después del primer login en producción
+- No uses contraseñas por defecto en producción
+- Mantén las credenciales en variables de entorno, nunca en el código
+- Agrega `.env` a `.gitignore`
+
+```gitignore
+# .gitignore
+.env
+.env.local
+.env.production
+```
+
+## Comandos Útiles
+
+```bash
+# Ver base de datos en navegador
+npx prisma studio
+
+# Verificar estado de migraciones
+npx prisma migrate status
+
+# Crear nueva migración
+npx prisma migrate dev --name nombre_migracion
+
+# Regenerar cliente de Prisma
+npx prisma generate
+
+# Ejecutar seed
+npx prisma db seed
+
+# Reset completo (⚠️ elimina todos los datos)
+npx prisma migrate reset
+```
+
+## Referencias
+
+- [Documentación de Prisma Seed](https://www.prisma.io/docs/guides/database/seed-database)
+- [Prisma Client API](https://www.prisma.io/docs/concepts/components/prisma-client)
 
 ## Compile and run the project
 
@@ -97,3 +350,6 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
+[circleci-url]: https://circleci.com/gh/nestjs/nest

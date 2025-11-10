@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(npx -y create-next-app@14 dms-frontend --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --use-npm)",
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(npx shadcn@latest add button input card dialog dropdown-menu form table badge alert select -y)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(npm install:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm run build:*)",
+      "Bash(cat:*)",
+      "Bash(npx prettier:*)",
+      "Bash(git reset:*)",
+      "Bash(cd:*)",
+      "Bash(npx prisma studio:*)",
+      "Bash(npx prisma migrate:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

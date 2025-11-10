@@ -4,7 +4,9 @@ import {
   IsOptional,
   IsString,
   MinLength,
+  IsEnum,
 } from 'class-validator';
+import { UserRole } from '../../auth/role.enum';
 export class CreateUserDto {
   @IsString()
   @IsNotEmpty()
@@ -25,5 +27,9 @@ export class CreateUserDto {
   @IsNotEmpty()
   @MinLength(3)
   @IsOptional()
-  roles: string[];
+  @IsEnum(UserRole, {
+    message:
+      'role debe ser uno de los siguientes valores: admin, user, moderator',
+  })
+  role: UserRole;
 }

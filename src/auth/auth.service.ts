@@ -1,78 +1,55 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { UserService } from 'src/user/user.service';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
-import { Role } from '@prisma/client';
+import { RegisterDto } from './dto/register.dto';
+import { User } from '@prisma/client';
+import { LoginDto } from './dto/login.dto';
+import * as bcrypt from 'bcrypt';
+import { UserRole } from './role.enum';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
-    private readonly prisma: PrismaService,
   ) {}
 
-  async signUp(
-    name: string,
-    email: string,
-    password: string,
-  ): Promise<{ access_token: string }> {
-    const userExists = await this.userService.findByEmail(email);
+  async register(
+    registerDto: RegisterDto,
+  ): Promise<{ user: Omit<User, 'password'>; access_token: string }> {
+    const user = await this.userService.create({
+      ...registerDto,
+      role: UserRole.USER, // Siempre USER
+    });
 
-    if (userExists) {
-      throw new BadRequestException('User already exists');
-    }
-
-    const user = await this.userService.create({ name, email, password });
-
-    const payload = { sub: user.id, email: user.email };
+    const payload = { email: user.email, sub: user.id, role: user.role };
 
     return {
+      user,
       access_token: await this.jwtService.signAsync(payload),
     };
   }
 
-  async signIn(email: string, pass: string): Promise<{ access_token: string }> {
-    const user = await this.userService.findByEmail(email);
-    const roles = await this.prisma.user.findUnique({
-      where: { email: email },
-      include: {
-        roles: {
-          include: {
-            role: true,
-          },
-        },
-      },
-    });
+  async login(loginDto: LoginDto): Promise<{
+    user: Omit<User, 'password'>;
+    access_token: string;
+  }> {
+    const user = await this.userService.findByEmail(loginDto.email);
 
-    console.log('roles', roles);
-
-    //todo: bcrypt password check
-    if (user?.password !== pass) {
-      throw new BadRequestException('Invalid credentials');
+    if (!user || !(await bcrypt.compare(loginDto.password, user.password))) {
+      throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    //TODO: add roles to the payload
-    const payload = { sub: user.id, email: user.email };
+    const payload = { email: user.email, sub: user.id, role: user.role };
+    const { password, ...result } = user;
 
     return {
+      user: result,
       access_token: await this.jwtService.signAsync(payload),
     };
   }
 
-  async createRole(name: string): Promise<Role> {
-    const roleExists = await this.prisma.role.findUnique({
-      where: { name: name },
-    });
-
-    if (roleExists) {
-      throw new BadRequestException('Role already exists');
-    }
-    return this.prisma.role.create({ data: { name: name } });
-  }
-
-  // obtain roles
-  async findAllRoles(): Promise<Role[]> {
-    return this.prisma.role.findMany();
+  async getProfile(userId: string): Promise<Omit<User, 'password'>> {
+    return this.userService.findById(userId);
   }
 }
