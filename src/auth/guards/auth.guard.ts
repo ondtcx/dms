@@ -5,16 +5,17 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { jwtConstants } from '../constants';
 import { Request } from 'express';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
+    private readonly config: ConfigService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -37,12 +38,17 @@ export class AuthGuard implements CanActivate {
     }
 
     try {
-      //TODO: verify if the token is valid
       const payload = await this.jwtService.verifyAsync(token, {
-        secret: jwtConstants.secret,
+        //secret: jwtConstants.secret,
+        secret: this.config.get('JWT_SECRET'),
       });
 
-      request['user'] = payload;
+      request['user'] = {
+        id: payload.sub, // Mapea sub -> id
+        email: payload.email,
+        role: payload.role,
+        ...payload, // Mantén otros campos si los hay
+      };
     } catch {
       throw new UnauthorizedException(
         'Invalid token provided (unauthorized) sign in again',

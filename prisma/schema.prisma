@@ -19,11 +19,29 @@ enum UserRole {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
+  id        String     @id @default(cuid())
+  email     String     @unique
   name      String?
   password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  role      UserRole @default(user)
+  documents Document[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  role      UserRole   @default(user)
+}
+
+model Document {
+  id           Int      @id @default(autoincrement())
+  filename     String // Nombre original del archivo
+  storedName   String   @unique // Nombre almacenado en el servidor
+  mimetype     String // Tipo MIME del archivo
+  size         Int // Tamaño en bytes
+  path         String // Ruta donde está almacenado
+  description  String? // Descripción del documento
+  isPublic     Boolean  @default(false) // Si es público o privado
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedById String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([uploadedById])
 }
