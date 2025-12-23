@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsObject,
   IsBoolean,
+  IsIn,
 } from 'class-validator';
 
 export class CreateDocumentTemplateDto {
@@ -49,24 +50,82 @@ export class CreateDocumentTemplateDto {
           type: 'date',
           required: true,
         },
-        {
-          name: 'participantes',
-          label: 'Participantes',
-          type: 'textarea',
-          required: true,
-        },
-        {
-          name: 'contenido',
-          label: 'Contenido',
-          type: 'textarea',
-          required: true,
-        },
       ],
     },
   })
   @IsObject()
   @IsNotEmpty()
   fields: Record<string, any>;
+
+  @ApiProperty({
+    description: 'Plantilla HTML con Handlebars para generar el documento',
+    example: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>{{titulo}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    h1 { color: #333; }
+  </style>
+</head>
+<body>
+  <h1>{{titulo}}</h1>
+  <p><strong>Fecha:</strong> {{fecha}}</p>
+  <p><strong>Participantes:</strong> {{participantes}}</p>
+  <div>{{contenido}}</div>
+</body>
+</html>`,
+  })
+  @IsString()
+  @IsNotEmpty()
+  htmlTemplate: string;
+
+  @ApiProperty({
+    description: 'CSS personalizado adicional para el documento',
+    example: `h1 { border-bottom: 2px solid #333; padding-bottom: 10px; }
+p { line-height: 1.6; }`,
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  styles?: string;
+
+  @ApiProperty({
+    description: 'Formato de salida del documento',
+    example: 'pdf',
+    enum: ['pdf', 'docx', 'html'],
+    default: 'pdf',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(['pdf', 'docx', 'html'])
+  outputFormat?: string;
+
+  @ApiProperty({
+    description: 'Tamaño de página',
+    example: 'A4',
+    enum: ['A4', 'Letter', 'Legal'],
+    default: 'A4',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(['A4', 'Letter', 'Legal'])
+  pageSize?: string;
+
+  @ApiProperty({
+    description: 'Orientación de la página',
+    example: 'portrait',
+    enum: ['portrait', 'landscape'],
+    default: 'portrait',
+    required: false,
+  })
+  @IsString()
+  @IsOptional()
+  @IsIn(['portrait', 'landscape'])
+  orientation?: string;
 
   @ApiProperty({
     description: 'Si la plantilla está activa',

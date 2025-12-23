@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { DocumentGeneratorService } from './document-generator.service';
 import { CreateDocumentTemplateDto } from './dto/create-document-template.dto';
 import { UpdateDocumentTemplateDto } from './dto/update-document-template.dto';
 import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
@@ -15,7 +16,10 @@ import * as path from 'path';
 
 @Injectable()
 export class DocumentTemplateService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private documentGenerator: DocumentGeneratorService,
+  ) {}
 
   async create(
     createDocumentTemplateDto: CreateDocumentTemplateDto,
@@ -253,32 +257,67 @@ export class DocumentTemplateService {
       }
     }
 
+    // Determinar el formato de salida
+    const outputFormat = template.outputFormat || 'pdf';
+    const fileExtension = outputFormat === 'html' ? 'html' : 'pdf';
+
     // Generar nombre de archivo si no se proporcionó
     const generatedFilename =
       filename ||
-      `${template.type}-${new Date().toISOString().split('T')[0]}-${Date.now()}.json`;
+      `${template.type}-${new Date().toISOString().split('T')[0]}-${Date.now()}.${fileExtension}`;
 
-    // Crear el contenido del documento
-    const documentContent = {
-      template: {
-        id: template.id,
-        name: template.name,
-        type: template.type,
+    // Preparar datos para la plantilla (agregar metadata útil)
+    const templateData = {
+      ...formData,
+      _metadata: {
+        generatedAt: new Date().toISOString(),
+        generatedDate: new Date().toLocaleDateString('es-ES'),
+        generatedTime: new Date().toLocaleTimeString('es-ES'),
+        templateName: template.name,
+        templateType: template.type,
       },
-      formData,
-      generatedAt: new Date().toISOString(),
     };
 
-    // Guardar el archivo JSON con los datos del formulario
+    // Generar el documento según el formato
+    let documentBuffer: Buffer;
+    let mimetype: string;
+
+    if (outputFormat === 'html') {
+      // Generar HTML
+      const htmlContent = await this.documentGenerator.generateHTML({
+        htmlTemplate: template.htmlTemplate,
+        styles: template.styles,
+        data: templateData,
+      });
+
+      documentBuffer = Buffer.from(htmlContent, 'utf-8');
+      mimetype = 'text/html';
+    } else {
+      // Generar PDF (por defecto)
+      documentBuffer = await this.documentGenerator.generatePDF({
+        htmlTemplate: template.htmlTemplate,
+        styles: template.styles,
+        data: templateData,
+        pageSize: template.pageSize as any,
+        orientation: template.orientation as any,
+        outputFormat: 'pdf',
+      });
+
+      mimetype = 'application/pdf';
+    }
+
+    // Guardar el archivo
     const uploadsDir = path.join(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
     }
 
     const storedName = `${Date.now()}-${generatedFilename}`;
-    const filePath = path.join(uploadsDir, storedName);
-
-    fs.writeFileSync(filePath, JSON.stringify(documentContent, null, 2), 'utf8');
+    const filePath = await this.documentGenerator.saveDocumentToFile(
+      documentBuffer,
+      storedName,
+      uploadsDir,
+    );
 
     const fileStats = fs.statSync(filePath);
 
@@ -287,10 +326,11 @@ export class DocumentTemplateService {
       data: {
         filename: generatedFilename,
         storedName,
-        mimetype: 'application/json',
+        mimetype,
         size: fileStats.size,
         path: filePath,
-        description: description || `${template.name} - Generado desde formulario`,
+        description:
+          description || `${template.name} - Generado desde formulario`,
         isPublic: isPublic || false,
         uploadedById: userId,
         templateId: template.id,

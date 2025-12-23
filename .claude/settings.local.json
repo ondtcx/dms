@@ -15,7 +15,9 @@
       "Bash(git reset:*)",
       "Bash(cd:*)",
       "Bash(npx prisma studio:*)",
-      "Bash(npx prisma migrate:*)"
+      "Bash(npx prisma migrate:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

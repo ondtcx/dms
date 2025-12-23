@@ -50,11 +50,34 @@ async function main() {
   // Crear plantillas de documentos de ejemplo
   console.log('📄 Creando plantillas de documentos...');
 
+  // Template HTML básico para todas las plantillas
+  const basicHtmlTemplate = `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>{{_metadata.templateName}}</title>
+</head>
+<body>
+  <h1>{{_metadata.templateName}}</h1>
+  <p><em>Generado: {{_metadata.generatedDate}} a las {{_metadata.generatedTime}}</em></p>
+  <hr>
+
+  <div style="margin: 20px 0;">
+    {{#each this}}
+      {{#if (isNotEqual @key '_metadata')}}
+        <p><strong>{{@key}}:</strong> {{this}}</p>
+      {{/if}}
+    {{/each}}
+  </div>
+</body>
+</html>`;
+
   const templates = [
     {
       name: 'Acta de Reunión',
       type: 'acta',
       description: 'Plantilla para registrar las actas de reuniones',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -120,6 +143,7 @@ async function main() {
       name: 'Certificado de Trabajo',
       type: 'certificado',
       description: 'Plantilla para certificados de trabajo',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -173,6 +197,7 @@ async function main() {
       name: 'Informe Técnico',
       type: 'informe',
       description: 'Plantilla para informes técnicos',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -244,6 +269,7 @@ async function main() {
       name: 'Memorándum',
       type: 'memorandum',
       description: 'Plantilla para memorándums internos',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -291,6 +317,7 @@ async function main() {
       name: 'Solicitud de Vacaciones',
       type: 'solicitud',
       description: 'Plantilla para solicitudes de vacaciones',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -344,6 +371,7 @@ async function main() {
       name: 'Orden de Compra',
       type: 'orden_compra',
       description: 'Plantilla para órdenes de compra',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -409,6 +437,7 @@ async function main() {
       name: 'Reporte de Incidentes',
       type: 'reporte',
       description: 'Plantilla para reportes de incidentes',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {
@@ -480,6 +509,7 @@ async function main() {
       name: 'Constancia de Estudio',
       type: 'certificado',
       description: 'Plantilla para constancias de estudio',
+      htmlTemplate: basicHtmlTemplate,
       fields: {
         fields: [
           {

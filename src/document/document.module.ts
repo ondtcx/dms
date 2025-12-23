@@ -4,16 +4,17 @@ import { MulterModule } from '@nestjs/platform-express';
 import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
 import { PrismaService } from 'src/prisma/prisma.service';
-import { DocumentTemplateService } from '../document-template/document-template.service';
+import { DocumentTemplateModule } from '../document-template/document-template.module';
 
 @Module({
   imports: [
     MulterModule.register({
       dest: './uploads',
     }),
+    DocumentTemplateModule,
   ],
   controllers: [DocumentController],
-  providers: [DocumentService, PrismaService, DocumentTemplateService],
+  providers: [DocumentService, PrismaService],
   exports: [DocumentService],
 })
 export class DocumentModule {}

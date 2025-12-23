@@ -292,6 +292,32 @@ export class DocumentController {
     return new StreamableFile(file);
   }
 
+  @Get(':id/view')
+  @ApiOperation({ summary: 'Visualizar un documento en el navegador' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Vista del documento' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  async view(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { path, filename, mimetype } = await this.documentsService.download(
+      id,
+      user.id,
+      user.role,
+    );
+
+    const file = createReadStream(path);
+
+    res.set({
+      'Content-Type': mimetype,
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+
+    return new StreamableFile(file);
+  }
+
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar metadata de un documento' })
   @ApiParam({ name: 'id', description: 'ID del documento' })
