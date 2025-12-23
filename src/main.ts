@@ -27,6 +27,8 @@ async function bootstrap() {
     .setVersion('1.0')
     .addTag('auth', 'Endpoints de autenticación')
     .addTag('users', 'Gestión de usuarios')
+    .addTag('documents', 'Gestión de documentos')
+    .addTag('document-templates', 'Gestión de plantillas de documentos')
     .addBearerAuth(
       {
         type: 'http',

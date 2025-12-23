@@ -1,0 +1,421 @@
+### Variables
+@baseUrl = http://localhost:3000
+@token = YOUR_JWT_TOKEN_HERE
+
+### ========================================
+### AUTENTICACIÓN
+### ========================================
+
+### Login como Admin
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@example.com",
+  "password": "Admin123!"
+}
+
+### Login como Usuario Normal
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "User123!"
+}
+
+### ========================================
+### GESTIÓN DE PLANTILLAS
+### ========================================
+
+### 1. Listar todas las plantillas
+GET {{baseUrl}}/document-templates
+Authorization: Bearer {{token}}
+
+### 2. Listar plantillas con filtros
+GET {{baseUrl}}/document-templates?search=acta&isActive=true&page=1&limit=10
+Authorization: Bearer {{token}}
+
+### 3. Listar plantillas por tipo
+GET {{baseUrl}}/document-templates?type=certificado
+Authorization: Bearer {{token}}
+
+### 4. Obtener tipos de plantillas disponibles
+GET {{baseUrl}}/document-templates/types
+Authorization: Bearer {{token}}
+
+### 5. Obtener una plantilla específica
+GET {{baseUrl}}/document-templates/1
+Authorization: Bearer {{token}}
+
+### 6. Crear una nueva plantilla - Evaluación de Desempeño
+POST {{baseUrl}}/document-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Evaluación de Desempeño",
+  "type": "evaluacion",
+  "description": "Plantilla para evaluaciones de desempeño anuales",
+  "fields": {
+    "fields": [
+      {
+        "name": "empleado",
+        "label": "Nombre del empleado",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "evaluador",
+        "label": "Nombre del evaluador",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "periodo",
+        "label": "Periodo evaluado",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "calificacion_global",
+        "label": "Calificación global (1-5)",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "fortalezas",
+        "label": "Fortalezas identificadas",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "name": "areas_mejora",
+        "label": "Áreas de mejora",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "name": "objetivos_cumplidos",
+        "label": "Objetivos cumplidos",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "name": "objetivos_siguientes",
+        "label": "Objetivos para el siguiente periodo",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "name": "comentarios",
+        "label": "Comentarios adicionales",
+        "type": "textarea",
+        "required": false
+      }
+    ]
+  },
+  "isActive": true
+}
+
+### 7. Crear plantilla - Contrato de Servicios
+POST {{baseUrl}}/document-templates
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Contrato de Servicios",
+  "type": "contrato",
+  "description": "Plantilla para contratos de prestación de servicios",
+  "fields": {
+    "fields": [
+      {
+        "name": "numero_contrato",
+        "label": "Número de contrato",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "fecha_inicio",
+        "label": "Fecha de inicio",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "fecha_fin",
+        "label": "Fecha de finalización",
+        "type": "date",
+        "required": true
+      },
+      {
+        "name": "contratante",
+        "label": "Nombre del contratante",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "contratista",
+        "label": "Nombre del contratista",
+        "type": "text",
+        "required": true
+      },
+      {
+        "name": "objeto",
+        "label": "Objeto del contrato",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "name": "valor",
+        "label": "Valor del contrato",
+        "type": "number",
+        "required": true
+      },
+      {
+        "name": "forma_pago",
+        "label": "Forma de pago",
+        "type": "textarea",
+        "required": true
+      },
+      {
+        "name": "obligaciones",
+        "label": "Obligaciones",
+        "type": "textarea",
+        "required": true
+      }
+    ]
+  },
+  "isActive": true
+}
+
+### 8. Actualizar una plantilla
+PATCH {{baseUrl}}/document-templates/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "description": "Plantilla actualizada para actas de reuniones corporativas",
+  "isActive": true
+}
+
+### 9. Desactivar una plantilla
+PATCH {{baseUrl}}/document-templates/1
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+
+### 10. Eliminar una plantilla
+DELETE {{baseUrl}}/document-templates/1
+Authorization: Bearer {{token}}
+
+### ========================================
+### GENERACIÓN DE DOCUMENTOS
+### ========================================
+
+### 1. Crear documento - Acta de Reunión
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 1,
+  "formData": {
+    "titulo": "Reunión de Planificación Trimestral Q1 2024",
+    "fecha": "2024-01-15",
+    "hora_inicio": "09:00",
+    "hora_fin": "11:30",
+    "lugar": "Sala de Conferencias Principal - Piso 3",
+    "participantes": "Juan Pérez (Director), María García (Gerente), Carlos López (Coordinador), Ana Martínez (Analista)",
+    "agenda": "1. Revisión de objetivos del trimestre anterior\n2. Presentación de objetivos Q1 2024\n3. Asignación de recursos\n4. Definición de KPIs\n5. Próximos pasos",
+    "desarrollo": "Se inició la reunión con la revisión de los objetivos del trimestre anterior. El Director presentó los resultados alcanzados, destacando el cumplimiento del 95% de las metas establecidas. Posteriormente, se presentaron los objetivos para Q1 2024, enfocados en la expansión del mercado y mejora de procesos internos.",
+    "acuerdos": "1. Implementar nuevo sistema CRM antes del 28 de febrero\n2. Capacitación al equipo de ventas durante enero\n3. Reuniones semanales de seguimiento cada lunes\n4. Revisión de presupuesto en próxima reunión"
+  },
+  "filename": "acta-reunion-q1-2024.json",
+  "description": "Acta de reunión de planificación trimestral Q1 2024",
+  "isPublic": false
+}
+
+### 2. Crear documento - Certificado de Trabajo
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 2,
+  "formData": {
+    "nombre_empleado": "Juan Carlos Pérez García",
+    "identificacion": "12345678-9",
+    "cargo": "Desarrollador Full Stack Senior",
+    "fecha_ingreso": "2020-03-15",
+    "fecha_retiro": "2024-01-30",
+    "funciones": "Desarrollo de aplicaciones web con tecnologías modernas (React, Node.js, PostgreSQL), revisión de código, mentoría a desarrolladores junior, participación en la arquitectura de soluciones, gestión de proyectos ágiles con Scrum.",
+    "observaciones": "Durante su periodo laboral demostró excelentes habilidades técnicas y de trabajo en equipo. Participó exitosamente en 15 proyectos de alto impacto."
+  },
+  "filename": "certificado-juan-perez.json",
+  "description": "Certificado laboral de Juan Carlos Pérez",
+  "isPublic": false
+}
+
+### 3. Crear documento - Informe Técnico
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 3,
+  "formData": {
+    "titulo": "Análisis de Rendimiento del Sistema de Gestión Documental",
+    "fecha": "2024-01-20",
+    "autor": "Carlos López - Ingeniero de Sistemas",
+    "resumen_ejecutivo": "El presente informe analiza el rendimiento del sistema de gestión documental implementado en la organización durante el último trimestre. Los resultados muestran una mejora del 40% en los tiempos de respuesta.",
+    "introduccion": "Con el objetivo de evaluar la eficiencia del nuevo sistema de gestión documental implementado en octubre de 2023, se realizó un análisis exhaustivo del rendimiento durante tres meses de operación.",
+    "objetivo": "Evaluar el rendimiento del sistema de gestión documental y identificar oportunidades de optimización para mejorar la experiencia del usuario final.",
+    "metodologia": "Se utilizaron herramientas de monitoreo (New Relic, Datadog) para recopilar métricas de rendimiento. Se analizaron 50,000 transacciones durante el periodo de prueba. Se realizaron pruebas de carga con JMeter simulando 500 usuarios concurrentes.",
+    "resultados": "Tiempo de respuesta promedio: 250ms (40% mejor que el sistema anterior). Tasa de éxito: 99.8%. Capacidad de procesamiento: 1,000 documentos por minuto. Disponibilidad del sistema: 99.95%.",
+    "conclusiones": "El sistema cumple con los objetivos establecidos y supera las expectativas de rendimiento. La arquitectura basada en microservicios permite escalar horizontalmente según la demanda.",
+    "recomendaciones": "1. Implementar caché Redis para consultas frecuentes\n2. Optimizar consultas SQL complejas\n3. Configurar CDN para archivos estáticos\n4. Establecer alertas proactivas de rendimiento"
+  },
+  "filename": "informe-rendimiento-dms-2024.json",
+  "description": "Informe técnico de rendimiento del sistema DMS",
+  "isPublic": false
+}
+
+### 4. Crear documento - Memorándum
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 4,
+  "formData": {
+    "numero": "MEM-2024-001",
+    "fecha": "2024-01-22",
+    "para": "Todo el personal de TI",
+    "de": "Dirección de Tecnología",
+    "asunto": "Actualización de políticas de seguridad informática",
+    "contenido": "Por medio del presente, se comunica a todo el personal del departamento de TI que a partir del 1 de febrero de 2024 entrarán en vigor las nuevas políticas de seguridad informática.\n\nPrincipales cambios:\n1. Cambio obligatorio de contraseñas cada 60 días\n2. Autenticación de dos factores (2FA) para acceso a sistemas críticos\n3. Capacitación mensual en seguridad informática\n4. Auditorías trimestrales de cumplimiento\n\nSe solicita la colaboración de todos para el cumplimiento de estas políticas, las cuales están diseñadas para proteger la información de nuestra organización y nuestros clientes."
+  },
+  "filename": "memorandum-seguridad-2024.json",
+  "description": "Memorándum sobre actualización de políticas de seguridad",
+  "isPublic": false
+}
+
+### 5. Crear documento - Solicitud de Vacaciones
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 5,
+  "formData": {
+    "nombre_empleado": "María García López",
+    "cargo": "Gerente de Proyectos",
+    "departamento": "Tecnología",
+    "fecha_inicio": "2024-02-15",
+    "fecha_fin": "2024-02-28",
+    "dias_solicitados": 10,
+    "observaciones": "Solicito este periodo vacacional para descanso personal. He coordinado con mi equipo para garantizar la continuidad de los proyectos en curso."
+  },
+  "filename": "solicitud-vacaciones-maria-garcia.json",
+  "description": "Solicitud de vacaciones - María García",
+  "isPublic": false
+}
+
+### 6. Crear documento - Orden de Compra
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 6,
+  "formData": {
+    "numero_orden": "OC-2024-0015",
+    "fecha": "2024-01-23",
+    "proveedor": "TechSupplies S.A.",
+    "direccion_proveedor": "Av. Principal 123, Ciudad",
+    "items": "1. Laptops Dell XPS 15 (Qty: 5) - $1,500 c/u\n2. Monitores LG 27\" 4K (Qty: 10) - $400 c/u\n3. Teclados mecánicos (Qty: 5) - $120 c/u\n4. Mouse inalámbricos (Qty: 10) - $50 c/u",
+    "subtotal": 12600,
+    "impuestos": 2016,
+    "total": 14616,
+    "condiciones_pago": "Pago a 30 días mediante transferencia bancaria. Entrega en 10 días hábiles. Garantía de 12 meses en todos los equipos."
+  },
+  "filename": "orden-compra-2024-0015.json",
+  "description": "Orden de compra - Equipos de cómputo",
+  "isPublic": false
+}
+
+### 7. Crear documento - Reporte de Incidente
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 7,
+  "formData": {
+    "numero_incidente": "INC-2024-0042",
+    "fecha_incidente": "2024-01-23",
+    "hora_incidente": "14:30",
+    "lugar": "Centro de Datos - Rack B-15",
+    "reportado_por": "Carlos Rodríguez - Técnico de Infraestructura",
+    "tipo_incidente": "Falla de Hardware - Servidor",
+    "descripcion": "Se detectó falla en el servidor de base de datos principal (DB-PROD-01). El servidor dejó de responder a peticiones y se reinició automáticamente. Los logs muestran errores de disco duro.",
+    "personas_involucradas": "Carlos Rodríguez (reportó), Juan Pérez (respondió), María García (coordinó)",
+    "acciones_tomadas": "1. Se aisló el servidor del pool de producción\n2. Se activó servidor de respaldo (DB-PROD-02)\n3. Se realizó diagnóstico del disco duro\n4. Se programó reemplazo de disco duro para 24/01/2024\n5. Se notificó a los usuarios del breve periodo de degradación del servicio",
+    "seguimiento": "Monitorear el rendimiento del servidor de respaldo. Programar mantenimiento preventivo de los demás servidores. Revisar políticas de respaldo de datos."
+  },
+  "filename": "reporte-incidente-2024-0042.json",
+  "description": "Reporte de incidente - Falla servidor DB-PROD-01",
+  "isPublic": false
+}
+
+### 8. Crear documento - Constancia de Estudio
+POST {{baseUrl}}/documents/from-template
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "templateId": 8,
+  "formData": {
+    "nombre_estudiante": "Ana Martínez Sánchez",
+    "identificacion": "98765432-1",
+    "programa_academico": "Ingeniería en Sistemas Computacionales",
+    "nivel": "Pregrado",
+    "semestre_actual": "Octavo semestre",
+    "fecha_inicio": "2020-08-15",
+    "promedio": 4.5
+  },
+  "filename": "constancia-estudio-ana-martinez.json",
+  "description": "Constancia de estudio - Ana Martínez",
+  "isPublic": false
+}
+
+### ========================================
+### CONSULTAR DOCUMENTOS GENERADOS
+### ========================================
+
+### Listar todos los documentos
+GET {{baseUrl}}/documents
+Authorization: Bearer {{token}}
+
+### Listar documentos creados desde plantillas
+GET {{baseUrl}}/documents?page=1&limit=20
+Authorization: Bearer {{token}}
+
+### Obtener un documento específico
+GET {{baseUrl}}/documents/42
+Authorization: Bearer {{token}}
+
+### Descargar un documento
+GET {{baseUrl}}/documents/42/download
+Authorization: Bearer {{token}}
+
+### ========================================
+### LIMPIEZA Y MANTENIMIENTO
+### ========================================
+
+### Ver estadísticas de documentos
+GET {{baseUrl}}/documents/stats
+Authorization: Bearer {{token}}

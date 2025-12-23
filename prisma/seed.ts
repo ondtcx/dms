@@ -47,6 +47,502 @@ async function main() {
     role: user1.role,
   });
 
+  // Crear plantillas de documentos de ejemplo
+  console.log('📄 Creando plantillas de documentos...');
+
+  const templates = [
+    {
+      name: 'Acta de Reunión',
+      type: 'acta',
+      description: 'Plantilla para registrar las actas de reuniones',
+      fields: {
+        fields: [
+          {
+            name: 'titulo',
+            label: 'Título de la reunión',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha',
+            label: 'Fecha de la reunión',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'hora_inicio',
+            label: 'Hora de inicio',
+            type: 'time',
+            required: true,
+          },
+          {
+            name: 'hora_fin',
+            label: 'Hora de finalización',
+            type: 'time',
+            required: true,
+          },
+          {
+            name: 'lugar',
+            label: 'Lugar',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'participantes',
+            label: 'Participantes',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'agenda',
+            label: 'Agenda',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'desarrollo',
+            label: 'Desarrollo de la reunión',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'acuerdos',
+            label: 'Acuerdos y compromisos',
+            type: 'textarea',
+            required: true,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Certificado de Trabajo',
+      type: 'certificado',
+      description: 'Plantilla para certificados de trabajo',
+      fields: {
+        fields: [
+          {
+            name: 'nombre_empleado',
+            label: 'Nombre completo del empleado',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'identificacion',
+            label: 'Número de identificación',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'cargo',
+            label: 'Cargo desempeñado',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha_ingreso',
+            label: 'Fecha de ingreso',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'fecha_retiro',
+            label: 'Fecha de retiro',
+            type: 'date',
+            required: false,
+          },
+          {
+            name: 'funciones',
+            label: 'Funciones desempeñadas',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'observaciones',
+            label: 'Observaciones',
+            type: 'textarea',
+            required: false,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Informe Técnico',
+      type: 'informe',
+      description: 'Plantilla para informes técnicos',
+      fields: {
+        fields: [
+          {
+            name: 'titulo',
+            label: 'Título del informe',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha',
+            label: 'Fecha del informe',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'autor',
+            label: 'Autor del informe',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'resumen_ejecutivo',
+            label: 'Resumen ejecutivo',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'introduccion',
+            label: 'Introducción',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'objetivo',
+            label: 'Objetivo',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'metodologia',
+            label: 'Metodología',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'resultados',
+            label: 'Resultados',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'conclusiones',
+            label: 'Conclusiones',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'recomendaciones',
+            label: 'Recomendaciones',
+            type: 'textarea',
+            required: false,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Memorándum',
+      type: 'memorandum',
+      description: 'Plantilla para memorándums internos',
+      fields: {
+        fields: [
+          {
+            name: 'numero',
+            label: 'Número de memorándum',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha',
+            label: 'Fecha',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'para',
+            label: 'Para (Destinatario)',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'de',
+            label: 'De (Remitente)',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'asunto',
+            label: 'Asunto',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'contenido',
+            label: 'Contenido del memorándum',
+            type: 'textarea',
+            required: true,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Solicitud de Vacaciones',
+      type: 'solicitud',
+      description: 'Plantilla para solicitudes de vacaciones',
+      fields: {
+        fields: [
+          {
+            name: 'nombre_empleado',
+            label: 'Nombre del empleado',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'cargo',
+            label: 'Cargo',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'departamento',
+            label: 'Departamento',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha_inicio',
+            label: 'Fecha de inicio de vacaciones',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'fecha_fin',
+            label: 'Fecha de fin de vacaciones',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'dias_solicitados',
+            label: 'Número de días solicitados',
+            type: 'number',
+            required: true,
+          },
+          {
+            name: 'observaciones',
+            label: 'Observaciones',
+            type: 'textarea',
+            required: false,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Orden de Compra',
+      type: 'orden_compra',
+      description: 'Plantilla para órdenes de compra',
+      fields: {
+        fields: [
+          {
+            name: 'numero_orden',
+            label: 'Número de orden',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha',
+            label: 'Fecha de emisión',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'proveedor',
+            label: 'Proveedor',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'direccion_proveedor',
+            label: 'Dirección del proveedor',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'items',
+            label: 'Items a comprar (descripción, cantidad, precio)',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'subtotal',
+            label: 'Subtotal',
+            type: 'number',
+            required: true,
+          },
+          {
+            name: 'impuestos',
+            label: 'Impuestos',
+            type: 'number',
+            required: true,
+          },
+          {
+            name: 'total',
+            label: 'Total',
+            type: 'number',
+            required: true,
+          },
+          {
+            name: 'condiciones_pago',
+            label: 'Condiciones de pago',
+            type: 'textarea',
+            required: true,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Reporte de Incidentes',
+      type: 'reporte',
+      description: 'Plantilla para reportes de incidentes',
+      fields: {
+        fields: [
+          {
+            name: 'numero_incidente',
+            label: 'Número de incidente',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha_incidente',
+            label: 'Fecha del incidente',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'hora_incidente',
+            label: 'Hora del incidente',
+            type: 'time',
+            required: true,
+          },
+          {
+            name: 'lugar',
+            label: 'Lugar del incidente',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'reportado_por',
+            label: 'Reportado por',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'tipo_incidente',
+            label: 'Tipo de incidente',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'descripcion',
+            label: 'Descripción del incidente',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'personas_involucradas',
+            label: 'Personas involucradas',
+            type: 'textarea',
+            required: false,
+          },
+          {
+            name: 'acciones_tomadas',
+            label: 'Acciones tomadas',
+            type: 'textarea',
+            required: true,
+          },
+          {
+            name: 'seguimiento',
+            label: 'Seguimiento requerido',
+            type: 'textarea',
+            required: false,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+    {
+      name: 'Constancia de Estudio',
+      type: 'certificado',
+      description: 'Plantilla para constancias de estudio',
+      fields: {
+        fields: [
+          {
+            name: 'nombre_estudiante',
+            label: 'Nombre completo del estudiante',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'identificacion',
+            label: 'Número de identificación',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'programa_academico',
+            label: 'Programa académico',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'nivel',
+            label: 'Nivel (pregrado, posgrado, etc.)',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'semestre_actual',
+            label: 'Semestre o periodo actual',
+            type: 'text',
+            required: true,
+          },
+          {
+            name: 'fecha_inicio',
+            label: 'Fecha de inicio de estudios',
+            type: 'date',
+            required: true,
+          },
+          {
+            name: 'promedio',
+            label: 'Promedio académico',
+            type: 'number',
+            required: false,
+          },
+        ],
+      },
+      createdById: admin.id,
+      isActive: true,
+    },
+  ];
+
+  for (const templateData of templates) {
+    const template = await prisma.documentTemplate.upsert({
+      where: {
+        id: 0, // Esto hará que siempre cree uno nuevo
+      },
+      update: {},
+      create: templateData,
+    });
+
+    console.log(`✅ Plantilla creada: ${template.name} (${template.type})`);
+  }
+
   console.log('🎉 Seed completado exitosamente!');
 }
 

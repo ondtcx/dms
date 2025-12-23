@@ -40,12 +40,139 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../auth/role.enum';
 import { multerConfig, allFilesFilter } from './config/multer.config';
+import { CreateDocumentFromTemplateDto } from '../document-template/dto/create-document-from-template.dto';
+import { DocumentTemplateService } from '../document-template/document-template.service';
 
 @ApiTags('documents')
 @Controller('documents')
 @ApiBearerAuth('JWT-auth')
 export class DocumentController {
-  constructor(private readonly documentsService: DocumentService) {}
+  constructor(
+    private readonly documentsService: DocumentService,
+    private readonly documentTemplateService: DocumentTemplateService,
+  ) {}
+
+  @Post('from-template')
+  @ApiOperation({
+    summary: 'Crear documento desde una plantilla',
+    description:
+      'Genera un nuevo documento a partir de un formulario basado en una plantilla existente. El sistema valida que todos los campos requeridos estén presentes y genera un archivo JSON estructurado.',
+  })
+  @ApiBody({
+    type: CreateDocumentFromTemplateDto,
+    description: 'Datos del formulario según la plantilla seleccionada',
+    examples: {
+      'Acta de Reunión': {
+        value: {
+          templateId: 1,
+          formData: {
+            titulo: 'Reunión de planificación Q1 2024',
+            fecha: '2024-01-15',
+            hora_inicio: '09:00',
+            hora_fin: '11:30',
+            lugar: 'Sala de conferencias',
+            participantes: 'Juan, María, Carlos',
+            agenda: 'Revisión de objetivos',
+            desarrollo: 'Se discutieron los objetivos del trimestre',
+            acuerdos: 'Implementar mejoras en el proceso',
+          },
+          filename: 'acta-reunion-2024-01-15.json',
+          description: 'Acta de reunión de planificación',
+          isPublic: false,
+        },
+      },
+      'Certificado de Trabajo': {
+        value: {
+          templateId: 2,
+          formData: {
+            nombre_empleado: 'Juan Pérez García',
+            identificacion: '12345678-9',
+            cargo: 'Desarrollador Senior',
+            fecha_ingreso: '2020-03-15',
+            funciones: 'Desarrollo de aplicaciones web',
+          },
+          description: 'Certificado laboral',
+          isPublic: false,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Documento creado desde plantilla exitosamente',
+    schema: {
+      example: {
+        id: 42,
+        filename: 'acta-reunion-2024-01-15.json',
+        storedName: '1737800123456-acta-reunion-2024-01-15.json',
+        mimetype: 'application/json',
+        size: 1024,
+        path: '/path/to/uploads/1737800123456-acta-reunion-2024-01-15.json',
+        description: 'Acta de reunión de planificación trimestral',
+        isPublic: false,
+        uploadedById: 'cmhtlluz80000eba0by5adzbj',
+        templateId: 1,
+        formData: {
+          titulo: 'Reunión de planificación Q1 2024',
+          fecha: '2024-01-15',
+        },
+        createdAt: '2024-01-25T14:32:03.456Z',
+        updatedAt: '2024-01-25T14:32:03.456Z',
+        uploadedBy: {
+          id: 'cmhtlluz80000eba0by5adzbj',
+          name: 'Administrador',
+          email: 'admin@example.com',
+        },
+        template: {
+          id: 1,
+          name: 'Acta de Reunión',
+          type: 'acta',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Plantilla inactiva o campos requeridos faltantes',
+    schema: {
+      examples: {
+        'Plantilla inactiva': {
+          value: {
+            statusCode: 400,
+            message: 'La plantilla no está activa',
+            error: 'Bad Request',
+          },
+        },
+        'Campos faltantes': {
+          value: {
+            statusCode: 400,
+            message: 'Faltan campos requeridos: titulo, fecha, participantes',
+            error: 'Bad Request',
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'Plantilla no encontrada',
+        error: 'Not Found',
+      },
+    },
+  })
+  createFromTemplate(
+    @Body() createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentTemplateService.createDocumentFromTemplate(
+      createDocumentFromTemplateDto,
+      user.id,
+    );
+  }
 
   @Post('upload')
   @ApiOperation({ summary: 'Subir un documento' })

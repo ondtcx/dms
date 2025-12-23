@@ -4,6 +4,7 @@ import { MulterModule } from '@nestjs/platform-express';
 import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
 import { PrismaService } from 'src/prisma/prisma.service';
+import { DocumentTemplateService } from '../document-template/document-template.service';
 
 @Module({
   imports: [
@@ -12,7 +13,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
     }),
   ],
   controllers: [DocumentController],
-  providers: [DocumentService, PrismaService],
+  providers: [DocumentService, PrismaService, DocumentTemplateService],
   exports: [DocumentService],
 })
 export class DocumentModule {}

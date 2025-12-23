@@ -1,0 +1,424 @@
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+  ParseIntPipe,
+} from '@nestjs/common';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiParam,
+  ApiQuery,
+  ApiBody,
+} from '@nestjs/swagger';
+import { DocumentTemplateService } from './document-template.service';
+import { CreateDocumentTemplateDto } from './dto/create-document-template.dto';
+import { UpdateDocumentTemplateDto } from './dto/update-document-template.dto';
+import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+
+@ApiTags('document-templates')
+@Controller('document-templates')
+@ApiBearerAuth('JWT-auth')
+export class DocumentTemplateController {
+  constructor(
+    private readonly documentTemplateService: DocumentTemplateService,
+  ) {}
+
+  @Post()
+  @ApiOperation({
+    summary: 'Crear una nueva plantilla de documento',
+    description:
+      'Crea una plantilla personalizada con campos definidos por el usuario. Las plantillas permiten generar documentos estructurados desde formularios.',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Plantilla creada exitosamente',
+    schema: {
+      example: {
+        id: 1,
+        name: 'Acta de Reunión',
+        type: 'acta',
+        description: 'Plantilla para registrar las actas de reuniones',
+        fields: {
+          fields: [
+            {
+              name: 'titulo',
+              label: 'Título de la reunión',
+              type: 'text',
+              required: true,
+            },
+            {
+              name: 'fecha',
+              label: 'Fecha de la reunión',
+              type: 'date',
+              required: true,
+            },
+          ],
+        },
+        isActive: true,
+        createdById: 'cmhtlluz80000eba0by5adzbj',
+        createdAt: '2024-01-15T10:00:00.000Z',
+        updatedAt: '2024-01-15T10:00:00.000Z',
+        createdBy: {
+          id: 'cmhtlluz80000eba0by5adzbj',
+          name: 'Administrador',
+          email: 'admin@example.com',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Datos inválidos',
+    schema: {
+      example: {
+        statusCode: 400,
+        message: ['name should not be empty', 'type should not be empty'],
+        error: 'Bad Request',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autenticado',
+    schema: {
+      example: {
+        statusCode: 401,
+        message: 'Unauthorized',
+      },
+    },
+  })
+  create(
+    @Body() createDocumentTemplateDto: CreateDocumentTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentTemplateService.create(
+      createDocumentTemplateDto,
+      user.id,
+    );
+  }
+
+  @Get()
+  @ApiOperation({
+    summary: 'Listar plantillas con filtros y paginación',
+    description:
+      'Obtiene una lista paginada de plantillas. Los usuarios normales solo ven plantillas activas o las que crearon. Los administradores ven todas.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    description: 'Buscar por nombre o tipo',
+    example: 'acta',
+  })
+  @ApiQuery({
+    name: 'type',
+    required: false,
+    description: 'Filtrar por tipo de plantilla',
+    example: 'certificado',
+  })
+  @ApiQuery({
+    name: 'isActive',
+    required: false,
+    description: 'Filtrar por estado activo',
+    example: true,
+  })
+  @ApiQuery({
+    name: 'page',
+    required: false,
+    description: 'Número de página',
+    example: 1,
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Elementos por página',
+    example: 10,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de plantillas',
+    schema: {
+      example: {
+        data: [
+          {
+            id: 1,
+            name: 'Acta de Reunión',
+            type: 'acta',
+            description: 'Plantilla para registrar las actas de reuniones',
+            fields: {},
+            isActive: true,
+            createdById: 'cmhtlluz80000eba0by5adzbj',
+            createdAt: '2024-01-15T10:00:00.000Z',
+            updatedAt: '2024-01-15T10:00:00.000Z',
+            createdBy: {
+              id: 'cmhtlluz80000eba0by5adzbj',
+              name: 'Administrador',
+              email: 'admin@example.com',
+            },
+            _count: {
+              documents: 5,
+            },
+          },
+        ],
+        meta: {
+          total: 8,
+          page: 1,
+          limit: 10,
+          totalPages: 1,
+        },
+      },
+    },
+  })
+  findAll(@Query() query: QueryDocumentTemplateDto, @CurrentUser() user: any) {
+    return this.documentTemplateService.findAll(query, user.id, user.role);
+  }
+
+  @Get('types')
+  @ApiOperation({
+    summary: 'Obtener tipos de plantillas disponibles',
+    description:
+      'Retorna una lista de todos los tipos de plantillas con su conteo',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de tipos de plantillas',
+    schema: {
+      example: [
+        { type: 'acta', count: 3 },
+        { type: 'certificado', count: 5 },
+        { type: 'informe', count: 2 },
+      ],
+    },
+  })
+  getTypes(@CurrentUser() user: any) {
+    return this.documentTemplateService.getTemplateTypes(user.id, user.role);
+  }
+
+  @Get(':id')
+  @ApiOperation({
+    summary: 'Obtener información de una plantilla',
+    description:
+      'Retorna los detalles completos de una plantilla específica por su ID',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID de la plantilla',
+    example: 1,
+    type: 'number',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Información de la plantilla',
+    schema: {
+      example: {
+        id: 1,
+        name: 'Acta de Reunión',
+        type: 'acta',
+        description: 'Plantilla para registrar las actas de reuniones',
+        fields: {
+          fields: [
+            {
+              name: 'titulo',
+              label: 'Título de la reunión',
+              type: 'text',
+              required: true,
+            },
+          ],
+        },
+        isActive: true,
+        createdById: 'cmhtlluz80000eba0by5adzbj',
+        createdAt: '2024-01-15T10:00:00.000Z',
+        updatedAt: '2024-01-15T10:00:00.000Z',
+        createdBy: {
+          id: 'cmhtlluz80000eba0by5adzbj',
+          name: 'Administrador',
+          email: 'admin@example.com',
+        },
+        _count: {
+          documents: 5,
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'Plantilla no encontrada',
+        error: 'Not Found',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permisos para ver esta plantilla',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'No tienes permiso para ver esta plantilla',
+        error: 'Forbidden',
+      },
+    },
+  })
+  findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.documentTemplateService.findOne(id, user.id, user.role);
+  }
+
+  @Patch(':id')
+  @ApiOperation({
+    summary: 'Actualizar una plantilla',
+    description:
+      'Actualiza los datos de una plantilla existente. Solo el creador o un administrador pueden actualizarla.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID de la plantilla',
+    example: 1,
+    type: 'number',
+  })
+  @ApiBody({
+    type: UpdateDocumentTemplateDto,
+    description: 'Datos a actualizar (todos los campos son opcionales)',
+    examples: {
+      'Actualizar nombre y descripción': {
+        value: {
+          name: 'Acta de Reunión Actualizada',
+          description: 'Nueva descripción de la plantilla',
+        },
+      },
+      'Desactivar plantilla': {
+        value: {
+          isActive: false,
+        },
+      },
+      'Actualizar campos': {
+        value: {
+          fields: {
+            fields: [
+              {
+                name: 'nuevo_campo',
+                label: 'Nuevo Campo',
+                type: 'text',
+                required: false,
+              },
+            ],
+          },
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Plantilla actualizada',
+    schema: {
+      example: {
+        id: 1,
+        name: 'Acta de Reunión Actualizada',
+        type: 'acta',
+        description: 'Nueva descripción',
+        fields: {},
+        isActive: true,
+        createdById: 'cmhtlluz80000eba0by5adzbj',
+        createdAt: '2024-01-15T10:00:00.000Z',
+        updatedAt: '2024-01-15T11:30:00.000Z',
+        createdBy: {
+          id: 'cmhtlluz80000eba0by5adzbj',
+          name: 'Administrador',
+          email: 'admin@example.com',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permisos para actualizar esta plantilla',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'No tienes permiso para actualizar esta plantilla',
+        error: 'Forbidden',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'Plantilla no encontrada',
+        error: 'Not Found',
+      },
+    },
+  })
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateDocumentTemplateDto: UpdateDocumentTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentTemplateService.update(
+      id,
+      updateDocumentTemplateDto,
+      user.id,
+      user.role,
+    );
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Eliminar una plantilla',
+    description:
+      'Elimina una plantilla de forma permanente. Solo el creador o un administrador pueden eliminarla. Los documentos creados con esta plantilla se mantendrán.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID de la plantilla',
+    example: 1,
+    type: 'number',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Plantilla eliminada',
+    schema: {
+      example: {
+        message: 'Plantilla eliminada exitosamente',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permisos para eliminar esta plantilla',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: 'No tienes permiso para eliminar esta plantilla',
+        error: 'Forbidden',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+    schema: {
+      example: {
+        statusCode: 404,
+        message: 'Plantilla no encontrada',
+        error: 'Not Found',
+      },
+    },
+  })
+  remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.documentTemplateService.remove(id, user.id, user.role);
+  }
+}
