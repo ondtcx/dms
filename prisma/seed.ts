@@ -47,6 +47,64 @@ async function main() {
     role: user1.role,
   });
 
+  // Crear categorías de ejemplo
+  console.log('📁 Creando categorías...');
+
+  const categories = [
+    {
+      name: 'Administrativos',
+      description: 'Documentos administrativos y de gestión general',
+      color: '#8b5cf6',
+      icon: 'FolderKanban',
+    },
+    {
+      name: 'Legales',
+      description: 'Documentos legales, contratos y acuerdos',
+      color: '#3b82f6',
+      icon: 'Scale',
+    },
+    {
+      name: 'Financieros',
+      description: 'Facturas, presupuestos y documentos financieros',
+      color: '#10b981',
+      icon: 'DollarSign',
+    },
+    {
+      name: 'RRHH',
+      description: 'Recursos humanos y gestión de personal',
+      color: '#f59e0b',
+      icon: 'Users',
+    },
+    {
+      name: 'Técnicos',
+      description: 'Documentación técnica y manuales',
+      color: '#06b6d4',
+      icon: 'Code',
+    },
+    {
+      name: 'Comerciales',
+      description: 'Propuestas comerciales y cotizaciones',
+      color: '#ec4899',
+      icon: 'ShoppingCart',
+    },
+    {
+      name: 'Operativos',
+      description: 'Procedimientos y documentos operativos',
+      color: '#f97316',
+      icon: 'Settings',
+    },
+  ];
+
+  for (const category of categories) {
+    await prisma.category.upsert({
+      where: { name: category.name },
+      update: {},
+      create: category,
+    });
+  }
+
+  console.log('✅ Categorías creadas:', categories.length);
+
   // Crear plantillas de documentos de ejemplo
   console.log('📄 Creando plantillas de documentos...');
 
@@ -564,7 +622,7 @@ async function main() {
   for (const templateData of templates) {
     const template = await prisma.documentTemplate.upsert({
       where: {
-        id: 0, // Esto hará que siempre cree uno nuevo
+        name: templateData.name,
       },
       update: {},
       create: templateData,

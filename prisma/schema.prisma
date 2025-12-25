@@ -30,30 +30,47 @@ model User {
   role              UserRole           @default(user)
 }
 
+model Category {
+  id          Int        @id @default(autoincrement())
+  name        String     @unique // Nombre de la categoría (ej: "Legales")
+  description String? // Descripción de la categoría
+  color       String?    @default("#3b82f6") // Color hexadecimal para el badge
+  icon        String?    @default("Folder") // Nombre del icono de lucide-react
+  isActive    Boolean    @default(true) // Si la categoría está activa
+  documents   Document[] // Documentos de esta categoría
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([name])
+}
+
 model Document {
-  id           Int      @id @default(autoincrement())
+  id           Int       @id @default(autoincrement())
   filename     String // Nombre original del archivo
-  storedName   String   @unique // Nombre almacenado en el servidor
+  storedName   String    @unique // Nombre almacenado en el servidor
   mimetype     String // Tipo MIME del archivo
   size         Int // Tamaño en bytes
   path         String // Ruta donde está almacenado
   description  String? // Descripción del documento
-  isPublic     Boolean  @default(false) // Si es público o privado
-  uploadedBy   User     @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  categoryId   Int? // Relación con categoría
+  category     Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isPublic     Boolean   @default(false) // Si es público o privado
+  uploadedBy   User      @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   uploadedById String
   templateId   Int? // Relación con plantilla si fue creado desde una
   template     DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   formData     Json? // Datos del formulario si fue creado desde template
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([uploadedById])
   @@index([templateId])
+  @@index([categoryId])
 }
 
 model DocumentTemplate {
   id           Int        @id @default(autoincrement())
-  name         String // Nombre de la plantilla (ej: "Acta de Reunión")
+  name         String     @unique // Nombre de la plantilla (ej: "Acta de Reunión")
   type         String // Tipo de documento (ej: "acta", "certificado", "informe")
   description  String? // Descripción de la plantilla
   fields       Json // Definición de campos del formulario en formato JSON

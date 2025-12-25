@@ -1,6 +1,6 @@
 // src/documents/dto/upload-document.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsOptional, IsBoolean, IsInt } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { toBoolean } from '../../common/helpers/transform.helper';
 
@@ -12,6 +12,15 @@ export class UploadDocumentDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiPropertyOptional({
+    description: 'ID de la categoría del documento',
+    example: 2,
+  })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  categoryId?: number;
 
   @ApiPropertyOptional({
     description: 'Si el documento es público',

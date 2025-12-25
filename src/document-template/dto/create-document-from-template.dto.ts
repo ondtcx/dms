@@ -57,4 +57,13 @@ export class CreateDocumentFromTemplateDto {
   @IsBoolean()
   @IsOptional()
   isPublic?: boolean;
+
+  @ApiProperty({
+    description: 'ID de la categoría del documento',
+    example: 2,
+    required: false,
+  })
+  @IsInt()
+  @IsOptional()
+  categoryId?: number;
 }

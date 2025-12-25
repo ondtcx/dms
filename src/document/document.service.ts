@@ -34,6 +34,7 @@ export class DocumentService {
         size: file.size,
         path: file.path,
         description: uploadDocumentDto.description,
+        categoryId: uploadDocumentDto.categoryId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
       },
@@ -43,6 +44,14 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
           },
         },
       },
@@ -64,7 +73,7 @@ export class DocumentService {
   }
 
   async findAll(query: QueryDocumentDto, userId: number, userRole: UserRole) {
-    const { search, isPublic, page = 1, limit = 10 } = query;
+    const { search, categoryId, isPublic, page = 1, limit = 10 } = query;
 
     // Construir filtros
     const where: any = {};
@@ -79,6 +88,10 @@ export class DocumentService {
         contains: search,
         mode: 'insensitive',
       };
+    }
+
+    if (categoryId) {
+      where.categoryId = categoryId;
     }
 
     if (isPublic !== undefined) {
@@ -97,6 +110,14 @@ export class DocumentService {
               id: true,
               name: true,
               email: true,
+            },
+          },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              icon: true,
             },
           },
         },
@@ -129,6 +150,14 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
           },
         },
       },
@@ -174,6 +203,14 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
           },
         },
       },
@@ -262,6 +299,14 @@ export class DocumentService {
             email: true,
           },
         },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
       },
     });
 
@@ -291,4 +336,5 @@ export class DocumentService {
       totalSizeMB: ((totalSize._sum.size || 0) / (1024 * 1024)).toFixed(2),
     };
   }
+
 }

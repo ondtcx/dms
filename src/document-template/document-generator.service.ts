@@ -187,9 +187,11 @@ export class DocumentGeneratorService {
     try {
       // Compilar plantilla con datos
       const compiledHtml = this.compileTemplate(htmlTemplate, data);
+      console.log('🔧 HTML Compilado (primeros 500 chars):', compiledHtml.substring(0, 500));
 
       // Generar HTML completo con estilos
       const fullHtml = this.generateHtmlWithStyles(compiledHtml, styles);
+      console.log('📄 HTML Completo (primeros 500 chars):', fullHtml.substring(0, 500));
 
       this.logger.log('Iniciando generación de PDF...');
 

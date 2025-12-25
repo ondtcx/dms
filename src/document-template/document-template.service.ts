@@ -223,8 +223,14 @@ export class DocumentTemplateService {
     createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
     userId: string,
   ) {
-    const { templateId, formData, filename, description, isPublic } =
+    const { templateId, formData, filename, description, isPublic, categoryId } =
       createDocumentFromTemplateDto;
+
+    console.log('📝 Creando documento desde plantilla...');
+    console.log('Template ID:', templateId);
+    console.log('Form Data recibido:', JSON.stringify(formData, null, 2));
+    console.log('Filename:', filename);
+    console.log('Description:', description);
 
     // Obtener la plantilla
     const template = await this.prisma.documentTemplate.findUnique({
@@ -277,6 +283,8 @@ export class DocumentTemplateService {
         templateType: template.type,
       },
     };
+
+    console.log('📋 Template Data final:', JSON.stringify(templateData, null, 2));
 
     // Generar el documento según el formato
     let documentBuffer: Buffer;
@@ -335,6 +343,7 @@ export class DocumentTemplateService {
         uploadedById: userId,
         templateId: template.id,
         formData,
+        categoryId: categoryId || null,
       },
       include: {
         uploadedBy: {
@@ -349,6 +358,14 @@ export class DocumentTemplateService {
             id: true,
             name: true,
             type: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
           },
         },
       },
