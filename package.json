@@ -42,10 +42,12 @@
     "dotenv": "^17.2.3",
     "handlebars": "^4.7.8",
     "multer": "^2.0.2",
+    "pdf-to-img": "^5.0.0",
     "pizzip": "^3.2.0",
     "puppeteer": "^24.34.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
+    "sharp": "^0.34.5",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0"
   },

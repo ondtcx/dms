@@ -18,6 +18,7 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
+  NotFoundException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -33,6 +34,7 @@ import {
 import { Response } from 'express';
 import { createReadStream } from 'fs';
 import { DocumentService } from './document.service';
+import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
@@ -50,6 +52,7 @@ export class DocumentController {
   constructor(
     private readonly documentsService: DocumentService,
     private readonly documentTemplateService: DocumentTemplateService,
+    private readonly thumbnailService: ThumbnailService,
   ) {}
 
   @Post('from-template')
@@ -313,6 +316,45 @@ export class DocumentController {
     res.set({
       'Content-Type': mimetype,
       'Content-Disposition': `inline; filename="${filename}"`,
+    });
+
+    return new StreamableFile(file);
+  }
+
+  @Get(':id/thumbnail')
+  @ApiOperation({ summary: 'Obtener thumbnail de un documento' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Thumbnail del documento' })
+  @ApiResponse({ status: 404, description: 'Thumbnail no disponible' })
+  async getThumbnail(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    // Verificar que el usuario tenga acceso al documento
+    const doc = await this.documentsService.findOne(id, user.id, user.role);
+
+    // Obtener o generar thumbnail
+    let thumbnailPath = this.thumbnailService.getThumbnailPath(id);
+
+    if (!thumbnailPath) {
+      // Generar thumbnail si no existe
+      thumbnailPath = await this.thumbnailService.generateThumbnail(
+        doc.path,
+        id,
+        doc.mimetype,
+      );
+    }
+
+    if (!thumbnailPath) {
+      throw new NotFoundException('Thumbnail no disponible para este tipo de archivo');
+    }
+
+    const file = createReadStream(thumbnailPath);
+
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=31536000',
     });
 
     return new StreamableFile(file);
