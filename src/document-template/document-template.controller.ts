@@ -9,7 +9,10 @@ import {
   UseGuards,
   Query,
   ParseIntPipe,
+  Res,
+  StreamableFile,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -273,6 +276,53 @@ export class DocumentTemplateController {
   })
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.documentTemplateService.findOne(id, user.id, user.role);
+  }
+
+  @Get(':id/preview')
+  @ApiOperation({
+    summary: 'Generar vista previa de una plantilla',
+    description:
+      'Genera un PDF de ejemplo usando datos de prueba para previsualizar cómo se verá la plantilla',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID de la plantilla',
+    example: 1,
+    type: 'number',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'PDF de vista previa generado',
+    content: {
+      'application/pdf': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+  })
+  async preview(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.documentTemplateService.generatePreview(
+      id,
+      user.id,
+      user.role,
+    );
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+
+    return new StreamableFile(buffer);
   }
 
   @Patch(':id')

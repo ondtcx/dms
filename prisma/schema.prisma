@@ -19,15 +19,18 @@ enum UserRole {
 }
 
 model User {
-  id                String             @id @default(cuid())
-  email             String             @unique
+  id                String              @id @default(cuid())
+  email             String              @unique
   name              String?
   password          String
   documents         Document[]
   documentTemplates DocumentTemplate[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  role              UserRole           @default(user)
+  documentVersions  DocumentVersion[]
+  documentAccesses  DocumentAccess[]
+  deletedDocuments  Document[]          @relation("DeletedByUser")
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  role              UserRole            @default(user)
 }
 
 model Category {
@@ -45,27 +48,45 @@ model Category {
 }
 
 model Document {
-  id           Int       @id @default(autoincrement())
-  filename     String // Nombre original del archivo
-  storedName   String    @unique // Nombre almacenado en el servidor
-  mimetype     String // Tipo MIME del archivo
-  size         Int // Tamaño en bytes
-  path         String // Ruta donde está almacenado
-  description  String? // Descripción del documento
-  categoryId   Int? // Relación con categoría
-  category     Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  isPublic     Boolean   @default(false) // Si es público o privado
-  uploadedBy   User      @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  uploadedById String
-  templateId   Int? // Relación con plantilla si fue creado desde una
-  template     DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  formData     Json? // Datos del formulario si fue creado desde template
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id              Int                @id @default(autoincrement())
+  filename        String // Nombre original del archivo
+  storedName      String             @unique // Nombre almacenado en el servidor
+  mimetype        String // Tipo MIME del archivo
+  size            Int // Tamaño en bytes
+  path            String // Ruta donde está almacenado
+  description     String? // Descripción del documento
+  categoryId      Int? // Relación con categoría
+  category        Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  isPublic        Boolean            @default(false) // Si es público o privado
+  uploadedBy      User               @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedById    String
+  templateId      Int? // Relación con plantilla si fue creado desde una
+  template        DocumentTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  formData        Json? // Datos del formulario si fue creado desde template
+
+  // Versionado
+  currentVersion  Int                @default(1) // Versión actual del documento
+  versions        DocumentVersion[] // Historial de versiones
+
+  // Integridad
+  checksumSHA256  String? // Hash SHA256 del archivo para verificar integridad
+
+  // Soft Delete
+  deletedAt       DateTime? // Fecha de eliminación (null si no está eliminado)
+  deletedBy       User?              @relation("DeletedByUser", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById     String? // Usuario que eliminó el documento
+
+  // Auditoría
+  accesses        DocumentAccess[] // Registro de accesos al documento
+
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   @@index([uploadedById])
   @@index([templateId])
   @@index([categoryId])
+  @@index([deletedAt]) // Índice para filtrar documentos eliminados
+  @@index([createdAt]) // Índice para ordenar por fecha
 }
 
 model DocumentTemplate {
@@ -88,4 +109,40 @@ model DocumentTemplate {
 
   @@index([type])
   @@index([createdById])
+}
+
+model DocumentVersion {
+  id             Int      @id @default(autoincrement())
+  documentId     Int // Documento al que pertenece esta versión
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version        Int // Número de versión (1, 2, 3, ...)
+  storedName     String // Nombre del archivo de esta versión
+  path           String // Ruta donde está almacenada esta versión
+  size           Int // Tamaño en bytes
+  checksumSHA256 String? // Hash SHA256 de esta versión
+  comment        String? // Comentario sobre los cambios en esta versión
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdById    String // Usuario que creó esta versión
+  createdAt      DateTime @default(now())
+
+  @@unique([documentId, version]) // Una versión única por documento
+  @@index([documentId])
+  @@index([createdAt])
+}
+
+model DocumentAccess {
+  id         Int      @id @default(autoincrement())
+  documentId Int // Documento accedido
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String // Usuario que accedió
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action     String // Tipo de acción: VIEW, DOWNLOAD, UPDATE, DELETE
+  ipAddress  String? // Dirección IP del usuario
+  userAgent  String?  @db.Text // User agent del navegador
+  createdAt  DateTime @default(now())
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([action])
 }

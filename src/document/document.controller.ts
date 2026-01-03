@@ -406,4 +406,51 @@ export class DocumentController {
       results,
     };
   }
+
+  @Post(':id/restore')
+  @ApiOperation({ summary: 'Restaurar documento desde la papelera' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Documento restaurado' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  restore(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.documentsService.restore(id, user.id, user.role);
+  }
+
+  @Delete(':id/permanent')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Eliminar permanentemente un documento (Solo ADMIN)',
+  })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Documento eliminado permanentemente' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  permanentDelete(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentsService.permanentDelete(id, user.id, user.role);
+  }
+
+  @Get(':id/versions')
+  @ApiOperation({ summary: 'Obtener historial de versiones de un documento' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Historial de versiones' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  getVersions(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.documentsService.getVersions(id, user.id, user.role);
+  }
+
+  @Post(':id/versions/:version/restore')
+  @ApiOperation({ summary: 'Restaurar una versión anterior del documento' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiParam({ name: 'version', description: 'Número de versión a restaurar' })
+  @ApiResponse({ status: 200, description: 'Versión restaurada exitosamente' })
+  @ApiResponse({ status: 404, description: 'Documento o versión no encontrada' })
+  restoreVersion(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('version', ParseIntPipe) version: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentsService.restoreVersion(id, version, user.id, user.role);
+  }
 }

@@ -31,6 +31,16 @@ export class QueryDocumentDto {
   isPublic?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Incluir documentos eliminados (papelera)',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  includeDeleted?: boolean;
+
+  @ApiPropertyOptional({
     description: 'Página',
     example: 1,
     default: 1,

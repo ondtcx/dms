@@ -373,4 +373,70 @@ export class DocumentTemplateService {
 
     return document;
   }
+
+  async generatePreview(id: number, userId: string, userRole: UserRole) {
+    // Verificar que la plantilla existe y el usuario tiene acceso
+    const template = await this.findOne(id, userId, userRole);
+
+    // Generar datos de ejemplo basados en los campos de la plantilla
+    const sampleData: Record<string, any> = {
+      _metadata: {
+        templateName: template.name,
+        generatedDate: new Date().toLocaleDateString('es-ES'),
+        generatedTime: new Date().toLocaleTimeString('es-ES'),
+      },
+    };
+
+    // Agregar datos de ejemplo para cada campo definido en la plantilla
+    if (template.fields && typeof template.fields === 'object') {
+      const fields = (template.fields as any).fields || [];
+      fields.forEach((field: any) => {
+        const fieldName = field.name || field.label;
+
+        switch (field.type) {
+          case 'text':
+            sampleData[fieldName] = `Ejemplo de ${field.label || fieldName}`;
+            break;
+          case 'textarea':
+            sampleData[fieldName] = `Este es un texto de ejemplo para el campo "${field.label || fieldName}". Aquí iría el contenido extenso que el usuario ingresaría en este campo.`;
+            break;
+          case 'number':
+            sampleData[fieldName] = '12345';
+            break;
+          case 'date':
+            sampleData[fieldName] = new Date().toLocaleDateString('es-ES');
+            break;
+          case 'email':
+            sampleData[fieldName] = 'ejemplo@correo.com';
+            break;
+          case 'tel':
+            sampleData[fieldName] = '+1234567890';
+            break;
+          case 'select':
+            sampleData[fieldName] = field.options?.[0] || 'Opción 1';
+            break;
+          case 'checkbox':
+            sampleData[fieldName] = 'Sí';
+            break;
+          default:
+            sampleData[fieldName] = `Valor de ejemplo`;
+        }
+      });
+    }
+
+    // Generar el PDF usando el mismo servicio que genera documentos reales
+    const pdfBuffer = await this.documentGenerator.generatePDF({
+      htmlTemplate: template.htmlTemplate,
+      styles: template.styles || '',
+      data: sampleData,
+      pageSize: template.pageSize as any,
+      orientation: template.orientation as any,
+      outputFormat: 'pdf',
+    });
+
+    return {
+      buffer: pdfBuffer,
+      filename: `preview-${template.name.toLowerCase().replace(/\s+/g, '-')}.pdf`,
+    };
+  }
 }

@@ -6,6 +6,8 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
 import { DocumentTemplateModule } from './document-template/document-template.module';
 import { CategoryModule } from './category/category.module';
+import { StorageModule } from './storage/storage.module';
+import { TasksModule } from './tasks/tasks.module';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
@@ -18,6 +20,8 @@ import { join } from 'path';
       rootPath: join(__dirname, '..', 'uploads'),
       serveRoot: '/files',
     }),
+    StorageModule, // Módulo global de almacenamiento
+    TasksModule, // Tareas programadas (cronjobs)
     UserModule,
     AuthModule,
     CategoryModule,

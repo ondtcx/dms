@@ -1,19 +1,25 @@
 // src/documents/config/multer.config.ts
 import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { extname, join } from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import { existsSync, mkdirSync } from 'fs';
+
+// Asegurar que el directorio temp existe
+const tempDir = './uploads/temp';
+if (!existsSync(tempDir)) {
+  mkdirSync(tempDir, { recursive: true });
+}
 
 export const multerConfig = {
   storage: diskStorage({
-    destination: './uploads', // Carpeta donde se guardan los archivos
+    destination: tempDir, // Guardar temporalmente en /uploads/temp
     filename: (req, file, callback) => {
-      // Generar nombre único
-      const uniqueName = `${uuidv4()}${extname(file.originalname)}`;
+      // Generar nombre único temporal
+      const uniqueName = `${Date.now()}_${uuidv4()}${extname(file.originalname)}`;
       callback(null, uniqueName);
     },
   }),
   limits: {
-    //TODO: ajustar según necesidades
     fileSize: 50 * 1024 * 1024, // 50MB máximo
   },
 };
