@@ -22,6 +22,15 @@ export class QueryDocumentDto {
   categoryId?: number;
 
   @ApiPropertyOptional({
+    description: 'Filtrar por ID de sección',
+    example: 1,
+  })
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  sectionId?: number;
+
+  @ApiPropertyOptional({
     description: 'Solo documentos públicos',
     example: false,
   })

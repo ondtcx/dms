@@ -11,6 +11,7 @@ import {
   ParseIntPipe,
   Res,
   StreamableFile,
+  NotFoundException,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -27,6 +28,8 @@ import { CreateDocumentTemplateDto } from './dto/create-document-template.dto';
 import { UpdateDocumentTemplateDto } from './dto/update-document-template.dto';
 import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { createReadStream, existsSync } from 'fs';
+import { join } from 'path';
 
 @ApiTags('document-templates')
 @Controller('document-templates')
@@ -206,6 +209,105 @@ export class DocumentTemplateController {
     return this.documentTemplateService.getTemplateTypes(user.id, user.role);
   }
 
+  @Get(':id/preview')
+  @ApiOperation({
+    summary: 'Generar vista previa de una plantilla',
+    description:
+      'Genera un PDF de ejemplo usando datos de prueba para previsualizar cómo se verá la plantilla',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID de la plantilla',
+    example: 1,
+    type: 'number',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'PDF de vista previa generado',
+    content: {
+      'application/pdf': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+  })
+  async preview(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const { buffer, filename } = await this.documentTemplateService.generatePreview(
+      id,
+      user.id,
+      user.role,
+    );
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${filename}"`,
+    });
+
+    return new StreamableFile(buffer);
+  }
+
+  @Get(':id/thumbnail')
+  @ApiOperation({
+    summary: 'Obtener thumbnail de una plantilla',
+    description:
+      'Retorna una imagen en miniatura (200x200px) de la primera página de la plantilla. Se genera automáticamente desde la vista previa.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID de la plantilla',
+    example: 1,
+    type: 'number',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Thumbnail de la plantilla',
+    content: {
+      'image/jpeg': {
+        schema: {
+          type: 'string',
+          format: 'binary',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada o thumbnail no disponible',
+  })
+  async getThumbnail(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<StreamableFile> {
+    const thumbnailPath = await this.documentTemplateService.getTemplateThumbnail(
+      id,
+      user.id,
+      user.role,
+    );
+
+    if (!thumbnailPath || !existsSync(thumbnailPath)) {
+      throw new NotFoundException('Thumbnail no disponible para esta plantilla');
+    }
+
+    const file = createReadStream(thumbnailPath);
+    res.set({
+      'Content-Type': 'image/jpeg',
+      'Cache-Control': 'public, max-age=31536000',
+    });
+
+    return new StreamableFile(file);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener información de una plantilla',
@@ -276,53 +378,6 @@ export class DocumentTemplateController {
   })
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.documentTemplateService.findOne(id, user.id, user.role);
-  }
-
-  @Get(':id/preview')
-  @ApiOperation({
-    summary: 'Generar vista previa de una plantilla',
-    description:
-      'Genera un PDF de ejemplo usando datos de prueba para previsualizar cómo se verá la plantilla',
-  })
-  @ApiParam({
-    name: 'id',
-    description: 'ID de la plantilla',
-    example: 1,
-    type: 'number',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'PDF de vista previa generado',
-    content: {
-      'application/pdf': {
-        schema: {
-          type: 'string',
-          format: 'binary',
-        },
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Plantilla no encontrada',
-  })
-  async preview(
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser() user: any,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<StreamableFile> {
-    const { buffer, filename } = await this.documentTemplateService.generatePreview(
-      id,
-      user.id,
-      user.role,
-    );
-
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${filename}"`,
-    });
-
-    return new StreamableFile(buffer);
   }
 
   @Patch(':id')
@@ -470,5 +525,159 @@ export class DocumentTemplateController {
   })
   remove(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.documentTemplateService.remove(id, user.id, user.role);
+  }
+
+  // ============ Plantillas Predefinidas ============
+
+  @Get('predefined')
+  @ApiOperation({
+    summary: 'Obtener todas las plantillas predefinidas',
+    description:
+      'Retorna todas las plantillas predefinidas del sistema, opcionalmente filtradas por categoría',
+  })
+  @ApiQuery({
+    name: 'category',
+    required: false,
+    description: 'Categoría de plantilla: academic, administrative, legal',
+    enum: ['academic', 'administrative', 'legal'],
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de plantillas predefinidas',
+    schema: {
+      example: [
+        {
+          id: 1,
+          name: 'Certificado de Estudios',
+          type: 'certificado',
+          category: 'academic',
+          description: 'Certificado oficial de estudios realizados',
+          usageCount: 45,
+          fields: [],
+          createdAt: '2024-01-01T00:00:00.000Z',
+        },
+      ],
+    },
+  })
+  getPredefined(@Query('category') category?: string) {
+    return this.documentTemplateService.getPredefinedTemplates(category);
+  }
+
+  @Get('gallery')
+  @ApiOperation({
+    summary: 'Obtener galería de plantillas organizadas por categoría',
+    description:
+      'Retorna todas las plantillas predefinidas organizadas por categoría para mostrar en una galería',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Galería de plantillas por categoría',
+    schema: {
+      example: {
+        categories: ['academic', 'administrative', 'legal'],
+        templates: {
+          academic: [
+            {
+              id: 1,
+              name: 'Certificado de Estudios',
+              type: 'certificado',
+              category: 'academic',
+              description: 'Certificado oficial de estudios',
+              usageCount: 45,
+            },
+          ],
+          administrative: [],
+          legal: [],
+        },
+        total: 12,
+      },
+    },
+  })
+  getGallery() {
+    return this.documentTemplateService.getGallery();
+  }
+
+  @Post(':id/duplicate')
+  @ApiOperation({
+    summary: 'Duplicar una plantilla existente',
+    description:
+      'Crea una copia de una plantilla existente con un nuevo nombre',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Plantilla duplicada exitosamente',
+    schema: {
+      example: {
+        id: 13,
+        name: 'Certificado de Estudios (Copia)',
+        type: 'certificado',
+        category: 'academic',
+        isPredefined: false,
+        usageCount: 0,
+        createdBy: {
+          id: 'user-id',
+          name: 'Usuario',
+          email: 'user@example.com',
+        },
+      },
+    },
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Plantilla no encontrada',
+  })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: {
+        name: {
+          type: 'string',
+          description: 'Nombre para la plantilla duplicada (opcional)',
+          example: 'Mi Certificado Personalizado',
+        },
+      },
+    },
+  })
+  duplicate(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+    @Body('name') name?: string,
+  ) {
+    return this.documentTemplateService.duplicate(id, user.id, name);
+  }
+
+  @Get('popular')
+  @ApiOperation({
+    summary: 'Obtener plantillas más populares',
+    description:
+      'Retorna las plantillas más utilizadas ordenadas por contador de uso',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    description: 'Número máximo de plantillas a retornar',
+    type: Number,
+    example: 10,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de plantillas más populares',
+    schema: {
+      example: [
+        {
+          id: 1,
+          name: 'Certificado de Estudios',
+          type: 'certificado',
+          category: 'academic',
+          description: 'Certificado oficial',
+          usageCount: 145,
+          isPredefined: true,
+        },
+      ],
+    },
+  })
+  getPopular(@Query('limit', new ParseIntPipe({ optional: true })) limit?: number) {
+    return this.documentTemplateService.getPopular(limit);
   }
 }

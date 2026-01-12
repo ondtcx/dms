@@ -15,8 +15,10 @@ import { extname } from 'path';
 import { promisify } from 'util';
 import { UserRole } from '../auth/role.enum';
 import { v4 as uuidv4 } from 'uuid';
+const pdfParse = require('pdf-parse');
 
 const unlinkAsync = promisify(fs.unlink);
+const readFileAsync = promisify(fs.readFile);
 
 @Injectable()
 export class DocumentService {
@@ -44,7 +46,13 @@ export class DocumentService {
     // 3. Calcular checksum del archivo
     const checksum = await this.storage.calculateFileHash(storageLocation.path);
 
-    // 4. Crear registro en BD
+    // 4. Extraer texto de PDF si es un PDF
+    let extractedText: string | null = null;
+    if (file.mimetype === 'application/pdf') {
+      extractedText = await this.extractTextFromPDF(storageLocation.path);
+    }
+
+    // 5. Crear registro en BD
     const document = await this.prisma.document.create({
       data: {
         filename: file.originalname,
@@ -54,10 +62,12 @@ export class DocumentService {
         path: storageLocation.path,
         description: uploadDocumentDto.description,
         categoryId: uploadDocumentDto.categoryId,
+        sectionId: uploadDocumentDto.sectionId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
         checksumSHA256: checksum,
         currentVersion: 1,
+        extractedText: extractedText,
       },
       include: {
         uploadedBy: {
@@ -75,10 +85,25 @@ export class DocumentService {
             icon: true,
           },
         },
+        section: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
       },
     });
 
-    // 5. Crear versión inicial
+    // 6. Crear versión inicial
     await this.prisma.documentVersion.create({
       data: {
         documentId: document.id,
@@ -108,7 +133,7 @@ export class DocumentService {
   }
 
   async findAll(query: QueryDocumentDto, userId: number, userRole: UserRole) {
-    const { search, categoryId, isPublic, includeDeleted, page = 1, limit = 10 } = query;
+    const { search, categoryId, sectionId, isPublic, includeDeleted, page = 1, limit = 10 } = query;
 
     // Construir filtros
     const where: any = {
@@ -152,6 +177,10 @@ export class DocumentService {
       where.AND.push({ categoryId });
     }
 
+    if (sectionId) {
+      where.AND.push({ sectionId });
+    }
+
     if (isPublic !== undefined) {
       where.AND.push({ isPublic });
     }
@@ -181,6 +210,21 @@ export class DocumentService {
               name: true,
               color: true,
               icon: true,
+            },
+          },
+          section: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              icon: true,
+            },
+          },
+          template: {
+            select: {
+              id: true,
+              name: true,
+              type: true,
             },
           },
         },
@@ -221,6 +265,21 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+          },
+        },
+        section: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
           },
         },
       },
@@ -274,6 +333,21 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+          },
+        },
+        section: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
           },
         },
       },
@@ -519,6 +593,21 @@ export class DocumentService {
             icon: true,
           },
         },
+        section: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
       },
     });
 
@@ -718,6 +807,121 @@ export class DocumentService {
       category: cat.categoryId,
       count: cat._count.categoryId,
     }));
+  }
+
+  /**
+   * Obtener documentos agrupados por fecha para vista de calendario
+   */
+  async getDocumentsByDate(
+    userId: string,
+    userRole: UserRole,
+    startDate?: Date,
+    endDate?: Date,
+    categoryId?: number,
+    sectionId?: number,
+  ) {
+    const where: any = {
+      AND: [{ deletedAt: null }],
+    };
+
+    // Permisos: solo documentos propios o públicos si no es admin
+    if (userRole !== UserRole.ADMIN) {
+      where.AND.push({
+        OR: [{ uploadedById: userId }, { isPublic: true }],
+      });
+    }
+
+    // Filtro por rango de fechas
+    if (startDate && endDate) {
+      where.AND.push({
+        createdAt: {
+          gte: startDate,
+          lte: endDate,
+        },
+      });
+    }
+
+    // Filtros opcionales
+    if (categoryId) {
+      where.AND.push({ categoryId });
+    }
+
+    if (sectionId) {
+      where.AND.push({ sectionId });
+    }
+
+    const documents = await this.prisma.document.findMany({
+      where,
+      include: {
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        section: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    // Agrupar por fecha
+    const groupedByDate = documents.reduce((acc, doc) => {
+      const dateKey = new Date(doc.createdAt).toISOString().split('T')[0];
+      if (!acc[dateKey]) {
+        acc[dateKey] = [];
+      }
+      acc[dateKey].push(doc);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    return {
+      documents,
+      groupedByDate,
+      totalDocuments: documents.length,
+    };
+  }
+
+  // ============ Extracción de Texto de PDFs ============
+
+  /**
+   * Extrae texto de un archivo PDF usando pdf-parse
+   * @param filePath Ruta del archivo PDF
+   * @returns Texto extraído o null si falla
+   */
+  private async extractTextFromPDF(filePath: string): Promise<string | null> {
+    try {
+      const dataBuffer = await readFileAsync(filePath);
+      const data = await pdfParse(dataBuffer);
+      return data.text || null;
+    } catch (error) {
+      console.error(`Error extrayendo texto del PDF ${filePath}:`, error);
+      return null;
+    }
   }
 
 }

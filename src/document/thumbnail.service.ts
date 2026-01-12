@@ -1,8 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import * as sharp from 'sharp';
-import { pdf } from 'pdf-to-img';
 import { join } from 'path';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 
 @Injectable()
 export class ThumbnailService {
@@ -40,8 +43,9 @@ export class ThumbnailService {
       } else if (mimetype === 'application/pdf') {
         await this.generatePdfThumbnail(filePath, thumbnailFullPath);
       } else {
-        // No se puede generar thumbnail para este tipo
-        return null;
+        throw new UnprocessableEntityException(
+          'Tipo de archivo no soportado para thumbnail',
+        );
       }
 
       this.logger.log(`Thumbnail generado: ${thumbnailFullPath}`);
@@ -73,29 +77,79 @@ export class ThumbnailService {
 
   /**
    * Genera thumbnail para un PDF (primera página)
+   * Nota: En Windows, la conversión PDF→imagen con librerías nativas tiene problemas
+   * Esta funcionalidad está deshabilitada temporalmente
    */
   private async generatePdfThumbnail(
     pdfPath: string,
     outputPath: string,
   ): Promise<void> {
+    throw new Error('PDF thumbnail generation not supported on Windows. Use generateThumbnailFromHtml instead.');
+  }
+
+  /**
+   * Genera thumbnail desde HTML usando Puppeteer
+   * Esta es la solución recomendada para Windows
+   */
+  async generateThumbnailFromHtml(
+    htmlContent: string,
+    documentId: number,
+  ): Promise<string | null> {
     try {
-      // Convertir primera página del PDF a imagen
-      const document = await pdf(pdfPath, { scale: 2.0 });
+      const thumbnailFilename = `thumb_${documentId}.jpg`;
+      const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
 
-      // Obtener solo la primera página
-      const page = await document.getPage(1);
+      // Si ya existe el thumbnail, retornarlo
+      if (existsSync(thumbnailFullPath)) {
+        return thumbnailFullPath;
+      }
 
-      // Redimensionar y guardar como JPEG
-      await sharp(page)
+      this.logger.debug(`Generando thumbnail desde HTML para documento ${documentId}`);
+
+      // Importar puppeteer dinámicamente
+      const puppeteer = await import('puppeteer');
+
+      const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+
+      const page = await browser.newPage();
+
+      // Configurar viewport para simular tamaño A4
+      await page.setViewport({
+        width: 794, // A4 width en px a 96dpi
+        height: 1123, // A4 height en px a 96dpi
+        deviceScaleFactor: 2, // Para mejor calidad
+      });
+
+      // Cargar el HTML
+      await page.setContent(htmlContent, {
+        waitUntil: 'networkidle0',
+      });
+
+      // Capturar screenshot
+      const screenshotBuffer = await page.screenshot({
+        type: 'png',
+        fullPage: false, // Solo la primera página
+      });
+
+      await browser.close();
+
+      // Redimensionar y convertir a JPEG usando sharp
+      await sharp(screenshotBuffer)
         .resize(this.thumbnailSize, this.thumbnailSize, {
           fit: 'cover',
           position: 'top',
         })
         .jpeg({ quality: 80 })
-        .toFile(outputPath);
+        .toFile(thumbnailFullPath);
+
+      this.logger.log(`Thumbnail generado exitosamente: ${thumbnailFullPath}`);
+      return thumbnailFullPath;
     } catch (error) {
-      this.logger.error('Error generando thumbnail de PDF:', error);
-      throw error;
+      this.logger.error(`Error generando thumbnail desde HTML:`, error.message);
+      return null;
     }
   }
 

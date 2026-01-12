@@ -1,0 +1,8 @@
+export enum WorkflowStatus {
+  DRAFT = 'DRAFT',
+  PENDING = 'PENDING',
+  IN_PROGRESS = 'IN_PROGRESS',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  CANCELLED = 'CANCELLED',
+}

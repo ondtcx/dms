@@ -38,6 +38,7 @@ import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
+import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../auth/role.enum';
@@ -258,6 +259,47 @@ export class DocumentController {
   @ApiResponse({ status: 200, description: 'Estadísticas' })
   getStats(@CurrentUser() user: any) {
     return this.documentsService.getStats(user.id, user.role);
+  }
+
+  @Get('calendar')
+  @ApiOperation({ summary: 'Obtener documentos agrupados por fecha para vista de calendario' })
+  @ApiResponse({
+    status: 200,
+    description: 'Documentos agrupados por fecha',
+    schema: {
+      example: {
+        documents: [],
+        groupedByDate: {
+          '2026-01-07': [
+            {
+              id: 1,
+              filename: 'documento.pdf',
+              createdAt: '2026-01-07T10:30:00Z',
+              uploadedBy: { name: 'Juan Pérez' },
+              category: { name: 'Académico', color: '#3b82f6' },
+              section: { name: 'Calendario', color: '#10b981' }
+            }
+          ]
+        },
+        totalDocuments: 1
+      }
+    }
+  })
+  getDocumentsByDate(
+    @Query() query: CalendarQueryDto,
+    @CurrentUser() user: any,
+  ) {
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+    return this.documentsService.getDocumentsByDate(
+      user.id,
+      user.role,
+      startDate,
+      endDate,
+      query.categoryId,
+      query.sectionId,
+    );
   }
 
   @Get(':id')

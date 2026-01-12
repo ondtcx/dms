@@ -3,6 +3,8 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentGeneratorService } from './document-generator.service';
@@ -13,12 +15,16 @@ import { CreateDocumentFromTemplateDto } from './dto/create-document-from-templa
 import { UserRole } from '../auth/role.enum';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as Handlebars from 'handlebars';
+import { ThumbnailService } from '../document/thumbnail.service';
 
 @Injectable()
 export class DocumentTemplateService {
   constructor(
     private prisma: PrismaService,
     private documentGenerator: DocumentGeneratorService,
+    @Inject(forwardRef(() => ThumbnailService))
+    private thumbnailService: ThumbnailService,
   ) {}
 
   async create(
@@ -374,23 +380,25 @@ export class DocumentTemplateService {
     return document;
   }
 
-  async generatePreview(id: number, userId: string, userRole: UserRole) {
-    // Verificar que la plantilla existe y el usuario tiene acceso
-    const template = await this.findOne(id, userId, userRole);
-
-    // Generar datos de ejemplo basados en los campos de la plantilla
+  /**
+   * Genera datos de muestra basados en los campos de una plantilla
+   */
+  private generateSampleData(
+    fields: any,
+    templateName?: string,
+  ): Record<string, any> {
     const sampleData: Record<string, any> = {
       _metadata: {
-        templateName: template.name,
+        templateName: templateName || 'Plantilla',
         generatedDate: new Date().toLocaleDateString('es-ES'),
         generatedTime: new Date().toLocaleTimeString('es-ES'),
       },
     };
 
     // Agregar datos de ejemplo para cada campo definido en la plantilla
-    if (template.fields && typeof template.fields === 'object') {
-      const fields = (template.fields as any).fields || [];
-      fields.forEach((field: any) => {
+    if (fields && typeof fields === 'object') {
+      const fieldsList = (fields as any).fields || [];
+      fieldsList.forEach((field: any) => {
         const fieldName = field.name || field.label;
 
         switch (field.type) {
@@ -424,6 +432,16 @@ export class DocumentTemplateService {
       });
     }
 
+    return sampleData;
+  }
+
+  async generatePreview(id: number, userId: string, userRole: UserRole) {
+    // Verificar que la plantilla existe y el usuario tiene acceso
+    const template = await this.findOne(id, userId, userRole);
+
+    // Generar datos de ejemplo basados en los campos de la plantilla
+    const sampleData = this.generateSampleData(template.fields, template.name);
+
     // Generar el PDF usando el mismo servicio que genera documentos reales
     const pdfBuffer = await this.documentGenerator.generatePDF({
       htmlTemplate: template.htmlTemplate,
@@ -438,5 +456,215 @@ export class DocumentTemplateService {
       buffer: pdfBuffer,
       filename: `preview-${template.name.toLowerCase().replace(/\s+/g, '-')}.pdf`,
     };
+  }
+
+  async getTemplateThumbnail(
+    id: number,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<string | null> {
+    // Verificar que la plantilla existe y el usuario tiene acceso
+    const template = await this.findOne(id, userId, userRole);
+
+    // Usar un ID negativo para diferenciar templates de documentos en el sistema de thumbnails
+    const thumbnailId = -id; // Negativo para templates, positivo para documentos
+
+    // Verificar si ya existe el thumbnail
+    let thumbnailPath = this.thumbnailService.getThumbnailPath(thumbnailId);
+
+    if (thumbnailPath) {
+      return thumbnailPath;
+    }
+
+    // Si no existe, generar el thumbnail desde HTML directamente (más eficiente y compatible)
+    try {
+      // Generar datos de muestra
+      const sampleData = this.generateSampleData(
+        template.fields,
+        template.name,
+      );
+
+      // Compilar el HTML con los datos de muestra
+      const compiledHtml = Handlebars.compile(template.htmlTemplate)(
+        sampleData,
+      );
+
+      // Construir el HTML completo con estilos (usando método privado del generator)
+      const fullHtml = this.documentGenerator['generateHtmlWithStyles'](
+        compiledHtml,
+        template.styles || '',
+      );
+
+      // Generar thumbnail desde HTML usando Puppeteer
+      thumbnailPath = await this.thumbnailService.generateThumbnailFromHtml(
+        fullHtml,
+        thumbnailId,
+      );
+
+      return thumbnailPath;
+    } catch (error) {
+      console.error(`Error generando thumbnail para template ${id}:`, error);
+      return null;
+    }
+  }
+
+  // ============ Plantillas Predefinidas ============
+
+  /**
+   * Obtener todas las plantillas predefinidas
+   */
+  async getPredefinedTemplates(category?: string) {
+    const where: any = {
+      isPredefined: true,
+      isActive: true,
+    };
+
+    if (category) {
+      where.category = category;
+    }
+
+    return this.prisma.documentTemplate.findMany({
+      where,
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        category: true,
+        description: true,
+        previewImageUrl: true,
+        usageCount: true,
+        fields: true,
+        createdAt: true,
+      },
+      orderBy: [
+        { category: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+  }
+
+  /**
+   * Obtener galería de plantillas organizadas por categoría
+   */
+  async getGallery() {
+    const templates = await this.getPredefinedTemplates();
+
+    // Agrupar por categoría
+    const gallery = templates.reduce((acc, template) => {
+      const category = template.category || 'other';
+      if (!acc[category]) {
+        acc[category] = [];
+      }
+      acc[category].push(template);
+      return acc;
+    }, {} as Record<string, any[]>);
+
+    return {
+      categories: ['academic', 'administrative', 'legal'],
+      templates: gallery,
+      total: templates.length,
+    };
+  }
+
+  /**
+   * Duplicar una plantilla existente
+   */
+  async duplicate(id: number, userId: string, newName?: string) {
+    const original = await this.prisma.documentTemplate.findUnique({
+      where: { id },
+    });
+
+    if (!original) {
+      throw new NotFoundException(`Template with ID ${id} not found`);
+    }
+
+    // Generar nombre único si no se proporciona
+    const baseName = newName || `${original.name} (Copia)`;
+    let finalName = baseName;
+    let counter = 1;
+
+    // Verificar si el nombre ya existe
+    while (await this.prisma.documentTemplate.findUnique({ where: { name: finalName } })) {
+      finalName = `${baseName} ${counter}`;
+      counter++;
+    }
+
+    // Crear copia
+    const duplicate = await this.prisma.documentTemplate.create({
+      data: {
+        name: finalName,
+        type: original.type,
+        category: original.category,
+        description: original.description,
+        fields: original.fields,
+        htmlTemplate: original.htmlTemplate,
+        styles: original.styles,
+        outputFormat: original.outputFormat,
+        pageSize: original.pageSize,
+        orientation: original.orientation,
+        isActive: true,
+        isPredefined: false, // Las copias no son predefinidas
+        previewImageUrl: original.previewImageUrl,
+        usageCount: 0, // Resetear contador
+        variableSchema: original.variableSchema,
+        createdById: userId,
+      },
+      include: {
+        createdBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+      },
+    });
+
+    return duplicate;
+  }
+
+  /**
+   * Obtener plantillas más populares (por usageCount)
+   */
+  async getPopular(limit: number = 10) {
+    return this.prisma.documentTemplate.findMany({
+      where: {
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        category: true,
+        description: true,
+        previewImageUrl: true,
+        usageCount: true,
+        isPredefined: true,
+      },
+      orderBy: {
+        usageCount: 'desc',
+      },
+      take: limit,
+    });
+  }
+
+  /**
+   * Incrementar contador de uso de una plantilla
+   * Se llama automáticamente cuando se genera un documento desde la plantilla
+   */
+  async incrementUsageCount(id: number) {
+    try {
+      await this.prisma.documentTemplate.update({
+        where: { id },
+        data: {
+          usageCount: {
+            increment: 1,
+          },
+        },
+      });
+    } catch (error) {
+      // No lanzar error, solo registrar
+      console.error(`Error incrementing usage count for template ${id}:`, error);
+    }
   }
 }
