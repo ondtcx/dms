@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateShareDto } from './dto/create-share.dto';
 import { AccessShareDto } from './dto/access-share.dto';
 import { randomUUID } from 'crypto';
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcrypt';
 
 @Injectable()
 export class ShareService {

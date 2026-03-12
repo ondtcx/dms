@@ -6,7 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { User } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
 
 @Injectable()
@@ -48,6 +48,18 @@ export class UserService {
         position: true,
         createdAt: true,
         updatedAt: true,
+      },
+    });
+  }
+
+  async findAllForSelection(): Promise<
+    { id: string; name: string; email: string }[]
+  > {
+    return this.prisma.user.findMany({
+      select: {
+        id: true,
+        name: true,
+        email: true,
       },
     });
   }

@@ -10,7 +10,7 @@ import { BatchUpdateDto } from './dto/batch-update.dto';
 import { BatchDeleteDto } from './dto/batch-delete.dto';
 import { BatchShareDto } from './dto/batch-share.dto';
 import { BatchExportDto } from './dto/batch-export.dto';
-import * as archiver from 'archiver';
+import archiver from 'archiver';
 import { createReadStream, existsSync } from 'fs';
 import { Response } from 'express';
 import { join } from 'path';

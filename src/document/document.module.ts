@@ -16,6 +16,6 @@ import { DocumentTemplateModule } from '../document-template/document-template.m
   ],
   controllers: [DocumentController],
   providers: [DocumentService, ThumbnailService, PrismaService],
-  exports: [DocumentService, ThumbnailService],
+  exports: [DocumentService, ThumbnailService, DocumentModule],
 })
 export class DocumentModule {}

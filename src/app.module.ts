@@ -17,11 +17,13 @@ import { CommentModule } from './comment/comment.module';
 import { SearchModule } from './search/search.module';
 import { ReportModule } from './report/report.module';
 import { ShareModule } from './share/share.module';
+import { TransferModule } from './transfer/transfer.module';
 import { BatchModule } from './batch/batch.module';
 import { StorageModule } from './storage/storage.module';
 import { TasksModule } from './tasks/tasks.module';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { OnlyofficeModule } from './onlyoffice/onlyoffice.module';
 import { join } from 'path';
 
 @Module({
@@ -48,9 +50,11 @@ import { join } from 'path';
     SearchModule, // Sistema de búsqueda full-text
     ReportModule, // Sistema de reportes y analítica
     ShareModule, // Sistema de compartir documentos
+    TransferModule, // Sistema de transferencias de documentos
     BatchModule, // Operaciones en lote
     DocumentModule,
     DocumentTemplateModule,
+    OnlyofficeModule, // Integración con OnlyOffice
   ],
   controllers: [AppController],
   providers: [AppService],

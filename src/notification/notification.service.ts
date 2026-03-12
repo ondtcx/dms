@@ -272,6 +272,50 @@ export class NotificationService {
     });
   }
 
+  async notifyDocumentTransferred(
+    documentId: number,
+    toUserId: string,
+    fromUserName: string,
+    documentName: string,
+  ) {
+    return this.createNotification({
+      userId: toUserId,
+      type: NotificationType.DOCUMENT_TRANSFERRED,
+      title: 'Documento transferido',
+      message: `${fromUserName} te ha transferido el documento "${documentName}"`,
+      documentId,
+      actionUrl: `/documents/${documentId}`,
+      sendEmail: true,
+    });
+  }
+
+  async notifyDocumentTransferredToDepartment(
+    documentId: number,
+    departmentId: number,
+    fromUserId: string,
+    fromUserName: string,
+    documentName: string,
+  ) {
+    const users = await this.prisma.user.findMany({
+      where: { departmentId },
+      select: { id: true },
+    });
+
+    for (const user of users) {
+      if (user.id === fromUserId) continue;
+
+      await this.createNotification({
+        userId: user.id,
+        type: NotificationType.DOCUMENT_TRANSFERRED,
+        title: 'Documento transferido a tu departamento',
+        message: `${fromUserName} ha transferido el documento "${documentName}" a tu departamento`,
+        documentId,
+        actionUrl: `/documents/${documentId}`,
+        sendEmail: true,
+      });
+    }
+  }
+
   // TODO: Implementar servicio de email con Nodemailer
   // private async sendEmailNotification(notification: any) {
   //   // Verificar preferencias del usuario

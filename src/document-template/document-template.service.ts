@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Inject,
   forwardRef,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentGeneratorService } from './document-generator.service';
@@ -15,11 +16,13 @@ import { CreateDocumentFromTemplateDto } from './dto/create-document-from-templa
 import { UserRole } from '../auth/role.enum';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as Handlebars from 'handlebars';
+import Handlebars from 'handlebars';
 import { ThumbnailService } from '../document/thumbnail.service';
 
 @Injectable()
 export class DocumentTemplateService {
+  private readonly logger = new Logger(DocumentTemplateService.name);
+
   constructor(
     private prisma: PrismaService,
     private documentGenerator: DocumentGeneratorService,
@@ -232,11 +235,8 @@ export class DocumentTemplateService {
     const { templateId, formData, filename, description, isPublic, categoryId } =
       createDocumentFromTemplateDto;
 
-    console.log('📝 Creando documento desde plantilla...');
-    console.log('Template ID:', templateId);
-    console.log('Form Data recibido:', JSON.stringify(formData, null, 2));
-    console.log('Filename:', filename);
-    console.log('Description:', description);
+    this.logger.log(`Creating document from template ID: ${templateId}`);
+    this.logger.debug(`Form Data: ${JSON.stringify(formData)}`);
 
     // Obtener la plantilla
     const template = await this.prisma.documentTemplate.findUnique({
@@ -290,7 +290,7 @@ export class DocumentTemplateService {
       },
     };
 
-    console.log('📋 Template Data final:', JSON.stringify(templateData, null, 2));
+    this.logger.debug(`Template Data: ${JSON.stringify(templateData)}`);
 
     // Generar el documento según el formato
     let documentBuffer: Buffer;
@@ -503,7 +503,7 @@ export class DocumentTemplateService {
 
       return thumbnailPath;
     } catch (error) {
-      console.error(`Error generando thumbnail para template ${id}:`, error);
+      this.logger.error(`Error generating thumbnail for template ${id}:`, error);
       return null;
     }
   }
@@ -663,8 +663,7 @@ export class DocumentTemplateService {
         },
       });
     } catch (error) {
-      // No lanzar error, solo registrar
-      console.error(`Error incrementing usage count for template ${id}:`, error);
+      this.logger.error(`Error incrementing usage count for template ${id}:`, error);
     }
   }
 }

@@ -77,4 +77,36 @@ export class DepartmentController {
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.departmentService.remove(id);
   }
+
+  @Get(':id/users')
+  @ApiOperation({ summary: 'Obtener usuarios de un departamento' })
+  @ApiResponse({ status: 200, description: 'Lista de usuarios del departamento' })
+  @ApiResponse({ status: 404, description: 'Departamento no encontrado' })
+  getUsers(@Param('id', ParseIntPipe) id: number) {
+    return this.departmentService.getUsers(id);
+  }
+
+  @Post(':id/users')
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Asignar un usuario a un departamento' })
+  @ApiResponse({ status: 200, description: 'Usuario asignado exitosamente' })
+  @ApiResponse({ status: 404, description: 'Departamento o usuario no encontrado' })
+  assignUser(
+    @Param('id', ParseIntPipe) id: number,
+    @Body('userId') userId: string,
+  ) {
+    return this.departmentService.assignUser(id, userId);
+  }
+
+  @Delete(':id/users/:userId')
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @ApiOperation({ summary: 'Remover un usuario de un departamento' })
+  @ApiResponse({ status: 200, description: 'Usuario removido exitosamente' })
+  @ApiResponse({ status: 404, description: 'Departamento o usuario no encontrado' })
+  removeUser(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('userId') userId: string,
+  ) {
+    return this.departmentService.removeUser(id, userId);
+  }
 }

@@ -194,6 +194,76 @@ export class DepartmentService {
     };
   }
 
+  async getUsers(departmentId: number) {
+    await this.findOne(departmentId);
+
+    return this.prisma.user.findMany({
+      where: { departmentId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        position: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+  }
+
+  async assignUser(departmentId: number, userId: string) {
+    await this.findOne(departmentId);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado`);
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { departmentId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        position: true,
+      },
+    });
+  }
+
+  async removeUser(departmentId: number, userId: string) {
+    await this.findOne(departmentId);
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado`);
+    }
+
+    if (user.departmentId !== departmentId) {
+      throw new BadRequestException(
+        'El usuario no pertenece a este departamento',
+      );
+    }
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { departmentId: null },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        position: true,
+      },
+    });
+  }
+
   async getStats() {
     const [total, active, inactive] = await Promise.all([
       this.prisma.department.count(),

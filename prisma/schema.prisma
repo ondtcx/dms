@@ -346,6 +346,7 @@ model Department {
   courses             Course[]
   documentPermissions DocumentPermission[]
   documentShares      DocumentShare[]
+  transfersReceived   TransferHistory[]    @relation("toDepartment")
 
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
@@ -487,6 +488,10 @@ model User {
   revokedByMe         DocumentShare[]     @relation("RevokedByUser") // Shares revocados por el usuario
   shareAccesses       ShareAccess[]       // Accesos del usuario a shares
 
+  // Relaciones de transferencias
+  transfersFrom       TransferHistory[]   @relation("TransferFromUser") // Transferencias iniciadas por el usuario
+  transfersTo         TransferHistory[]   @relation("TransferToUser") // Transferencias recibidas por el usuario
+
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -576,6 +581,9 @@ model Document {
   // Compartir
   shares          DocumentShare[] // Shares de este documento
 
+  // Transferencias
+  transferHistory TransferHistory[] // Historial de transferencias del documento
+
   // Búsqueda full-text
   searchVector    Unsupported("tsvector")? // Vector de búsqueda full-text de PostgreSQL
   extractedText   String?                  @db.Text // Texto extraído del PDF para búsqueda
@@ -592,6 +600,37 @@ model Document {
   @@index([deletedAt]) // Índice para filtrar documentos eliminados
   @@index([createdAt]) // Índice para ordenar por fecha
   @@index([searchVector], type: Gin) // Índice GIN para búsqueda full-text
+}
+
+// Enum para estados de transferencia
+enum TransferStatus {
+  PENDING // Pendiente de aceptación
+  COMPLETED // Transferencia completada
+  CANCELED // Transferencia cancelada
+}
+
+// Modelo para historial de transferencias
+model TransferHistory {
+  id             Int            @id @default(autoincrement())
+  documentId     Int // Documento transferido
+  document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  fromUserId     String // Usuario que transfirió
+  fromUser       User           @relation("TransferFromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId       String? // Usuario que recibió (opcional si se transfiere a departamento)
+  toUser         User?          @relation("TransferToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+  toDepartmentId Int?
+  toDepartment   Department?    @relation("toDepartment", fields: [toDepartmentId], references: [id], onDelete: SetNull)
+  status         TransferStatus @default(PENDING)
+  completedAt    DateTime? // Fecha de completado
+  canceledAt     DateTime? // Fecha de cancelación
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  comment        String?        @db.Text // Razón de la transferencia
+
+  @@index([documentId])
+  @@index([fromUserId])
+  @@index([toUserId])
+  @@index([status])
 }
 
 model DocumentTemplate {

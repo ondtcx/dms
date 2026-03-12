@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
-import * as Handlebars from 'handlebars';
-import * as puppeteer from 'puppeteer';
+import Handlebars from 'handlebars';
+import puppeteer, { type Browser, type PDFOptions } from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -182,7 +182,7 @@ export class DocumentGeneratorService {
       orientation = 'portrait',
     } = options;
 
-    let browser: puppeteer.Browser | null = null;
+    let browser: Browser | null = null;
 
     try {
       // Compilar plantilla con datos
@@ -209,7 +209,7 @@ export class DocumentGeneratorService {
       });
 
       // Configurar opciones de PDF según tamaño de página
-      const pdfOptions: puppeteer.PDFOptions = {
+      const pdfOptions: PDFOptions = {
         format: pageSize,
         landscape: orientation === 'landscape',
         printBackground: true,
