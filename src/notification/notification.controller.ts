@@ -19,7 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { NotificationService } from './notification.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
-import { NotificationStatus } from './notification-status.enum';
+import { NotificationStatus } from '@prisma/client';
 
 @ApiTags('notifications')
 @ApiBearerAuth()

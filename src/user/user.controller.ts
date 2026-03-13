@@ -99,6 +99,20 @@ export class UserController {
     return this.userService.update(user.sub, updateUserDto);
   }
 
+  @Get('for-selection')
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Listar usuarios para selección (id, name, email)',
+    description: 'Retorna una lista reducida de usuarios para usar en dropdowns y selects',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de usuarios para selección',
+  })
+  async findAllForSelection(@CurrentUser() user: any) {
+    return this.userService.findAllForSelection(user.sub);
+  }
+
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
   @Roles(UserRole.ADMIN)

@@ -232,7 +232,7 @@ export class DocumentTemplateService {
     createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
     userId: string,
   ) {
-    const { templateId, formData, filename, description, isPublic, categoryId } =
+    const { templateId, formData, filename, description, isPublic, categoryId, sectionId } =
       createDocumentFromTemplateDto;
 
     this.logger.log(`Creating document from template ID: ${templateId}`);
@@ -350,6 +350,7 @@ export class DocumentTemplateService {
         templateId: template.id,
         formData,
         categoryId: categoryId || null,
+        sectionId: sectionId || null,
       },
       include: {
         uploadedBy: {

@@ -61,6 +61,7 @@ enum NotificationType {
   MENTION                   // Mención en comentario
   DOCUMENT_UPDATED          // Documento actualizado
   DOCUMENT_DELETED          // Documento eliminado
+  DOCUMENT_TRANSFERRED      // Documento transferido
 }
 
 enum NotificationStatus {

@@ -66,4 +66,13 @@ export class CreateDocumentFromTemplateDto {
   @IsInt()
   @IsOptional()
   categoryId?: number;
+
+  @ApiProperty({
+    description: 'ID de la sección del documento',
+    example: 1,
+    required: false,
+  })
+  @IsInt()
+  @IsOptional()
+  sectionId?: number;
 }

@@ -52,10 +52,11 @@ export class UserService {
     });
   }
 
-  async findAllForSelection(): Promise<
+  async findAllForSelection(excludeUserId?: string): Promise<
     { id: string; name: string; email: string }[]
   > {
     return this.prisma.user.findMany({
+      where: excludeUserId ? { id: { not: excludeUserId } } : undefined,
       select: {
         id: true,
         name: true,

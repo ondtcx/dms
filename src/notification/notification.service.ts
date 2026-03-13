@@ -1,7 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { NotificationType } from './notification-type.enum';
-import { NotificationStatus } from './notification-status.enum';
+import { NotificationType, NotificationStatus } from '@prisma/client';
 
 interface CreateNotificationDto {
   userId: string;
