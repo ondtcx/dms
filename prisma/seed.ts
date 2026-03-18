@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, CategoryContext } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '../src/auth/role.enum';
 
@@ -69,110 +69,133 @@ async function main() {
   // ============================================================
   console.log('👥 Creando usuarios...');
 
+  // --- Personal directivo y administrativo ---
   const admin = await prisma.user.upsert({
     where: { email: 'admin@colegio.edu' },
     update: {},
-    create: {
-      email: 'admin@colegio.edu',
-      password,
-      name: 'Carlos Administrador',
-      role: UserRole.ADMIN,
-      position: 'Administrador del Sistema',
-    },
+    create: { email: 'admin@colegio.edu', password, name: 'Carlos Administrador', role: UserRole.ADMIN, position: 'Administrador del Sistema' },
   });
 
-  const director = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'director@colegio.edu' },
     update: {},
-    create: {
-      email: 'director@colegio.edu',
-      password,
-      name: 'María Elena Rodríguez',
-      role: UserRole.DIRECTOR,
-      position: 'Directora General',
-      departmentId: deptDireccion.id,
-      phoneNumber: '0412-5551234',
-    },
+    create: { email: 'director@colegio.edu', password, name: 'María Elena Rodríguez', role: UserRole.DIRECTOR, position: 'Directora General', departmentId: deptDireccion.id, phoneNumber: '0412-5551234' },
   });
 
   const coordPrimaria = await prisma.user.upsert({
     where: { email: 'coord.primaria@colegio.edu' },
     update: {},
-    create: {
-      email: 'coord.primaria@colegio.edu',
-      password,
-      name: 'Ana Gabriela López',
-      role: UserRole.COORDINADOR,
-      position: 'Coordinadora de Primaria',
-      departmentId: deptPrimaria.id,
-      phoneNumber: '0414-5552345',
-    },
+    create: { email: 'coord.primaria@colegio.edu', password, name: 'Ana Gabriela López', role: UserRole.COORDINADOR, position: 'Coordinadora de Primaria', departmentId: deptPrimaria.id, phoneNumber: '0414-5552345' },
   });
 
   const coordSecundaria = await prisma.user.upsert({
     where: { email: 'coord.secundaria@colegio.edu' },
     update: {},
-    create: {
-      email: 'coord.secundaria@colegio.edu',
-      password,
-      name: 'Roberto Alejandro Méndez',
-      role: UserRole.COORDINADOR,
-      position: 'Coordinador de Secundaria',
-      departmentId: deptSecundaria.id,
-      phoneNumber: '0424-5553456',
-    },
+    create: { email: 'coord.secundaria@colegio.edu', password, name: 'Roberto Alejandro Méndez', role: UserRole.COORDINADOR, position: 'Coordinador de Secundaria', departmentId: deptSecundaria.id, phoneNumber: '0424-5553456' },
   });
 
-  const profesor1 = await prisma.user.upsert({
-    where: { email: 'profesor1@colegio.edu' },
-    update: {},
-    create: {
-      email: 'profesor1@colegio.edu',
-      password,
-      name: 'Luis Fernando García',
-      role: UserRole.PROFESOR,
-      position: 'Profesor de Primaria',
-      departmentId: deptPrimaria.id,
-      phoneNumber: '0416-5554567',
-    },
-  });
-
-  const profesor2 = await prisma.user.upsert({
-    where: { email: 'profesor2@colegio.edu' },
-    update: {},
-    create: {
-      email: 'profesor2@colegio.edu',
-      password,
-      name: 'Carmen Teresa Martínez',
-      role: UserRole.PROFESOR,
-      position: 'Profesora de Secundaria',
-      departmentId: deptSecundaria.id,
-      phoneNumber: '0426-5555678',
-    },
-  });
-
-  const secretaria = await prisma.user.upsert({
+  await prisma.user.upsert({
     where: { email: 'secretaria@colegio.edu' },
     update: {},
-    create: {
-      email: 'secretaria@colegio.edu',
-      password,
-      name: 'Patricia Isabel Hernández',
-      role: UserRole.SECRETARIO,
-      position: 'Secretaria Académica',
-      departmentId: deptSecretaria.id,
-      phoneNumber: '0412-5556789',
-    },
+    create: { email: 'secretaria@colegio.edu', password, name: 'Patricia Isabel Hernández', role: UserRole.SECRETARIO, position: 'Secretaria Académica', departmentId: deptSecretaria.id, phoneNumber: '0412-5556789' },
   });
 
-  console.log('✅ 7 usuarios creados (contraseña: Demo123!)\n');
-  console.log('   📧 admin@colegio.edu          → Administrador');
-  console.log('   📧 director@colegio.edu       → Directora');
-  console.log('   📧 coord.primaria@colegio.edu → Coordinadora Primaria');
-  console.log('   📧 coord.secundaria@colegio.edu → Coordinador Secundaria');
-  console.log('   📧 profesor1@colegio.edu      → Profesor Primaria');
-  console.log('   📧 profesor2@colegio.edu      → Profesora Secundaria');
-  console.log('   📧 secretaria@colegio.edu     → Secretaria\n');
+  // --- Maestros de primaria (un maestro por grado, cubre todas las materias) ---
+  const maestro1p = await prisma.user.upsert({
+    where: { email: 'maestro.1p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.1p@colegio.edu', password, name: 'Juan Manuel Suárez', role: UserRole.PROFESOR, position: 'Maestra de 1° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestro2p = await prisma.user.upsert({
+    where: { email: 'maestro.2p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.2p@colegio.edu', password, name: 'Sofía Andrea Ruiz', role: UserRole.PROFESOR, position: 'Maestra de 2° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestro3p = await prisma.user.upsert({
+    where: { email: 'maestro.3p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.3p@colegio.edu', password, name: 'Diego Ernesto Vargas', role: UserRole.PROFESOR, position: 'Maestro de 3° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestro4p = await prisma.user.upsert({
+    where: { email: 'maestro.4p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.4p@colegio.edu', password, name: 'Laura Beatriz Morales', role: UserRole.PROFESOR, position: 'Maestra de 4° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestro5p = await prisma.user.upsert({
+    where: { email: 'maestro.5p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.5p@colegio.edu', password, name: 'Pablo Alberto Jiménez', role: UserRole.PROFESOR, position: 'Maestro de 5° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestro6p = await prisma.user.upsert({
+    where: { email: 'maestro.6p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.6p@colegio.edu', password, name: 'Natalia Cecilia Ortega', role: UserRole.PROFESOR, position: 'Maestra de 6° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestro7p = await prisma.user.upsert({
+    where: { email: 'maestro.7p@colegio.edu' },
+    update: {},
+    create: { email: 'maestro.7p@colegio.edu', password, name: 'Fernando José Castro', role: UserRole.PROFESOR, position: 'Maestro de 7° Grado', departmentId: deptPrimaria.id },
+  });
+  const maestrosPrimaria = [maestro1p, maestro2p, maestro3p, maestro4p, maestro5p, maestro6p, maestro7p];
+
+  // --- Profesores de secundaria (por materia, cubren varios cursos) ---
+  const profMatematica = await prisma.user.upsert({
+    where: { email: 'prof.matematica@colegio.edu' },
+    update: {},
+    create: { email: 'prof.matematica@colegio.edu', password, name: 'Ricardo Andrés Torres', role: UserRole.PROFESOR, position: 'Profesor de Matemática', departmentId: deptSecundaria.id },
+  });
+  const profLengua = await prisma.user.upsert({
+    where: { email: 'prof.lengua@colegio.edu' },
+    update: {},
+    create: { email: 'prof.lengua@colegio.edu', password, name: 'Valentina Isabel Reyes', role: UserRole.PROFESOR, position: 'Profesora de Lengua y Literatura', departmentId: deptSecundaria.id },
+  });
+  const profHistoria = await prisma.user.upsert({
+    where: { email: 'prof.historia@colegio.edu' },
+    update: {},
+    create: { email: 'prof.historia@colegio.edu', password, name: 'Marcelo Fabián Sosa', role: UserRole.PROFESOR, position: 'Profesor de Historia', departmentId: deptSecundaria.id },
+  });
+  const profCsSociales = await prisma.user.upsert({
+    where: { email: 'prof.cs.sociales@colegio.edu' },
+    update: {},
+    create: { email: 'prof.cs.sociales@colegio.edu', password, name: 'Elena Patricia Rojas', role: UserRole.PROFESOR, position: 'Profesora de Geografía y Filosofía', departmentId: deptSecundaria.id },
+  });
+  const profBiologia = await prisma.user.upsert({
+    where: { email: 'prof.biologia@colegio.edu' },
+    update: {},
+    create: { email: 'prof.biologia@colegio.edu', password, name: 'Adrián Gustavo Pérez', role: UserRole.PROFESOR, position: 'Profesor de Cs. Naturales y Biología', departmentId: deptSecundaria.id },
+  });
+  const profFisica = await prisma.user.upsert({
+    where: { email: 'prof.fisica@colegio.edu' },
+    update: {},
+    create: { email: 'prof.fisica@colegio.edu', password, name: 'Claudia Fernanda Núñez', role: UserRole.PROFESOR, position: 'Profesora de Física', departmentId: deptSecundaria.id },
+  });
+  const profQuimica = await prisma.user.upsert({
+    where: { email: 'prof.quimica@colegio.edu' },
+    update: {},
+    create: { email: 'prof.quimica@colegio.edu', password, name: 'Sebastián Horacio Vega', role: UserRole.PROFESOR, position: 'Profesor de Química', departmentId: deptSecundaria.id },
+  });
+  const profIngles = await prisma.user.upsert({
+    where: { email: 'prof.ingles@colegio.edu' },
+    update: {},
+    create: { email: 'prof.ingles@colegio.edu', password, name: 'Jennifer Michelle Roberts', role: UserRole.PROFESOR, position: 'Profesora de Inglés', departmentId: deptSecundaria.id },
+  });
+  const profEdFisica = await prisma.user.upsert({
+    where: { email: 'prof.ed.fisica@colegio.edu' },
+    update: {},
+    create: { email: 'prof.ed.fisica@colegio.edu', password, name: 'Maximiliano Darío Flores', role: UserRole.PROFESOR, position: 'Profesor de Educación Física', departmentId: deptSecundaria.id },
+  });
+  const profArte = await prisma.user.upsert({
+    where: { email: 'prof.arte@colegio.edu' },
+    update: {},
+    create: { email: 'prof.arte@colegio.edu', password, name: 'Verónica Liliana Castro', role: UserRole.PROFESOR, position: 'Profesora de Arte e Informática', departmentId: deptSecundaria.id },
+  });
+
+  console.log('✅ 22 usuarios creados (contraseña: Demo123!)\n');
+  console.log('   Personal directivo: admin, director, coord.primaria, coord.secundaria, secretaria');
+  console.log('   Maestros primaria: maestro.1p … maestro.7p @colegio.edu');
+  console.log('   Profesores secundaria: prof.matematica, prof.lengua, prof.historia,');
+  console.log('     prof.cs.sociales, prof.biologia, prof.fisica, prof.quimica,');
+  console.log('     prof.ingles, prof.ed.fisica, prof.arte @colegio.edu\n');
 
   // ============================================================
   // SECCIONES
@@ -221,49 +244,74 @@ async function main() {
       description: 'Planificaciones de clase, proyectos pedagógicos y programas',
       color: '#2563eb',
       icon: 'CalendarDays',
+      context: CategoryContext.ACADEMIC,
+      requiresCourse: true,
+      allowedRoles: ['profesor', 'coordinador'],
     },
     {
       name: 'Actas y Reuniones',
       description: 'Actas de reuniones, consejos de docentes y asambleas',
       color: '#7c3aed',
       icon: 'Users',
+      context: CategoryContext.ADMINISTRATIVE,
+      requiresCourse: false,
+      allowedRoles: ['coordinador', 'secretario', 'director', 'admin'],
     },
     {
       name: 'Constancias y Certificados',
       description: 'Constancias de estudio, trabajo, buena conducta y certificados',
       color: '#059669',
       icon: 'Award',
+      context: CategoryContext.ADMINISTRATIVE,
+      requiresCourse: false,
+      allowedRoles: ['secretario', 'director', 'admin'],
     },
     {
       name: 'Informes Académicos',
       description: 'Boletines, informes de rendimiento y evaluaciones',
       color: '#dc2626',
       icon: 'BarChart3',
+      context: CategoryContext.ACADEMIC,
+      requiresCourse: false,
+      allowedRoles: ['profesor', 'coordinador', 'director'],
     },
     {
       name: 'Administrativos',
       description: 'Memorándums, circulares, solicitudes y comunicaciones oficiales',
       color: '#d97706',
       icon: 'FolderKanban',
+      context: CategoryContext.ADMINISTRATIVE,
+      requiresCourse: false,
+      allowedRoles: ['coordinador', 'secretario', 'director', 'admin'],
     },
     {
       name: 'Legales',
       description: 'Contratos, reglamentos internos y documentos normativos',
       color: '#0891b2',
       icon: 'Scale',
+      context: CategoryContext.INSTITUTIONAL,
+      requiresCourse: false,
+      allowedRoles: ['director', 'admin'],
     },
     {
       name: 'Financieros',
       description: 'Presupuestos, facturas, nóminas e informes financieros',
       color: '#16a34a',
       icon: 'DollarSign',
+      context: CategoryContext.INSTITUTIONAL,
+      requiresCourse: false,
+      allowedRoles: ['secretario', 'director', 'admin'],
     },
   ];
 
   for (const category of categories) {
     await prisma.category.upsert({
       where: { name: category.name },
-      update: {},
+      update: {
+        context: category.context,
+        requiresCourse: category.requiresCourse,
+        allowedRoles: category.allowedRoles,
+      },
       create: category,
     });
   }
@@ -275,115 +323,180 @@ async function main() {
   // ============================================================
   console.log('🎓 Creando cursos y materias...');
 
-  const curso1eroPrimaria = await prisma.course.upsert({
-    where: { code: 'PRIM-1' },
-    update: {},
-    create: {
-      name: '1er Grado de Primaria',
-      code: 'PRIM-1',
-      level: 'PRIMARIA',
-      departmentId: deptPrimaria.id,
-      academicYear: '2025-2026',
+  const subCode = (courseCode: string, abbr: string) => `${courseCode}-${abbr}`;
+
+  // ---- PRIMARIA: 7 grados (un maestro cubre todas las materias) ----
+
+  const primaryGrades = [
+    { name: '1° Grado de Primaria', code: 'PRIM-1', maestro: maestro1p },
+    { name: '2° Grado de Primaria', code: 'PRIM-2', maestro: maestro2p },
+    { name: '3° Grado de Primaria', code: 'PRIM-3', maestro: maestro3p },
+    { name: '4° Grado de Primaria', code: 'PRIM-4', maestro: maestro4p },
+    { name: '5° Grado de Primaria', code: 'PRIM-5', maestro: maestro5p },
+    { name: '6° Grado de Primaria', code: 'PRIM-6', maestro: maestro6p },
+    { name: '7° Grado de Primaria', code: 'PRIM-7', maestro: maestro7p },
+  ];
+
+  const pBaseSubjects = [
+    { abbr: 'LEN', name: 'Lengua' },
+    { abbr: 'MAT', name: 'Matemática' },
+    { abbr: 'CNT', name: 'Ciencias Naturales' },
+    { abbr: 'CSO', name: 'Ciencias Sociales' },
+    { abbr: 'ING', name: 'Inglés' },
+    { abbr: 'EDF', name: 'Educación Física' },
+    { abbr: 'ART', name: 'Arte' },
+  ];
+  const pSubjectsFrom4 = [...pBaseSubjects, { abbr: 'INF', name: 'Informática' }];
+
+  for (let i = 0; i < primaryGrades.length; i++) {
+    const gradeNum = i + 1;
+    const { name, code, maestro } = primaryGrades[i];
+
+    const course = await prisma.course.upsert({
+      where: { code },
+      update: {},
+      create: { name, code, level: 'PRIMARIA', departmentId: deptPrimaria.id, academicYear: '2025-2026' },
+    });
+
+    await prisma.userCourse.upsert({
+      where: { userId_courseId: { userId: maestro.id, courseId: course.id } },
+      update: {},
+      create: { userId: maestro.id, courseId: course.id, role: 'TEACHER' },
+    });
+
+    const subjectList = gradeNum >= 4 ? pSubjectsFrom4 : pBaseSubjects;
+    for (const { abbr, name: subjectName } of subjectList) {
+      const subject = await prisma.subject.upsert({
+        where: { code: subCode(code, abbr) },
+        update: {},
+        create: { name: subjectName, code: subCode(code, abbr), courseId: course.id },
+      });
+      await prisma.userSubject.upsert({
+        where: { userId_subjectId: { userId: maestro.id, subjectId: subject.id } },
+        update: {},
+        create: { userId: maestro.id, subjectId: subject.id },
+      });
+    }
+  }
+
+  // ---- SECUNDARIA: 6 años (profesores por materia cubren varios cursos) ----
+
+  type SecSubjectDef = { abbr: string; name: string; prof: { id: string } };
+
+  const secYears: { name: string; code: string; subjects: SecSubjectDef[] }[] = [
+    {
+      name: '1° Año de Secundaria', code: 'SEC-1',
+      subjects: [
+        { abbr: 'MAT', name: 'Matemática',         prof: profMatematica },
+        { abbr: 'LYL', name: 'Lengua y Literatura', prof: profLengua },
+        { abbr: 'HIS', name: 'Historia',            prof: profHistoria },
+        { abbr: 'GEO', name: 'Geografía',           prof: profCsSociales },
+        { abbr: 'CNT', name: 'Ciencias Naturales',  prof: profBiologia },
+        { abbr: 'ING', name: 'Inglés',              prof: profIngles },
+        { abbr: 'EDF', name: 'Educación Física',    prof: profEdFisica },
+        { abbr: 'ART', name: 'Arte',                prof: profArte },
+        { abbr: 'INF', name: 'Informática',         prof: profArte },
+      ],
     },
-  });
-
-  const curso1eroSecundaria = await prisma.course.upsert({
-    where: { code: 'SEC-1' },
-    update: {},
-    create: {
-      name: '1er Año de Secundaria',
-      code: 'SEC-1',
-      level: 'SECUNDARIA',
-      departmentId: deptSecundaria.id,
-      academicYear: '2025-2026',
+    {
+      name: '2° Año de Secundaria', code: 'SEC-2',
+      subjects: [
+        { abbr: 'MAT', name: 'Matemática',          prof: profMatematica },
+        { abbr: 'LYL', name: 'Lengua y Literatura', prof: profLengua },
+        { abbr: 'HIS', name: 'Historia',            prof: profHistoria },
+        { abbr: 'GEO', name: 'Geografía',           prof: profCsSociales },
+        { abbr: 'BIO', name: 'Biología',            prof: profBiologia },
+        { abbr: 'ING', name: 'Inglés',              prof: profIngles },
+        { abbr: 'EDF', name: 'Educación Física',    prof: profEdFisica },
+        { abbr: 'ART', name: 'Arte',                prof: profArte },
+      ],
     },
-  });
-
-  // Materias de 1er Grado Primaria
-  const matPrimMate = await prisma.subject.upsert({
-    where: { code: 'PRIM1-MAT' },
-    update: {},
-    create: {
-      name: 'Matemáticas',
-      code: 'PRIM1-MAT',
-      description: 'Matemáticas de 1er Grado de Primaria',
-      courseId: curso1eroPrimaria.id,
+    {
+      name: '3° Año de Secundaria', code: 'SEC-3',
+      subjects: [
+        { abbr: 'MAT', name: 'Matemática',          prof: profMatematica },
+        { abbr: 'LYL', name: 'Lengua y Literatura', prof: profLengua },
+        { abbr: 'HIS', name: 'Historia',            prof: profHistoria },
+        { abbr: 'GEO', name: 'Geografía',           prof: profCsSociales },
+        { abbr: 'BIO', name: 'Biología',            prof: profBiologia },
+        { abbr: 'QUI', name: 'Química',             prof: profQuimica },
+        { abbr: 'ING', name: 'Inglés',              prof: profIngles },
+        { abbr: 'EDF', name: 'Educación Física',    prof: profEdFisica },
+      ],
     },
-  });
-
-  const matPrimLengua = await prisma.subject.upsert({
-    where: { code: 'PRIM1-LEN' },
-    update: {},
-    create: {
-      name: 'Lengua y Literatura',
-      code: 'PRIM1-LEN',
-      description: 'Lengua y Literatura de 1er Grado de Primaria',
-      courseId: curso1eroPrimaria.id,
+    {
+      name: '4° Año de Secundaria', code: 'SEC-4',
+      subjects: [
+        { abbr: 'MAT', name: 'Matemática',          prof: profMatematica },
+        { abbr: 'LYL', name: 'Lengua y Literatura', prof: profLengua },
+        { abbr: 'HIS', name: 'Historia',            prof: profHistoria },
+        { abbr: 'GEO', name: 'Geografía',           prof: profCsSociales },
+        { abbr: 'FIS', name: 'Física',              prof: profFisica },
+        { abbr: 'QUI', name: 'Química',             prof: profQuimica },
+        { abbr: 'ING', name: 'Inglés',              prof: profIngles },
+        { abbr: 'EDF', name: 'Educación Física',    prof: profEdFisica },
+      ],
     },
-  });
-
-  // Materias de 1er Año Secundaria
-  const matSecMate = await prisma.subject.upsert({
-    where: { code: 'SEC1-MAT' },
-    update: {},
-    create: {
-      name: 'Matemáticas',
-      code: 'SEC1-MAT',
-      description: 'Matemáticas de 1er Año de Secundaria',
-      courseId: curso1eroSecundaria.id,
+    {
+      name: '5° Año de Secundaria', code: 'SEC-5',
+      subjects: [
+        { abbr: 'MAT', name: 'Matemática',          prof: profMatematica },
+        { abbr: 'LYL', name: 'Lengua y Literatura', prof: profLengua },
+        { abbr: 'HIS', name: 'Historia',            prof: profHistoria },
+        { abbr: 'FIL', name: 'Filosofía',           prof: profCsSociales },
+        { abbr: 'FIS', name: 'Física',              prof: profFisica },
+        { abbr: 'QUO', name: 'Química Orgánica',    prof: profQuimica },
+        { abbr: 'ING', name: 'Inglés',              prof: profIngles },
+        { abbr: 'EDF', name: 'Educación Física',    prof: profEdFisica },
+      ],
     },
-  });
-
-  const matSecCiencias = await prisma.subject.upsert({
-    where: { code: 'SEC1-CIE' },
-    update: {},
-    create: {
-      name: 'Ciencias Naturales',
-      code: 'SEC1-CIE',
-      description: 'Ciencias Naturales de 1er Año de Secundaria',
-      courseId: curso1eroSecundaria.id,
+    {
+      name: '6° Año de Secundaria', code: 'SEC-6',
+      subjects: [
+        { abbr: 'MAT', name: 'Matemática',          prof: profMatematica },
+        { abbr: 'LYL', name: 'Lengua y Literatura', prof: profLengua },
+        { abbr: 'HIS', name: 'Historia',            prof: profHistoria },
+        { abbr: 'FIL', name: 'Filosofía',           prof: profCsSociales },
+        { abbr: 'FIS', name: 'Física',              prof: profFisica },
+        { abbr: 'QUI', name: 'Química',             prof: profQuimica },
+        { abbr: 'ING', name: 'Inglés',              prof: profIngles },
+        { abbr: 'EDF', name: 'Educación Física',    prof: profEdFisica },
+      ],
     },
-  });
+  ];
 
-  // Asignar profesores a cursos
-  await prisma.userCourse.upsert({
-    where: { userId_courseId: { userId: profesor1.id, courseId: curso1eroPrimaria.id } },
-    update: {},
-    create: { userId: profesor1.id, courseId: curso1eroPrimaria.id, role: 'TEACHER' },
-  });
+  for (const { name, code, subjects } of secYears) {
+    const course = await prisma.course.upsert({
+      where: { code },
+      update: {},
+      create: { name, code, level: 'SECUNDARIA', departmentId: deptSecundaria.id, academicYear: '2025-2026' },
+    });
 
-  await prisma.userCourse.upsert({
-    where: { userId_courseId: { userId: profesor2.id, courseId: curso1eroSecundaria.id } },
-    update: {},
-    create: { userId: profesor2.id, courseId: curso1eroSecundaria.id, role: 'TEACHER' },
-  });
+    const assignedProfIds = new Set<string>();
 
-  // Asignar profesores a materias
-  await prisma.userSubject.upsert({
-    where: { userId_subjectId: { userId: profesor1.id, subjectId: matPrimMate.id } },
-    update: {},
-    create: { userId: profesor1.id, subjectId: matPrimMate.id },
-  });
+    for (const { abbr, name: subjectName, prof } of subjects) {
+      const subject = await prisma.subject.upsert({
+        where: { code: subCode(code, abbr) },
+        update: {},
+        create: { name: subjectName, code: subCode(code, abbr), courseId: course.id },
+      });
+      await prisma.userSubject.upsert({
+        where: { userId_subjectId: { userId: prof.id, subjectId: subject.id } },
+        update: {},
+        create: { userId: prof.id, subjectId: subject.id },
+      });
+      if (!assignedProfIds.has(prof.id)) {
+        assignedProfIds.add(prof.id);
+        await prisma.userCourse.upsert({
+          where: { userId_courseId: { userId: prof.id, courseId: course.id } },
+          update: {},
+          create: { userId: prof.id, courseId: course.id, role: 'TEACHER' },
+        });
+      }
+    }
+  }
 
-  await prisma.userSubject.upsert({
-    where: { userId_subjectId: { userId: profesor1.id, subjectId: matPrimLengua.id } },
-    update: {},
-    create: { userId: profesor1.id, subjectId: matPrimLengua.id },
-  });
-
-  await prisma.userSubject.upsert({
-    where: { userId_subjectId: { userId: profesor2.id, subjectId: matSecMate.id } },
-    update: {},
-    create: { userId: profesor2.id, subjectId: matSecMate.id },
-  });
-
-  await prisma.userSubject.upsert({
-    where: { userId_subjectId: { userId: profesor2.id, subjectId: matSecCiencias.id } },
-    update: {},
-    create: { userId: profesor2.id, subjectId: matSecCiencias.id },
-  });
-
-  console.log('✅ 2 cursos, 4 materias y asignaciones de profesores creados\n');
+  console.log('✅ 13 cursos, ~100 materias y asignaciones de profesores creados\n');
 
   // ============================================================
   // PLANTILLAS DE DOCUMENTOS
@@ -860,16 +973,24 @@ async function main() {
   // ============================================================
   console.log('🔄 Creando plantillas de workflow...');
 
+  // Obtener categorías para linkear plantillas específicas
+  const catPlanificaciones       = await prisma.category.findUnique({ where: { name: 'Planificaciones' } });
+  const catActas                 = await prisma.category.findUnique({ where: { name: 'Actas y Reuniones' } });
+  const catConstancias           = await prisma.category.findUnique({ where: { name: 'Constancias y Certificados' } });
+  const catFinancieros           = await prisma.category.findUnique({ where: { name: 'Financieros' } });
+
+  // 1. Aprobación Académica — contexto ACADEMIC, cualquier categoría académica
   await prisma.workflowTemplate.upsert({
     where: { name: 'Aprobación Académica' },
-    update: {},
+    update: { documentType: 'ACADEMIC', categoryId: null, allowedInitiatorRoles: ['profesor', 'coordinador'] },
     create: {
       name: 'Aprobación Académica',
-      description: 'Flujo de aprobación para documentos académicos: Profesor → Coordinador → Director',
-      documentType: 'academico',
+      description: 'Flujo de aprobación para documentos académicos: Coordinador → Director',
+      documentType: 'ACADEMIC',
+      allowedInitiatorRoles: ['profesor', 'coordinador'],
       stateDefinitions: [
-        { state: 'pending_coordinador', role: 'coordinador', order: 1, label: 'Revisión del Coordinador' },
-        { state: 'pending_director', role: 'director', order: 2, label: 'Aprobación del Director' },
+        { state: 'Revisión del Coordinador', role: 'coordinador', order: 1 },
+        { state: 'Aprobación del Director',  role: 'director',    order: 2 },
       ],
       autoAssign: true,
       requiresComment: false,
@@ -877,15 +998,36 @@ async function main() {
     },
   });
 
+  // 2. Revisión de Planificación — solo categoría Planificaciones, solo profesores
+  await prisma.workflowTemplate.upsert({
+    where: { name: 'Revisión de Planificación' },
+    update: { documentType: 'ACADEMIC', categoryId: catPlanificaciones?.id ?? null, allowedInitiatorRoles: ['profesor'] },
+    create: {
+      name: 'Revisión de Planificación',
+      description: 'Flujo corto para planificaciones de clase: Profesor inicia, Coordinador aprueba',
+      documentType: 'ACADEMIC',
+      categoryId: catPlanificaciones?.id ?? null,
+      allowedInitiatorRoles: ['profesor'],
+      stateDefinitions: [
+        { state: 'Revisión del Coordinador', role: 'coordinador', order: 1 },
+      ],
+      autoAssign: true,
+      requiresComment: false,
+      isActive: true,
+    },
+  });
+
+  // 3. Aprobación Administrativa — contexto ADMINISTRATIVE, cualquier categoría administrativa
   await prisma.workflowTemplate.upsert({
     where: { name: 'Aprobación Administrativa' },
-    update: {},
+    update: { documentType: 'ADMINISTRATIVE', categoryId: null, allowedInitiatorRoles: ['coordinador', 'secretario', 'director'] },
     create: {
       name: 'Aprobación Administrativa',
-      description: 'Flujo de aprobación para documentos administrativos: Secretario → Director',
-      documentType: 'administrativo',
+      description: 'Flujo de aprobación para documentos administrativos: Director aprueba',
+      documentType: 'ADMINISTRATIVE',
+      allowedInitiatorRoles: ['coordinador', 'secretario', 'director'],
       stateDefinitions: [
-        { state: 'pending_director', role: 'director', order: 1, label: 'Aprobación del Director' },
+        { state: 'Aprobación del Director', role: 'director', order: 1 },
       ],
       autoAssign: true,
       requiresComment: true,
@@ -893,15 +1035,37 @@ async function main() {
     },
   });
 
+  // 4. Revisión de Acta — solo categoría Actas y Reuniones
   await prisma.workflowTemplate.upsert({
-    where: { name: 'Revisión de Planificación' },
-    update: {},
+    where: { name: 'Revisión de Acta' },
+    update: { documentType: 'ADMINISTRATIVE', categoryId: catActas?.id ?? null, allowedInitiatorRoles: ['coordinador', 'secretario'] },
     create: {
-      name: 'Revisión de Planificación',
-      description: 'Flujo corto para planificaciones de clase: Profesor → Coordinador',
-      documentType: 'planificacion',
+      name: 'Revisión de Acta',
+      description: 'Flujo específico para actas de reuniones: Coordinador/Secretario inicia, Director aprueba',
+      documentType: 'ADMINISTRATIVE',
+      categoryId: catActas?.id ?? null,
+      allowedInitiatorRoles: ['coordinador', 'secretario'],
       stateDefinitions: [
-        { state: 'pending_coordinador', role: 'coordinador', order: 1, label: 'Revisión del Coordinador' },
+        { state: 'Aprobación del Director', role: 'director', order: 1 },
+      ],
+      autoAssign: true,
+      requiresComment: true,
+      isActive: true,
+    },
+  });
+
+  // 5. Emisión de Constancia — solo categoría Constancias y Certificados
+  await prisma.workflowTemplate.upsert({
+    where: { name: 'Emisión de Constancia' },
+    update: { documentType: 'ADMINISTRATIVE', categoryId: catConstancias?.id ?? null, allowedInitiatorRoles: ['secretario'] },
+    create: {
+      name: 'Emisión de Constancia',
+      description: 'Flujo para constancias y certificados: Secretaria inicia, Director firma',
+      documentType: 'ADMINISTRATIVE',
+      categoryId: catConstancias?.id ?? null,
+      allowedInitiatorRoles: ['secretario'],
+      stateDefinitions: [
+        { state: 'Firma del Director', role: 'director', order: 1 },
       ],
       autoAssign: true,
       requiresComment: false,
@@ -909,7 +1073,99 @@ async function main() {
     },
   });
 
-  console.log('✅ 3 plantillas de workflow creadas\n');
+  // 6. Aprobación Institucional — contexto INSTITUTIONAL, cualquier categoría institucional
+  await prisma.workflowTemplate.upsert({
+    where: { name: 'Aprobación Institucional' },
+    update: { documentType: 'INSTITUTIONAL', categoryId: null, allowedInitiatorRoles: ['director'] },
+    create: {
+      name: 'Aprobación Institucional',
+      description: 'Flujo para documentos legales e institucionales: Director revisa y aprueba',
+      documentType: 'INSTITUTIONAL',
+      allowedInitiatorRoles: ['director'],
+      stateDefinitions: [
+        { state: 'Revisión del Director', role: 'director', order: 1 },
+      ],
+      autoAssign: true,
+      requiresComment: true,
+      isActive: true,
+    },
+  });
+
+  // 7. Revisión Financiera — solo categoría Financieros
+  await prisma.workflowTemplate.upsert({
+    where: { name: 'Revisión Financiera' },
+    update: { documentType: 'INSTITUTIONAL', categoryId: catFinancieros?.id ?? null, allowedInitiatorRoles: ['secretario', 'director'] },
+    create: {
+      name: 'Revisión Financiera',
+      description: 'Flujo para documentos financieros: Secretaria/Director inicia, Director aprueba',
+      documentType: 'INSTITUTIONAL',
+      categoryId: catFinancieros?.id ?? null,
+      allowedInitiatorRoles: ['secretario', 'director'],
+      stateDefinitions: [
+        { state: 'Revisión del Director', role: 'director', order: 1 },
+      ],
+      autoAssign: true,
+      requiresComment: true,
+      isActive: true,
+    },
+  });
+
+  console.log('✅ 7 plantillas de workflow creadas\n');
+
+  // ============================================================
+  // CONFIGURACIÓN DEL SISTEMA (SystemSettings)
+  // ============================================================
+  console.log('⚙️  Creando configuración del sistema...');
+
+  await prisma.systemSettings.upsert({
+    where: { id: 1 },
+    update: {},
+    create: {
+      institution: {
+        name: 'Colegio Demo',
+        logoPath: null,
+        address: null,
+        phone: null,
+        email: null,
+        website: null,
+      },
+      schoolYear: {
+        name: '2025-2026',
+        startDate: '2025-09-01',
+        endDate: '2026-06-30',
+        isActive: true,
+      },
+      appearance: {
+        primaryColor: '#3b82f6',
+        secondaryColor: '#10b981',
+        theme: 'system',
+      },
+      documents: {
+        maxFileSizeMb: 50,
+        allowedMimeTypes: [
+          'application/pdf',
+          'image/jpeg',
+          'image/png',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ],
+        trashRetentionDays: 30,
+        maxVersionsPerDocument: 10,
+      },
+      notifications: {
+        emailEnabled: false,
+        senderEmail: null,
+        senderName: null,
+      },
+      security: {
+        sessionTimeoutMinutes: 480,
+        maxLoginAttempts: 5,
+        require2FA: false,
+      },
+    },
+  });
+
+  console.log('✅ Configuración del sistema creada\n');
 
   // ============================================================
   console.log('🎉 Seed completado exitosamente!\n');

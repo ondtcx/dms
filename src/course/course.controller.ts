@@ -84,6 +84,14 @@ export class CourseController {
     return this.courseService.remove(id);
   }
 
+  @Get(':id/subjects')
+  @ApiOperation({ summary: 'Listar materias de un curso' })
+  @ApiResponse({ status: 200, description: 'Lista de materias activas del curso' })
+  @ApiResponse({ status: 404, description: 'Curso no encontrado' })
+  findSubjects(@Param('id', ParseIntPipe) id: number) {
+    return this.courseService.findSubjects(id);
+  }
+
   @Post(':id/assign-teacher')
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Asignar un profesor a un curso' })

@@ -24,14 +24,16 @@ import { TasksModule } from './tasks/tasks.module';
 import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { OnlyofficeModule } from './onlyoffice/onlyoffice.module';
+import { SettingsModule } from './settings/settings.module';
 import { join } from 'path';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    // Servir archivos estáticos (opcional, para ver uploads)
+    // Servir archivos estáticos — process.cwd() siempre apunta al directorio
+    // raíz del proyecto (dms-backend/) sin importar si corre desde src/ o dist/
     ServeStaticModule.forRoot({
-      rootPath: join(__dirname, '..', 'uploads'),
+      rootPath: join(process.cwd(), 'uploads'),
       serveRoot: '/files',
     }),
     StorageModule, // Módulo global de almacenamiento
@@ -55,6 +57,7 @@ import { join } from 'path';
     DocumentModule,
     DocumentTemplateModule,
     OnlyofficeModule, // Integración con OnlyOffice
+    SettingsModule, // Configuración del sistema
   ],
   controllers: [AppController],
   providers: [AppService],

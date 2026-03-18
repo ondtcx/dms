@@ -13,6 +13,7 @@ import { CreateDocumentTemplateDto } from './dto/create-document-template.dto';
 import { UpdateDocumentTemplateDto } from './dto/update-document-template.dto';
 import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CreateDocumentFromTemplateDto } from './dto/create-document-from-template.dto';
+import { UpdateDocumentFromTemplateDto } from './dto/update-document-from-template.dto';
 import { UserRole } from '../auth/role.enum';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -477,30 +478,33 @@ export class DocumentTemplateService {
       return thumbnailPath;
     }
 
-    // Si no existe, generar el thumbnail desde HTML directamente (más eficiente y compatible)
+    // Generar PDF con datos de muestra y extraer thumbnail del PDF (mismo flujo que documentos)
     try {
-      // Generar datos de muestra
-      const sampleData = this.generateSampleData(
-        template.fields,
-        template.name,
-      );
+      const sampleData = this.generateSampleData(template.fields, template.name);
 
-      // Compilar el HTML con los datos de muestra
-      const compiledHtml = Handlebars.compile(template.htmlTemplate)(
-        sampleData,
-      );
+      // Generar PDF usando el generador existente (usa page.pdf con printBackground: true)
+      const pdfBuffer = await this.documentGenerator.generatePDF({
+        htmlTemplate: template.htmlTemplate,
+        styles: template.styles || '',
+        data: sampleData,
+      });
 
-      // Construir el HTML completo con estilos (usando método privado del generator)
-      const fullHtml = this.documentGenerator['generateHtmlWithStyles'](
-        compiledHtml,
-        template.styles || '',
-      );
+      // Guardar PDF en archivo temporal
+      const tempDir = path.join('./uploads/temp');
+      if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+      const tempPdfPath = path.join(tempDir, `thumb_tpl_${id}_${Date.now()}.pdf`);
+      await fs.promises.writeFile(tempPdfPath, pdfBuffer);
 
-      // Generar thumbnail desde HTML usando Puppeteer
-      thumbnailPath = await this.thumbnailService.generateThumbnailFromHtml(
-        fullHtml,
-        thumbnailId,
-      );
+      try {
+        // Convertir PDF a thumbnail (misma lógica que funciona para documentos)
+        thumbnailPath = await this.thumbnailService.generateThumbnail(
+          tempPdfPath,
+          thumbnailId,
+          'application/pdf',
+        );
+      } finally {
+        await fs.promises.unlink(tempPdfPath).catch(() => {});
+      }
 
       return thumbnailPath;
     } catch (error) {
@@ -647,6 +651,177 @@ export class DocumentTemplateService {
       },
       take: limit,
     });
+  }
+
+  async updateDocumentFromTemplate(
+    id: number,
+    dto: UpdateDocumentFromTemplateDto,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    // 1. Verificar que el documento existe y no está eliminado
+    const document = await this.prisma.document.findUnique({
+      where: { id, deletedAt: null },
+    });
+
+    if (!document) {
+      throw new NotFoundException('Documento no encontrado');
+    }
+
+    // 2. Verificar ownership
+    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+      throw new ForbiddenException('No tienes permiso para editar este documento');
+    }
+
+    // 3. Verificar que el documento fue creado desde una plantilla
+    if (!document.templateId) {
+      throw new BadRequestException('El documento no fue creado desde una plantilla');
+    }
+
+    // 4. Obtener la plantilla
+    const template = await this.prisma.documentTemplate.findUnique({
+      where: { id: document.templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException('Plantilla asociada no encontrada');
+    }
+
+    if (!template.isActive) {
+      throw new BadRequestException('La plantilla asociada no está activa');
+    }
+
+    // 5. Validar campos requeridos del formData
+    const templateFields = template.fields as any;
+    if (templateFields.fields && Array.isArray(templateFields.fields)) {
+      const requiredFields = templateFields.fields
+        .filter((field: any) => field.required)
+        .map((field: any) => field.name);
+
+      const missingFields = requiredFields.filter(
+        (fieldName: string) => !dto.formData[fieldName],
+      );
+
+      if (missingFields.length > 0) {
+        throw new BadRequestException(
+          `Faltan campos requeridos: ${missingFields.join(', ')}`,
+        );
+      }
+    }
+
+    // 6. Determinar formato de salida y generar nuevo archivo
+    const outputFormat = template.outputFormat || 'pdf';
+    const fileExtension = outputFormat === 'html' ? 'html' : 'pdf';
+
+    const baseFilename =
+      dto.filename ||
+      document.filename ||
+      `${template.type}-${new Date().toISOString().split('T')[0]}.${fileExtension}`;
+
+    const templateData = {
+      ...dto.formData,
+      _metadata: {
+        generatedAt: new Date().toISOString(),
+        generatedDate: new Date().toLocaleDateString('es-ES'),
+        generatedTime: new Date().toLocaleTimeString('es-ES'),
+        templateName: template.name,
+        templateType: template.type,
+      },
+    };
+
+    let documentBuffer: Buffer;
+    let mimetype: string;
+
+    if (outputFormat === 'html') {
+      const htmlContent = await this.documentGenerator.generateHTML({
+        htmlTemplate: template.htmlTemplate,
+        styles: template.styles,
+        data: templateData,
+      });
+      documentBuffer = Buffer.from(htmlContent, 'utf-8');
+      mimetype = 'text/html';
+    } else {
+      documentBuffer = await this.documentGenerator.generatePDF({
+        htmlTemplate: template.htmlTemplate,
+        styles: template.styles,
+        data: templateData,
+        pageSize: template.pageSize as any,
+        orientation: template.orientation as any,
+        outputFormat: 'pdf',
+      });
+      mimetype = 'application/pdf';
+    }
+
+    // 7. Guardar nuevo archivo en disco
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+
+    const newStoredName = `${Date.now()}-${baseFilename}`;
+    const newFilePath = await this.documentGenerator.saveDocumentToFile(
+      documentBuffer,
+      newStoredName,
+      uploadsDir,
+    );
+    const fileStats = fs.statSync(newFilePath);
+
+    // 8. Crear registro de versión anterior antes de actualizar
+    const newVersion = document.currentVersion + 1;
+
+    await this.prisma.documentVersion.create({
+      data: {
+        documentId: id,
+        version: document.currentVersion,
+        storedName: document.storedName,
+        path: document.path,
+        size: document.size,
+        checksumSHA256: document.checksumSHA256,
+        comment: `Versión ${document.currentVersion} (antes de edición por formulario)`,
+        createdById: userId,
+        source: 'REEMPLAZO_MANUAL',
+      },
+    });
+
+    // 9. Actualizar documento en BD
+    const updatedDocument = await this.prisma.document.update({
+      where: { id },
+      data: {
+        filename: dto.filename || document.filename,
+        storedName: newStoredName,
+        mimetype,
+        size: fileStats.size,
+        path: newFilePath,
+        formData: dto.formData,
+        currentVersion: newVersion,
+        ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
+        ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+      },
+      include: {
+        uploadedBy: {
+          select: { id: true, name: true, email: true },
+        },
+        template: {
+          select: { id: true, name: true, type: true },
+        },
+        category: {
+          select: { id: true, name: true, color: true, icon: true, context: true },
+        },
+        section: {
+          select: { id: true, name: true, color: true, icon: true },
+        },
+      },
+    });
+
+    // 10. Regenerar thumbnail con el nuevo archivo
+    try {
+      await this.thumbnailService.regenerateThumbnail(newFilePath, id, mimetype);
+    } catch (error) {
+      this.logger.error(`Error regenerando thumbnail para documento ${id}:`, error);
+    }
+
+    return updatedDocument;
   }
 
   /**

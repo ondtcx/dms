@@ -50,6 +50,16 @@ export class QueryDocumentDto {
   includeDeleted?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Solo documentos subidos por el usuario actual',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  onlyMine?: boolean;
+
+  @ApiPropertyOptional({
     description: 'Página',
     example: 1,
     default: 1,

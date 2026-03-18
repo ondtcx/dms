@@ -170,6 +170,18 @@ export class CourseService {
     return course;
   }
 
+  async findSubjects(courseId: number) {
+    const course = await this.prisma.course.findUnique({ where: { id: courseId }, select: { id: true } });
+    if (!course) {
+      throw new NotFoundException(`Curso con ID ${courseId} no encontrado`);
+    }
+    return this.prisma.subject.findMany({
+      where: { courseId, isActive: true },
+      select: { id: true, name: true, code: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   async update(id: number, updateCourseDto: UpdateCourseDto) {
     await this.findOne(id);
 

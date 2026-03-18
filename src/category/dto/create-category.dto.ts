@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsEnum, IsArray } from 'class-validator';
+import { CategoryContext } from '@prisma/client';
 
 export class CreateCategoryDto {
   @ApiProperty({
@@ -44,4 +45,32 @@ export class CreateCategoryDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Contexto semántico de la categoría',
+    enum: CategoryContext,
+    example: CategoryContext.ADMINISTRATIVE,
+    default: CategoryContext.ADMINISTRATIVE,
+  })
+  @IsEnum(CategoryContext)
+  @IsOptional()
+  context?: CategoryContext;
+
+  @ApiPropertyOptional({
+    description: 'Si esta categoría requiere especificar un curso al subir documentos',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  requiresCourse?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Roles que pueden subir documentos a esta categoría (vacío = sin restricción)',
+    example: ['profesor', 'coordinador'],
+    default: [],
+  })
+  @IsArray()
+  @IsOptional()
+  allowedRoles?: string[];
 }

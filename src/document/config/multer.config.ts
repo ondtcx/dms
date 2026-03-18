@@ -19,8 +19,10 @@ export const multerConfig = {
       callback(null, uniqueName);
     },
   }),
+  // Sin límite de red — la validación dinámica se hace en el controller
+  // usando SettingsService.getMaxFileSizeMb()
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB máximo
+    fileSize: 500 * 1024 * 1024, // 500MB techo de red absoluto
   },
 };
 

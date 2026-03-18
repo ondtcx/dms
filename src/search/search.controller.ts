@@ -40,10 +40,11 @@ export class SearchController {
   @ApiQuery({ name: 'limit', description: 'Número máximo de sugerencias', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Lista de sugerencias' })
   getSuggestions(
+    @Request() req,
     @Query('q') query: string,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    return this.searchService.getSuggestions(query, limit);
+    return this.searchService.getSuggestions(req.user.id, query, limit);
   }
 
   @Get('history')
@@ -68,7 +69,10 @@ export class SearchController {
   @ApiOperation({ summary: 'Obtener búsquedas populares (últimos 30 días)' })
   @ApiQuery({ name: 'limit', description: 'Número máximo de resultados', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Búsquedas populares' })
-  getPopular(@Query('limit', new ParseIntPipe({ optional: true })) limit?: number) {
-    return this.searchService.getPopularSearches(limit);
+  getPopular(
+    @Request() req,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    return this.searchService.getPopularSearches(req.user.id, limit);
   }
 }

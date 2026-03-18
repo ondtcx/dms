@@ -34,12 +34,13 @@ enum EducationalLevel {
 }
 
 enum WorkflowStatus {
-  DRAFT           // Borrador, no iniciado
-  PENDING         // Pendiente de aprobación
-  IN_PROGRESS     // En proceso de aprobación
-  APPROVED        // Aprobado completamente
-  REJECTED        // Rechazado
-  CANCELLED       // Cancelado
+  DRAFT              // Borrador, no iniciado
+  PENDING            // Pendiente de aprobación
+  IN_PROGRESS        // En proceso de aprobación
+  CHANGES_REQUESTED  // Aprobador solicitó cambios al iniciador
+  APPROVED           // Aprobado completamente
+  REJECTED           // Rechazado
+  CANCELLED          // Cancelado
 }
 
 enum ApprovalAction {
@@ -49,12 +50,26 @@ enum ApprovalAction {
   COMMENTED         // Solo comentó
 }
 
+enum DocumentVersionSource {
+  UPLOAD_INICIAL      // Subida original del documento
+  REEMPLAZO_MANUAL    // Reemplazo manual sin workflow activo
+  RESTAURACION        // Restauración a una versión anterior
+  CAMBIOS_SOLICITADOS // Reemplazo en respuesta a un workflow activo
+}
+
+enum CategoryContext {
+  ACADEMIC        // Documentos ligados a cursos/materias (planificaciones, informes de clase)
+  ADMINISTRATIVE  // Documentos organizacionales internos (actas, circulares, certificados)
+  INSTITUTIONAL   // Documentos normativos o institucionales (legales, financieros)
+}
+
 enum NotificationType {
   DOCUMENT_SHARED           // Documento compartido
   DOCUMENT_UPLOADED         // Documento subido
   APPROVAL_REQUESTED        // Aprobación solicitada
   APPROVAL_APPROVED         // Aprobación aprobada
   APPROVAL_REJECTED         // Aprobación rechazada
+  CHANGES_REQUESTED         // Aprobador solicitó cambios al iniciador
   WORKFLOW_COMPLETED        // Workflow completado
   PERMISSION_GRANTED        // Permiso otorgado
   COMMENT_ADDED             // Comentario agregado
@@ -71,38 +86,6 @@ enum NotificationStatus {
 }
 
 // ============ SISTEMA DE PERMISOS ============
-
-model Permission {
-  id               Int                @id @default(autoincrement())
-  name             String             @unique // Nombre único del permiso (ej: "documents.create")
-  resource         String // Recurso al que aplica (ej: "documents", "users", "courses")
-  action           String // Acción permitida (ej: "create", "read", "update", "delete", "approve")
-  description      String? // Descripción del permiso
-
-  // Relaciones
-  rolePermissions  RolePermission[]
-
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-
-  @@unique([resource, action])
-  @@index([resource])
-  @@index([action])
-}
-
-model RolePermission {
-  id           Int        @id @default(autoincrement())
-  role         UserRole // Rol al que se le asigna el permiso
-  permissionId Int // Permiso asignado
-  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-  conditions   Json? // Condiciones opcionales (ej: {"departmentId": "$user.departmentId"})
-
-  createdAt    DateTime   @default(now())
-
-  @@unique([role, permissionId])
-  @@index([role])
-  @@index([permissionId])
-}
 
 model DocumentPermission {
   id           Int       @id @default(autoincrement())
@@ -146,9 +129,10 @@ model WorkflowTemplate {
   categoryId         Int? // Categoría de documentos a la que aplica
   category           Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   stateDefinitions   Json // Definición de estados y transiciones [{state: "pending_coord", role: "coordinador", order: 1}]
-  autoAssign         Boolean            @default(true) // Auto-asignar aprobadores según rol
-  requiresComment    Boolean            @default(false) // Requiere comentario al aprobar/rechazar
-  isActive           Boolean            @default(true)
+  autoAssign            Boolean            @default(true) // Auto-asignar aprobadores según rol
+  requiresComment       Boolean            @default(false) // Requiere comentario al aprobar/rechazar
+  allowedInitiatorRoles Json               @default("[]") // UserRole[] vacío = sin restricción; ADMIN bypasea siempre
+  isActive              Boolean            @default(true)
 
   // Relaciones
   workflows          DocumentWorkflow[]
@@ -177,6 +161,7 @@ model DocumentWorkflow {
   // Relaciones
   approvals          WorkflowApproval[]
   notifications      Notification[]
+  documentVersions   DocumentVersion[]   // Versiones subidas durante este workflow (Fix 3)
 
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -189,22 +174,28 @@ model DocumentWorkflow {
 }
 
 model WorkflowApproval {
-  id          Int             @id @default(autoincrement())
-  workflowId  Int // Workflow al que pertenece
-  workflow    DocumentWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  state       String // Estado en el que se realizó la aprobación
-  stateOrder  Int // Orden del estado
-  action      ApprovalAction // Acción realizada
-  userId      String // Usuario que realizó la acción
-  user        User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  comment     String?         @db.Text // Comentario opcional
+  id                Int              @id @default(autoincrement())
+  workflowId        Int // Workflow al que pertenece
+  workflow          DocumentWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  state             String // Estado en el que se realizó la aprobación
+  stateOrder        Int // Orden del estado
+  action            ApprovalAction? // Acción realizada (null = pendiente de aprobación)
+  userId            String // Usuario que realizó la acción
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment           String?          @db.Text // Comentario opcional
 
-  createdAt   DateTime        @default(now())
+  // Versión del documento que fue aprobada/revisada (Fix 2)
+  documentVersionId Int?
+  documentVersion   DocumentVersion? @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
+
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   @@index([workflowId])
   @@index([userId])
   @@index([state])
   @@index([action])
+  @@index([documentVersionId])
 }
 
 // ============ SISTEMA DE NOTIFICACIONES ============
@@ -506,12 +497,19 @@ model Category {
   color             String?            @default("#3b82f6") // Color hexadecimal para el badge
   icon              String?            @default("Folder") // Nombre del icono de lucide-react
   isActive          Boolean            @default(true) // Si la categoría está activa
+
+  // Tipo y control de acceso
+  context           CategoryContext    @default(ADMINISTRATIVE) // Tipo de documentos que admite
+  requiresCourse    Boolean            @default(false) // Si requiere asignar curso al subir
+  allowedRoles      Json               @default("[]") // UserRole[] vacío = sin restricción
+
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   @@index([name])
+  @@index([context])
 }
 
 model Section {
@@ -665,22 +663,32 @@ model DocumentTemplate {
 }
 
 model DocumentVersion {
-  id             Int      @id @default(autoincrement())
+  id             Int                    @id @default(autoincrement())
   documentId     Int // Documento al que pertenece esta versión
-  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document       Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
   version        Int // Número de versión (1, 2, 3, ...)
   storedName     String // Nombre del archivo de esta versión
   path           String // Ruta donde está almacenada esta versión
   size           Int // Tamaño en bytes
   checksumSHA256 String? // Hash SHA256 de esta versión
   comment        String? // Comentario sobre los cambios en esta versión
-  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy      User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdById    String // Usuario que creó esta versión
-  createdAt      DateTime @default(now())
+  createdAt      DateTime               @default(now())
+
+  // Origen estructurado de la versión (Fix 3)
+  source         DocumentVersionSource  @default(REEMPLAZO_MANUAL)
+  workflowId     Int? // Workflow activo cuando se subió (solo para CAMBIOS_SOLICITADOS)
+  workflow       DocumentWorkflow?      @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  // Aprobaciones que apuntaron a esta versión (Fix 2)
+  approvals      WorkflowApproval[]
 
   @@unique([documentId, version]) // Una versión única por documento
   @@index([documentId])
   @@index([createdAt])
+  @@index([source])
+  @@index([workflowId])
 }
 
 model DocumentAccess {
@@ -739,6 +747,39 @@ model ReportExecution {
   @@index([executedById])
   @@index([createdAt])
   @@index([status])
+}
+
+// ===== CONFIGURACIÓN DEL SISTEMA =====
+
+model SystemSettings {
+  id            Int      @id @default(autoincrement())
+
+  // Grupo 1 – Institución
+  // { name, logoPath, address, phone, email, website }
+  institution   Json     @default("{}")
+
+  // Grupo 2 – Ciclo Escolar
+  // { name, startDate, endDate, isActive }
+  schoolYear    Json     @default("{}")
+
+  // Grupo 3 – Apariencia
+  // { primaryColor, secondaryColor, theme }
+  appearance    Json     @default("{}")
+
+  // Grupo 4 – Documentos
+  // { maxFileSizeMb, allowedMimeTypes, trashRetentionDays, maxVersionsPerDocument }
+  documents     Json     @default("{}")
+
+  // Grupo 5 – Notificaciones
+  // { emailEnabled, senderEmail, senderName }
+  notifications Json     @default("{}")
+
+  // Grupo 6 – Seguridad
+  // { sessionTimeoutMinutes, maxLoginAttempts, require2FA }
+  security      Json     @default("{}")
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
 
 // ===== COMPARTIR DOCUMENTOS =====

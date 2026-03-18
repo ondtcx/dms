@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SearchQueryDto } from './dto/search-query.dto';
-import { Prisma } from '@prisma/client';
+import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
+import { UserRole } from '../auth/role.enum';
 
 @Injectable()
 export class SearchService {
@@ -31,96 +32,132 @@ export class SearchService {
       sortOrder = 'desc',
     } = searchDto;
 
-    // Construir condiciones WHERE
-    const where: any = {};
+    // Cargar usuario con departmentId para el filtro de acceso
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, departmentId: true },
+    });
 
-    // Full-text search con PostgreSQL tsvector
+    const accessFilter = user
+      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      : null;
+
+    // Construir condiciones WHERE base
+    const baseWhere: any = {};
+
+    // IDs de documentos que hacen match con la búsqueda full-text (PostgreSQL tsvector via raw)
+    let ftsIds: number[] | null = null;
     if (query && query.trim()) {
-      // Convertir query a tsquery format
       const tsquery = query
         .trim()
         .split(/\s+/)
+        .map((term) => term.replace(/[&|!():<>*'"\\]/g, ''))
+        .filter((term) => term.length > 0)
         .map((term) => `${term}:*`)
         .join(' & ');
 
-      where.searchVector = {
-        search: tsquery,
-      };
+      if (tsquery) {
+        const rows = await this.prisma.$queryRaw<{ id: number; rank: number }[]>`
+          SELECT id, ts_rank("searchVector", to_tsquery('simple', ${tsquery})) AS rank
+          FROM "Document"
+          WHERE "searchVector" @@ to_tsquery('simple', ${tsquery})
+            AND "deletedAt" IS NULL
+          ORDER BY rank DESC
+        `;
+        ftsIds = rows.map((r) => Number(r.id));
+      }
+    }
+
+    if (ftsIds !== null) {
+      baseWhere.id = { in: ftsIds };
     }
 
     // Filtros de categoría
     if (categoryIds && categoryIds.length > 0) {
-      where.categoryId = { in: categoryIds };
+      baseWhere.categoryId = { in: categoryIds };
     }
 
     // Filtros de sección
     if (sectionIds && sectionIds.length > 0) {
-      where.sectionId = { in: sectionIds };
+      baseWhere.sectionId = { in: sectionIds };
     }
 
-    // Filtros organizacionales
+    // Filtros organizacionales (acumulado en AND para no pisar otras cláusulas OR)
     if (departmentIds && departmentIds.length > 0) {
-      where.OR = [
-        { course: { departmentId: { in: departmentIds } } },
-        { uploadedBy: { departmentId: { in: departmentIds } } },
+      baseWhere.AND = [
+        ...(baseWhere.AND ?? []),
+        {
+          OR: [
+            { course: { departmentId: { in: departmentIds } } },
+            { uploadedBy: { departmentId: { in: departmentIds } } },
+          ],
+        },
       ];
     }
 
     if (courseIds && courseIds.length > 0) {
-      where.courseId = { in: courseIds };
+      baseWhere.courseId = { in: courseIds };
     }
 
     if (subjectIds && subjectIds.length > 0) {
-      where.subjectId = { in: subjectIds };
+      baseWhere.subjectId = { in: subjectIds };
     }
 
     // Filtro de usuario que subió
     if (uploadedById) {
-      where.uploadedById = uploadedById;
+      baseWhere.uploadedById = uploadedById;
     }
 
     // Filtros de fecha
     if (dateFrom || dateTo) {
-      where.createdAt = {};
+      baseWhere.createdAt = {};
       if (dateFrom) {
-        where.createdAt.gte = new Date(dateFrom);
+        baseWhere.createdAt.gte = new Date(dateFrom);
       }
       if (dateTo) {
-        where.createdAt.lte = new Date(dateTo);
+        baseWhere.createdAt.lte = new Date(dateTo);
       }
     }
 
     // Filtros de tamaño
     if (minSize || maxSize) {
-      where.size = {};
+      baseWhere.size = {};
       if (minSize) {
-        where.size.gte = minSize;
+        baseWhere.size.gte = minSize;
       }
       if (maxSize) {
-        where.size.lte = maxSize;
+        baseWhere.size.lte = maxSize;
       }
     }
 
     // Filtro de tipo MIME
     if (mimetypes && mimetypes.length > 0) {
-      where.mimetype = { in: mimetypes };
+      baseWhere.mimetype = { in: mimetypes };
     }
 
     // Filtro de visibilidad
     if (isPublic !== undefined) {
-      where.isPublic = isPublic;
+      baseWhere.isPublic = isPublic;
     }
 
     // Filtro de eliminados
     if (!includeDeleted) {
-      where.deletedAt = null;
+      baseWhere.deletedAt = null;
     }
 
+    // Combinar filtros base con el filtro de acceso (ReBAC)
+    const where = accessFilter ? { AND: [baseWhere, accessFilter] } : baseWhere;
+
     // Construir ordenamiento
-    let orderBy: any = {};
-    if (sortBy === 'relevance' && query && query.trim()) {
-      // Ordenar por relevancia usando ts_rank
-      orderBy = [{ _relevance: { fields: ['searchVector'], search: query, sort: sortOrder } }];
+    // Cuando sortBy=relevance y hay FTS, los IDs ya vienen ordenados por ts_rank.
+    // Prisma respetará ese orden si usamos: orderBy = [{ id: { sort: 'asc', nulls: 'last' } }]
+    // pero no podemos ordenar por rank en findMany. En su lugar mantenemos el orden del array ftsIds
+    // usando un campo estable como fallback (createdAt).
+    let orderBy: any;
+    if (sortBy === 'relevance' && ftsIds !== null) {
+      // El orden de relevancia ya está en ftsIds (por ts_rank DESC).
+      // Usamos createdAt desc como ordenamiento secundario para documentos con igual rank.
+      orderBy = [{ createdAt: sortOrder }];
     } else {
       orderBy = { [sortBy]: sortOrder };
     }
@@ -129,36 +166,52 @@ export class SearchService {
     const skip = (page - 1) * limit;
     const take = limit;
 
-    // Ejecutar búsqueda
-    const [documents, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        orderBy,
-        skip,
-        take,
-        include: {
-          category: {
-            select: { id: true, name: true, color: true, icon: true },
-          },
-          section: {
-            select: { id: true, name: true, color: true, icon: true },
-          },
-          uploadedBy: {
-            select: { id: true, name: true, email: true },
-          },
-          course: {
-            select: { id: true, name: true, code: true },
-          },
-          subject: {
-            select: { id: true, name: true, code: true },
-          },
-          template: {
-            select: { id: true, name: true },
-          },
-        },
-      }),
-      this.prisma.document.count({ where }),
-    ]);
+    const docInclude = {
+      category: { select: { id: true, name: true, color: true, icon: true } },
+      section: { select: { id: true, name: true, color: true, icon: true } },
+      uploadedBy: { select: { id: true, name: true, email: true } },
+      course: { select: { id: true, name: true, code: true } },
+      subject: { select: { id: true, name: true, code: true } },
+      template: { select: { id: true, name: true } },
+    };
+
+    let documents: any[];
+    let total: number;
+
+    if (ftsIds !== null && sortBy === 'relevance') {
+      // Los IDs ya están ordenados por ts_rank. Aplicamos los filtros adicionales en memoria
+      // consultando todos los docs que pasan el where (sin el id: {in:} de FTS) y cruzando.
+      // Para evitar una query gigante, filtramos el where a solo los IDs de la página y count aparte.
+
+      // Total: contar cuántos ftsIds pasan los filtros adicionales (excluye el id:{in:ftsIds})
+      const { id: _ignored, ...baseWithoutId } = baseWhere;
+      const otherFilters = accessFilter
+        ? { AND: [baseWithoutId, accessFilter] }
+        : baseWithoutId;
+
+      const passingIds = ftsIds.length > 0
+        ? await this.prisma.document
+            .findMany({ where: { id: { in: ftsIds }, ...otherFilters }, select: { id: true } })
+            .then((rows) => new Set(rows.map((r) => r.id)))
+        : new Set<number>();
+
+      const orderedIds = ftsIds.filter((id) => passingIds.has(id));
+      total = orderedIds.length;
+
+      const pageIds = orderedIds.slice(skip, skip + take);
+      const rawDocs = pageIds.length > 0
+        ? await this.prisma.document.findMany({ where: { id: { in: pageIds } }, include: docInclude })
+        : [];
+
+      // Restaurar el orden de relevancia
+      const docMap = new Map(rawDocs.map((d) => [d.id, d]));
+      documents = pageIds.map((id) => docMap.get(id)).filter(Boolean);
+    } else {
+      [documents, total] = await Promise.all([
+        this.prisma.document.findMany({ where, orderBy, skip, take, include: docInclude }),
+        this.prisma.document.count({ where }),
+      ]);
+    }
 
     // Guardar en historial de búsqueda (si hay query)
     if (query && query.trim()) {
@@ -180,12 +233,20 @@ export class SearchService {
 
   // ============ Sugerencias y Autocompletado ============
 
-  async getSuggestions(query: string, limit: number = 10) {
+  async getSuggestions(userId: string, query: string, limit: number = 10) {
     if (!query || query.trim().length < 2) {
       return [];
     }
 
-    // Buscar sugerencias basadas en nombres de archivo y descripciones
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, departmentId: true },
+    });
+
+    const accessFilter = user
+      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      : null;
+
     const suggestions = await this.prisma.document.findMany({
       where: {
         OR: [
@@ -193,16 +254,13 @@ export class SearchService {
           { description: { contains: query, mode: 'insensitive' } },
         ],
         deletedAt: null,
+        ...(accessFilter ?? {}),
       },
-      select: {
-        filename: true,
-        description: true,
-      },
+      select: { filename: true, description: true },
       take: limit,
       distinct: ['filename'],
     });
 
-    // Extraer términos únicos
     const terms = new Set<string>();
     suggestions.forEach((doc) => {
       if (doc.filename) terms.add(doc.filename);
@@ -244,10 +302,11 @@ export class SearchService {
   }
 
   async getSearchHistory(userId: string, limit: number = 20) {
+    const safeLimit = Math.min(limit, 100);
     return this.prisma.searchHistory.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      take: limit,
+      take: safeLimit,
       select: {
         id: true,
         query: true,
@@ -268,26 +327,34 @@ export class SearchService {
 
   // ============ Búsquedas Populares ============
 
-  async getPopularSearches(limit: number = 10) {
-    // Obtener las búsquedas más frecuentes de los últimos 30 días
+  async getPopularSearches(userId: string, limit: number = 10) {
+    const safeLimit = Math.min(limit, 50);
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    const isPrivileged =
+      user?.role === UserRole.ADMIN || user?.role === UserRole.DIRECTOR;
+
+    // ADMIN y DIRECTOR ven búsquedas populares globales.
+    // Otros roles solo ven las tendencias de sus propias búsquedas pasadas
+    // para evitar exponer queries de documentos a los que no tienen acceso.
+    const whereClause = {
+      createdAt: { gte: thirtyDaysAgo },
+      query: { not: '' },
+      ...(isPrivileged ? {} : { userId }),
+    };
+
     const popularSearches = await this.prisma.searchHistory.groupBy({
       by: ['query'],
-      where: {
-        createdAt: { gte: thirtyDaysAgo },
-        query: { not: '' },
-      },
-      _count: {
-        query: true,
-      },
-      orderBy: {
-        _count: {
-          query: 'desc',
-        },
-      },
-      take: limit,
+      where: whereClause,
+      _count: { query: true },
+      orderBy: { _count: { query: 'desc' } },
+      take: safeLimit,
     });
 
     return popularSearches.map((item) => ({

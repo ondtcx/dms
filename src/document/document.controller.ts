@@ -19,6 +19,7 @@ import {
   MaxFileSizeValidator,
   FileTypeValidator,
   NotFoundException,
+  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -44,7 +45,9 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../auth/role.enum';
 import { multerConfig, allFilesFilter } from './config/multer.config';
 import { CreateDocumentFromTemplateDto } from '../document-template/dto/create-document-from-template.dto';
+import { UpdateDocumentFromTemplateDto } from '../document-template/dto/update-document-from-template.dto';
 import { DocumentTemplateService } from '../document-template/document-template.service';
+import { SettingsService } from '../settings/settings.service';
 
 @ApiTags('documents')
 @Controller('documents')
@@ -54,6 +57,7 @@ export class DocumentController {
     private readonly documentsService: DocumentService,
     private readonly documentTemplateService: DocumentTemplateService,
     private readonly thumbnailService: ThumbnailService,
+    private readonly settingsService: SettingsService,
   ) {}
 
   @Post('from-template')
@@ -201,11 +205,12 @@ export class DocumentController {
       fileFilter: allFilesFilter,
     }),
   )
-  upload(
+  async upload(
     @UploadedFile() file: Express.Multer.File,
     @Body() uploadDocumentDto: UploadDocumentDto,
     @CurrentUser() user: any,
   ) {
+    await this.validateFile(file);
     return this.documentsService.upload(file, uploadDocumentDto, user.id);
   }
 
@@ -235,11 +240,14 @@ export class DocumentController {
       fileFilter: allFilesFilter,
     }),
   )
-  uploadMultiple(
+  async uploadMultiple(
     @UploadedFiles() files: Express.Multer.File[],
     @Body() uploadDocumentDto: UploadDocumentDto,
     @CurrentUser() user: any,
   ) {
+    for (const file of files) {
+      await this.validateFile(file);
+    }
     return this.documentsService.uploadMultiple(
       files,
       uploadDocumentDto,
@@ -396,10 +404,30 @@ export class DocumentController {
 
     res.set({
       'Content-Type': 'image/jpeg',
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': 'no-cache',
     });
 
     return new StreamableFile(file);
+  }
+
+  @Patch(':id/from-template')
+  @ApiOperation({ summary: 'Regenerar documento desde formulario de plantilla' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Documento regenerado exitosamente' })
+  @ApiResponse({ status: 400, description: 'Documento sin plantilla o campos inválidos' })
+  @ApiResponse({ status: 403, description: 'Sin permiso para editar' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  updateFromTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateDocumentFromTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentTemplateService.updateDocumentFromTemplate(
+      id,
+      dto,
+      user.id,
+      user.role,
+    );
   }
 
   @Patch(':id')
@@ -442,11 +470,12 @@ export class DocumentController {
       fileFilter: allFilesFilter,
     }),
   )
-  replaceFile(
+  async replaceFile(
     @Param('id', ParseIntPipe) id: number,
     @UploadedFile() file: Express.Multer.File,
     @CurrentUser() user: any,
   ) {
+    await this.validateFile(file);
     return this.documentsService.replaceFile(id, file, user.id, user.role);
   }
 
@@ -536,5 +565,22 @@ export class DocumentController {
     @CurrentUser() user: any,
   ) {
     return this.documentsService.restoreVersion(id, version, user.id, user.role);
+  }
+
+  // ── Validación dinámica de archivos según SystemSettings ─────────────────
+  private async validateFile(file: Express.Multer.File): Promise<void> {
+    const maxMb = await this.settingsService.getMaxFileSizeMb();
+    if (file.size > maxMb * 1024 * 1024) {
+      throw new BadRequestException(
+        `El archivo supera el tamaño máximo permitido (${maxMb} MB)`,
+      );
+    }
+
+    const allowedMimeTypes = await this.settingsService.getAllowedMimeTypes();
+    if (allowedMimeTypes.length > 0 && !allowedMimeTypes.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Tipo de archivo no permitido: ${file.mimetype}`,
+      );
+    }
   }
 }

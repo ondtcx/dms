@@ -40,4 +40,22 @@ export class UploadDocumentDto {
   @IsBoolean()
   @IsOptional()
   isPublic?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'ID del curso al que pertenece el documento',
+    example: 1,
+  })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  courseId?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID de la materia a la que pertenece el documento',
+    example: 3,
+  })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  subjectId?: number;
 }

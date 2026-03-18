@@ -94,6 +94,15 @@ export class CreateWorkflowTemplateDto {
   requiresComment?: boolean;
 
   @ApiPropertyOptional({
+    description: 'Roles que pueden iniciar esta plantilla. Vacío = sin restricción. ADMIN bypasea siempre.',
+    example: ['profesor', 'coordinador'],
+    default: [],
+  })
+  @IsArray()
+  @IsOptional()
+  allowedInitiatorRoles?: string[];
+
+  @ApiPropertyOptional({
     description: 'Si la plantilla está activa',
     example: true,
     default: true,

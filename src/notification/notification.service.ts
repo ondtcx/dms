@@ -230,7 +230,31 @@ export class NotificationService {
       message: `Se requiere tu aprobación para el documento "${documentName}"`,
       workflowId,
       documentId,
-      actionUrl: `/workflows/${workflowId}`,
+      actionUrl: `/workflows`,
+      sendEmail: true,
+    });
+  }
+
+  async notifyChangesRequested(
+    workflowId: number,
+    documentId: number,
+    initiatorId: string,
+    documentName: string,
+    approverName: string,
+    comment?: string,
+  ) {
+    const message = comment
+      ? `${approverName} solicitó cambios en "${documentName}": "${comment}"`
+      : `${approverName} solicitó cambios en el documento "${documentName}"`;
+
+    return this.createNotification({
+      userId: initiatorId,
+      type: NotificationType.CHANGES_REQUESTED,
+      title: 'Se solicitaron cambios',
+      message,
+      workflowId,
+      documentId,
+      actionUrl: `/documents/${documentId}`,
       sendEmail: true,
     });
   }

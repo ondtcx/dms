@@ -140,6 +140,7 @@ export class ThumbnailService {
       const pngBuffer = Buffer.from(result.pages[0].data);
 
       await sharp(pngBuffer)
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
         .resize(this.thumbnailSize, this.thumbnailSize, {
           fit: 'cover',
           position: 'top',
@@ -314,8 +315,15 @@ export class ThumbnailService {
         deviceScaleFactor: 2, // Para mejor calidad
       });
 
+      // Inyectar fondo blanco en el HTML antes de renderizar
+      // (headless Chrome usa fondo transparente por defecto)
+      const bgStyle = '<style>html,body{background-color:#ffffff!important}</style>';
+      const htmlWithBg = htmlContent.includes('</head>')
+        ? htmlContent.replace('</head>', `${bgStyle}</head>`)
+        : bgStyle + htmlContent;
+
       // Cargar el HTML
-      await page.setContent(htmlContent, {
+      await page.setContent(htmlWithBg, {
         waitUntil: 'networkidle0',
       });
 
@@ -326,7 +334,9 @@ export class ThumbnailService {
       });
 
       // Redimensionar y convertir a JPEG usando sharp
+      // flatten() aplana la transparencia sobre fondo blanco antes de convertir a JPEG
       await sharp(screenshotBuffer as Buffer)
+        .flatten({ background: { r: 255, g: 255, b: 255 } })
         .resize(this.thumbnailSize, this.thumbnailSize, {
           fit: 'cover',
           position: 'top',

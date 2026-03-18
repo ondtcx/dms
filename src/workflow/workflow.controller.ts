@@ -9,6 +9,7 @@ import {
   UseGuards,
   ParseIntPipe,
   Request,
+  Query,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -21,6 +22,7 @@ import { CreateWorkflowTemplateDto } from './dto/create-workflow-template.dto';
 import { UpdateWorkflowTemplateDto } from './dto/update-workflow-template.dto';
 import { InitiateWorkflowDto } from './dto/initiate-workflow.dto';
 import { ApproveWorkflowDto } from './dto/approve-workflow.dto';
+import { MyInitiatedQueryDto } from './dto/my-initiated-query.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -36,7 +38,7 @@ export class WorkflowController {
   // ============ Gestión de Templates ============
 
   @Post('templates')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Crear una plantilla de workflow' })
   @ApiResponse({ status: 201, description: 'Plantilla creada exitosamente' })
   @ApiResponse({ status: 409, description: 'Ya existe una plantilla con ese nombre' })
@@ -60,7 +62,7 @@ export class WorkflowController {
   }
 
   @Patch('templates/:id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Actualizar una plantilla de workflow' })
   @ApiResponse({ status: 200, description: 'Plantilla actualizada' })
   @ApiResponse({ status: 404, description: 'Plantilla no encontrada' })
@@ -100,12 +102,23 @@ export class WorkflowController {
     );
   }
 
+  @Get('my-initiated')
+  @ApiOperation({ summary: 'Obtener workflows iniciados por el usuario actual' })
+  @ApiResponse({ status: 200, description: 'Lista paginada de workflows iniciados' })
+  getMyInitiatedWorkflows(@Request() req, @Query() query: MyInitiatedQueryDto) {
+    return this.workflowService.getMyInitiatedWorkflows(req.user.id, query);
+  }
+
   @Get('documents/:documentId')
   @ApiOperation({ summary: 'Obtener el workflow de un documento' })
   @ApiResponse({ status: 200, description: 'Workflow encontrado' })
+  @ApiResponse({ status: 403, description: 'Sin acceso a este workflow' })
   @ApiResponse({ status: 404, description: 'No se encontró workflow para este documento' })
-  getWorkflowByDocument(@Param('documentId', ParseIntPipe) documentId: number) {
-    return this.workflowService.getWorkflowByDocument(documentId);
+  getWorkflowByDocument(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @Request() req,
+  ) {
+    return this.workflowService.getWorkflowByDocument(documentId, req.user.id);
   }
 
   @Get('pending')
@@ -135,5 +148,15 @@ export class WorkflowController {
   @ApiResponse({ status: 404, description: 'Workflow no encontrado' })
   cancelWorkflow(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.workflowService.cancelWorkflow(id, req.user.id);
+  }
+
+  @Patch(':id/resubmit')
+  @ApiOperation({ summary: 'Reenviar un workflow para revisión después de cambios' })
+  @ApiResponse({ status: 200, description: 'Workflow reenviado para revisión' })
+  @ApiResponse({ status: 400, description: 'El workflow no está en estado de cambios solicitados' })
+  @ApiResponse({ status: 403, description: 'Solo el iniciador puede reenviar el workflow' })
+  @ApiResponse({ status: 404, description: 'Workflow no encontrado' })
+  resubmitWorkflow(@Param('id', ParseIntPipe) id: number, @Request() req) {
+    return this.workflowService.resubmitWorkflow(id, req.user.id);
   }
 }

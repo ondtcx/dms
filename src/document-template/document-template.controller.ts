@@ -302,7 +302,7 @@ export class DocumentTemplateController {
     const file = createReadStream(thumbnailPath);
     res.set({
       'Content-Type': 'image/jpeg',
-      'Cache-Control': 'public, max-age=31536000',
+      'Cache-Control': 'no-store',
     });
 
     return new StreamableFile(file);

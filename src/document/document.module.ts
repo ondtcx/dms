@@ -6,6 +6,7 @@ import { DocumentController } from './document.controller';
 import { ThumbnailService } from './thumbnail.service';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { DocumentTemplateModule } from '../document-template/document-template.module';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { DocumentTemplateModule } from '../document-template/document-template.m
       dest: './uploads',
     }),
     DocumentTemplateModule,
+    SettingsModule,
   ],
   controllers: [DocumentController],
   providers: [DocumentService, ThumbnailService, PrismaService],

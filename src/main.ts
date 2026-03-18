@@ -5,10 +5,6 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  app.use((req, res, next) => {
-    console.log(`${req.method} ${req.url}`);
-    next();
-  });
   app.setGlobalPrefix('api');
 
   app.enableCors({
@@ -66,8 +62,6 @@ async function bootstrap() {
       'https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.css',
     ],
   });
-  console.log('JWT_SECRET:', process.env.JWT_SECRET); // ← temporal
-  console.log('JWT_EXPIRATION:', process.env.JWT_EXPIRATION); // ← temporal
 
   await app.listen(process.env.PORT ?? 3000);
   console.log(

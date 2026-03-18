@@ -4,9 +4,12 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
+import { WorkflowStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
+import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
@@ -14,7 +17,10 @@ import * as fs from 'fs';
 import { extname } from 'path';
 import { promisify } from 'util';
 import { UserRole } from '../auth/role.enum';
+import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
 import { v4 as uuidv4 } from 'uuid';
+import { SettingsService } from '../settings/settings.service';
+
 const pdfParse = require('pdf-parse');
 
 const unlinkAsync = promisify(fs.unlink);
@@ -25,13 +31,47 @@ export class DocumentService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
-  ) {}
+    private settingsService: SettingsService,
+    private thumbnailService: ThumbnailService,
+  ) { }
 
   async upload(
     file: Express.Multer.File,
     uploadDocumentDto: UploadDocumentDto,
     userId: string,
   ) {
+    // 0. Validar acceso a la categoría (allowedRoles + requiresCourse) y derivar sección
+    let resolvedSectionId = uploadDocumentDto.sectionId;
+    if (uploadDocumentDto.categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: uploadDocumentDto.categoryId },
+        select: { allowedRoles: true, requiresCourse: true, context: true },
+      });
+      if (category) {
+        const allowed = category.allowedRoles as string[];
+        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+        const isAdmin = user?.role === 'admin';
+        if (!isAdmin && allowed.length > 0 && user && !allowed.includes(user.role)) {
+          throw new ForbiddenException('Tu rol no tiene permiso para subir documentos a esta categoría');
+        }
+        if (category.requiresCourse && !uploadDocumentDto.courseId) {
+          throw new BadRequestException('Esta categoría requiere especificar un curso');
+        }
+
+        // Auto-asignar sección según el contexto de la categoría
+        const CONTEXT_TO_SECTION: Record<string, string> = {
+          ACADEMIC: 'Gestión Académica',
+          ADMINISTRATIVE: 'Gestión Administrativa',
+          INSTITUTIONAL: 'Gestión Institucional',
+        };
+        const sectionName = CONTEXT_TO_SECTION[category.context as string];
+        if (sectionName) {
+          const section = await this.prisma.section.findFirst({ where: { name: sectionName }, select: { id: true } });
+          if (section) resolvedSectionId = section.id;
+        }
+      }
+    }
+
     // 1. Generar nombre único y ruta estructurada
     const uniqueFilename = `${uuidv4()}${extname(file.originalname)}`;
     const storageLocation = this.storage.generateStructuredPath(
@@ -62,7 +102,9 @@ export class DocumentService {
         path: storageLocation.path,
         description: uploadDocumentDto.description,
         categoryId: uploadDocumentDto.categoryId,
-        sectionId: uploadDocumentDto.sectionId,
+        sectionId: resolvedSectionId,
+        courseId: uploadDocumentDto.courseId,
+        subjectId: uploadDocumentDto.subjectId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
         checksumSHA256: checksum,
@@ -83,6 +125,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+            context: true,
           },
         },
         section: {
@@ -114,6 +157,7 @@ export class DocumentService {
         checksumSHA256: checksum,
         comment: 'Versión inicial',
         createdById: userId,
+        source: 'UPLOAD_INICIAL',
       },
     });
 
@@ -132,25 +176,32 @@ export class DocumentService {
     return uploadedDocuments;
   }
 
-  async findAll(query: QueryDocumentDto, userId: number, userRole: UserRole) {
-    const { search, categoryId, sectionId, isPublic, includeDeleted, page = 1, limit = 10 } = query;
+  async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
+    const { search, categoryId, sectionId, isPublic, includeDeleted, onlyMine, page = 1, limit = 10 } = query;
+
+    // Cargar usuario con departmentId para el filtro de acceso
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, departmentId: true },
+    });
+
+    const accessFilter = user
+      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      : null;
 
     // Construir filtros
     const where: any = {
       AND: [],
     };
 
-    // IMPORTANTE: Filtrar documentos eliminados (soft delete)
-    // Solo excluir si includeDeleted es false o undefined
+    // Filtrar documentos eliminados (soft delete)
     if (!includeDeleted) {
       where.AND.push({ deletedAt: null });
     }
 
-    // Si no es admin, solo puede ver sus documentos o públicos
-    if (userRole !== UserRole.ADMIN) {
-      where.AND.push({
-        OR: [{ uploadedById: userId }, { isPublic: true }],
-      });
+    // Filtro de acceso basado en relaciones (ReBAC)
+    if (accessFilter) {
+      where.AND.push(accessFilter);
     }
 
     // Búsqueda en nombre y descripción
@@ -183,6 +234,10 @@ export class DocumentService {
 
     if (isPublic !== undefined) {
       where.AND.push({ isPublic });
+    }
+
+    if (onlyMine) {
+      where.AND.push({ uploadedById: userId });
     }
 
     // Si no hay condiciones AND, usar objeto vacío
@@ -227,6 +282,13 @@ export class DocumentService {
               type: true,
             },
           },
+          workflow: {
+            select: {
+              id: true,
+              status: true,
+              currentState: true,
+            },
+          },
         },
         orderBy: {
           createdAt: 'desc',
@@ -249,8 +311,24 @@ export class DocumentService {
   }
 
   async findOne(id: number, userId: string, userRole: UserRole) {
-    const document = await this.prisma.document.findUnique({
-      where: { id },
+    // Cargar usuario con departmentId para el filtro de acceso
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, departmentId: true },
+    });
+
+    const accessFilter = user
+      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      : ({ id: -1 } as any);
+
+    // Usar findFirst con el filtro de acceso embebido en el WHERE.
+    // Retorna null tanto si el doc no existe como si el usuario no tiene acceso
+    // (no revelar la existencia de documentos inaccesibles).
+    const document = await this.prisma.document.findFirst({
+      where: {
+        id,
+        ...(accessFilter ?? {}),
+      },
       include: {
         uploadedBy: {
           select: {
@@ -265,6 +343,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+            context: true,
           },
         },
         section: {
@@ -287,15 +366,6 @@ export class DocumentService {
 
     if (!document) {
       throw new NotFoundException('Documento no encontrado');
-    }
-
-    // Verificar permisos
-    if (
-      userRole !== UserRole.ADMIN &&
-      document.uploadedById !== userId &&
-      !document.isPublic
-    ) {
-      throw new ForbiddenException('No tienes permiso para ver este documento');
     }
 
     return document;
@@ -333,6 +403,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+            context: true,
           },
         },
         section: {
@@ -463,6 +534,9 @@ export class DocumentService {
     // Eliminar archivo físico
     this.storage.deleteFile(document.path);
 
+    // Eliminar thumbnail si existe
+    this.thumbnailService.deleteThumbnail(id);
+
     // Eliminar todas las versiones físicas
     const versions = await this.prisma.documentVersion.findMany({
       where: { documentId: id },
@@ -591,6 +665,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+            context: true,
           },
         },
         section: {
@@ -611,7 +686,19 @@ export class DocumentService {
       },
     });
 
-    // 7. Crear registro de nueva versión
+    // 7. Regenerar thumbnail con el nuevo archivo
+    await this.thumbnailService.regenerateThumbnail(newStorageLocation.path, id, file.mimetype);
+
+    // 8. Detectar workflow activo para tagging de origen (Fix 3)
+    const activeWorkflowForSource = await this.prisma.documentWorkflow.findFirst({
+      where: {
+        documentId: id,
+        status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
+      },
+      select: { id: true },
+    });
+
+    // 8. Crear registro de nueva versión
     await this.prisma.documentVersion.create({
       data: {
         documentId: id,
@@ -622,10 +709,29 @@ export class DocumentService {
         checksumSHA256: newChecksum,
         comment: comment || `Versión ${newVersion}`,
         createdById: userId,
+        source: activeWorkflowForSource ? 'CAMBIOS_SOLICITADOS' : 'REEMPLAZO_MANUAL',
+        workflowId: activeWorkflowForSource?.id ?? null,
       },
     });
 
-    // 8. Registrar auditoría
+    // 8b. Rolling window: eliminar versiones más antiguas si se supera el límite
+    const maxVersions = await this.settingsService.getMaxVersionsPerDocument();
+    const versionCount = await this.prisma.documentVersion.count({ where: { documentId: id } });
+    if (versionCount > maxVersions) {
+      const versionsToDelete = await this.prisma.documentVersion.findMany({
+        where: { documentId: id },
+        orderBy: { version: 'asc' },
+        take: versionCount - maxVersions,
+      });
+      for (const old of versionsToDelete) {
+        try {
+          if (this.storage.fileExists(old.path)) this.storage.deleteFile(old.path);
+        } catch (_) { }
+        await this.prisma.documentVersion.delete({ where: { id: old.id } });
+      }
+    }
+
+    // 9. Registrar auditoría
     await this.prisma.documentAccess.create({
       data: {
         documentId: id,
@@ -653,6 +759,13 @@ export class DocumentService {
             email: true,
           },
         },
+        approvals: {
+          select: {
+            id: true,
+            action: true,
+            user: { select: { name: true } },
+          },
+        },
       },
       orderBy: {
         version: 'desc',
@@ -677,6 +790,21 @@ export class DocumentService {
     if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
       throw new ForbiddenException(
         'No tienes permiso para restaurar versiones de este documento',
+      );
+    }
+
+    // Fix 1: Bloquear restauración si hay workflow activo
+    const activeWorkflow = await this.prisma.documentWorkflow.findFirst({
+      where: {
+        documentId,
+        status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
+      },
+      select: { currentState: true },
+    });
+    if (activeWorkflow) {
+      throw new ConflictException(
+        `No se puede restaurar una versión mientras el documento tiene un workflow activo` +
+        ` (etapa: "${activeWorkflow.currentState}"). Cancela el workflow primero.`,
       );
     }
 
@@ -748,6 +876,7 @@ export class DocumentService {
         checksumSHA256: version.checksumSHA256,
         comment: `Restaurada desde versión ${versionNumber}`,
         createdById: userId,
+        source: 'RESTAURACION',
       },
     });
 
@@ -866,6 +995,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
+            context: true,
           },
         },
         section: {

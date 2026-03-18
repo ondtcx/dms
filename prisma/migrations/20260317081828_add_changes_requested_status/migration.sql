@@ -1,0 +1,5 @@
+-- AlterEnum
+ALTER TYPE "NotificationType" ADD VALUE 'CHANGES_REQUESTED';
+
+-- AlterEnum
+ALTER TYPE "WorkflowStatus" ADD VALUE 'CHANGES_REQUESTED';

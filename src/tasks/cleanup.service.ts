@@ -2,7 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
-import { readdirSync, statSync, unlinkSync } from 'fs';
+import { SettingsService } from '../settings/settings.service';
+import { readdirSync, statSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class CleanupService {
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
+    private settingsService: SettingsService,
   ) {}
 
   /**
@@ -55,14 +57,17 @@ export class CleanupService {
     this.logger.log('🗑️  Iniciando limpieza de papelera...');
 
     try {
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const retentionDays = await this.settingsService.getTrashRetentionDays();
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-      // Buscar documentos eliminados hace más de 30 días
+      this.logger.log(`🗑️  Retención configurada: ${retentionDays} días (corte: ${cutoffDate.toISOString().split('T')[0]})`);
+
+      // Buscar documentos eliminados hace más días que el período de retención
       const documentsToDelete = await this.prisma.document.findMany({
         where: {
           deletedAt: {
-            lt: thirtyDaysAgo,
+            lt: cutoffDate,
           },
         },
       });
@@ -76,6 +81,13 @@ export class CleanupService {
           if (this.storage.fileExists(doc.path)) {
             this.storage.deleteFile(doc.path);
             deletedFiles++;
+          }
+
+          // Eliminar thumbnail si existe
+          const paths = this.storage.getPaths();
+          const thumbnailPath = join(paths.thumbnails, `thumb_${doc.id}.jpg`);
+          if (existsSync(thumbnailPath)) {
+            unlinkSync(thumbnailPath);
           }
 
           // Eliminar versiones físicas
