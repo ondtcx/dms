@@ -570,6 +570,9 @@ model Document {
   deletedBy       User?              @relation("DeletedByUser", fields: [deletedById], references: [id], onDelete: SetNull)
   deletedById     String? // Usuario que eliminó el documento
 
+  // Archivo histórico
+  archivedAt      DateTime? // Fecha de archivado automático (null si está activo)
+
   // Auditoría
   accesses        DocumentAccess[]     // Registro de accesos al documento
   permissions     DocumentPermission[] // Permisos específicos del documento
@@ -603,6 +606,7 @@ model Document {
   @@index([subjectId])
   @@index([batchId])
   @@index([deletedAt]) // Índice para filtrar documentos eliminados
+  @@index([archivedAt]) // Índice para filtrar documentos archivados
   @@index([createdAt]) // Índice para ordenar por fecha
   @@index([searchVector], type: Gin) // Índice GIN para búsqueda full-text
 }

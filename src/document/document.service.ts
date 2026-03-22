@@ -968,6 +968,170 @@ export class DocumentService {
     };
   }
 
+  // ============ Archivo histórico ============
+
+  /**
+   * Listar documentos archivados con paginación y filtros
+   */
+  async findArchived(
+    query: { search?: string; categoryId?: number; page?: number; limit?: number },
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const { search, categoryId, page = 1, limit = 50 } = query;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, departmentId: true },
+    });
+
+    const accessFilter = user
+      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      : null;
+
+    const where: any = {
+      AND: [
+        { deletedAt: null },
+        { path: { contains: '/archive/' } },
+      ],
+    };
+
+    if (accessFilter) {
+      where.AND.push(accessFilter);
+    }
+
+    if (search) {
+      where.AND.push({
+        OR: [
+          { filename: { contains: search, mode: 'insensitive' } },
+          { description: { contains: search, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (categoryId) {
+      where.AND.push({ categoryId });
+    }
+
+    const skip = (page - 1) * limit;
+
+    const [documents, total] = await Promise.all([
+      this.prisma.document.findMany({
+        where,
+        include: {
+          uploadedBy: { select: { id: true, name: true, email: true, role: true } },
+          category: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              icon: true,
+              section: { select: { id: true, name: true, color: true, icon: true } },
+            },
+          },
+          template: { select: { id: true, name: true, type: true } },
+        },
+        orderBy: { archivedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.document.count({ where }),
+    ]);
+
+    return {
+      data: documents,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  /**
+   * Estadísticas del archivo histórico: total y distribución por categoría
+   */
+  async getArchiveStats(userId: string, userRole: UserRole) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true, departmentId: true },
+    });
+
+    const accessFilter = user
+      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      : null;
+
+    const baseWhere: any = {
+      AND: [
+        { deletedAt: null },
+        { path: { contains: '/archive/' } },
+        ...(accessFilter ? [accessFilter] : []),
+      ],
+    };
+
+    const [total, byCategory] = await Promise.all([
+      this.prisma.document.count({ where: baseWhere }),
+      this.prisma.document.groupBy({
+        by: ['categoryId'],
+        where: { ...baseWhere, categoryId: { not: null } },
+        _count: { categoryId: true },
+        orderBy: { _count: { categoryId: 'desc' } },
+      }),
+    ]);
+
+    const categoryIds = byCategory.map((b) => b.categoryId).filter(Boolean) as number[];
+    const categories = await this.prisma.category.findMany({
+      where: { id: { in: categoryIds } },
+      select: { id: true, name: true, color: true },
+    });
+    const catMap = Object.fromEntries(categories.map((c) => [c.id, c]));
+
+    return {
+      total,
+      byCategory: byCategory.map((b) => ({
+        categoryId: b.categoryId,
+        categoryName: catMap[b.categoryId!]?.name ?? 'Sin categoría',
+        categoryColor: catMap[b.categoryId!]?.color ?? '#6b7280',
+        count: b._count.categoryId,
+      })),
+    };
+  }
+
+  /**
+   * Restaurar documento desde el archivo histórico al activo
+   */
+  async restoreFromArchive(id: number, userId: string, userRole: UserRole) {
+    const document = await this.prisma.document.findUnique({ where: { id } });
+
+    if (!document) {
+      throw new NotFoundException('Documento no encontrado');
+    }
+
+    if (!document.path.includes('/archive/')) {
+      throw new BadRequestException('El documento no está archivado');
+    }
+
+    const canRestore =
+      userRole === UserRole.ADMIN ||
+      userRole === UserRole.DIRECTOR ||
+      document.uploadedById === userId;
+
+    if (!canRestore) {
+      throw new ForbiddenException('No tienes permiso para restaurar este documento');
+    }
+
+    const storageLocation = this.storage.generateStructuredPath(
+      document.uploadedById,
+      document.categoryId,
+      document.storedName,
+    );
+
+    this.storage.moveFile(document.path, storageLocation.path);
+
+    await this.prisma.document.update({
+      where: { id },
+      data: { path: storageLocation.path, archivedAt: null },
+    });
+
+    return { message: 'Documento restaurado al archivo activo exitosamente' };
+  }
+
   // ============ Extracción de Texto de PDFs ============
 
   /**

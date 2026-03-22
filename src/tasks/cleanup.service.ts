@@ -169,7 +169,7 @@ export class CleanupService implements OnModuleInit {
           // Actualizar registro en BD
           await this.prisma.document.update({
             where: { id: doc.id },
-            data: { path: newPath },
+            data: { path: newPath, archivedAt: new Date() },
           });
 
           archived++;

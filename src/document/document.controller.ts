@@ -283,6 +283,31 @@ export class DocumentController {
     return this.documentsService.getStats(user.id, user.role);
   }
 
+  @Get('archive/stats')
+  @ApiOperation({ summary: 'Obtener estadísticas del archivo histórico' })
+  @ApiResponse({ status: 200, description: 'Total archivados y distribución por categoría' })
+  getArchiveStats(@CurrentUser() user: any) {
+    return this.documentsService.getArchiveStats(user.id, user.role);
+  }
+
+  @Get('archive')
+  @ApiOperation({ summary: 'Listar documentos archivados' })
+  @ApiResponse({ status: 200, description: 'Lista paginada de documentos archivados' })
+  findArchived(@Query() query: QueryDocumentDto, @CurrentUser() user: any) {
+    return this.documentsService.findArchived(query, user.id, user.role);
+  }
+
+  @Post(':id/restore-from-archive')
+  @ApiOperation({ summary: 'Restaurar documento desde el archivo histórico al activo' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Documento restaurado al activo' })
+  @ApiResponse({ status: 400, description: 'El documento no está archivado' })
+  @ApiResponse({ status: 403, description: 'Sin permiso para restaurar' })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  restoreFromArchive(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.documentsService.restoreFromArchive(id, user.id, user.role);
+  }
+
   @Get('calendar')
   @ApiOperation({ summary: 'Obtener documentos agrupados por fecha para vista de calendario' })
   @ApiResponse({
