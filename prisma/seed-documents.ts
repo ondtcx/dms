@@ -93,6 +93,34 @@ async function createFromTemplate(
   return res.json();
 }
 
+async function apiPost(path: string, token: string, body: object): Promise<any> {
+  const res = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const error = await res.text();
+    throw new Error(`POST ${path} failed: ${res.status} - ${error}`);
+  }
+  return res.json();
+}
+
+async function startWorkflow(token: string, documentId: number, templateId: number): Promise<{ id: number }> {
+  return apiPost(`/workflows/documents/${documentId}/initiate`, token, { templateId });
+}
+
+async function approveWorkflow(token: string, workflowId: number, action: string, comment?: string): Promise<void> {
+  await apiPost(`/workflows/${workflowId}/approve`, token, { action, ...(comment ? { comment } : {}) });
+}
+
+async function addComment(token: string, documentId: number, content: string, parentId?: number): Promise<{ id: number }> {
+  return apiPost(`/documents/${documentId}/comments`, token, { content, ...(parentId ? { parentId } : {}) });
+}
+
 // ============================================================
 // Datos de ejemplo para cada plantilla
 // ============================================================
@@ -710,9 +738,17 @@ async function main() {
     secByName[s.name] = s.id;
   }
 
+  // Obtener IDs de workflow templates
+  const wfTemplatesRaw = await apiGet<any[]>('/workflows/templates', token);
+  const wfByName: Record<string, number> = {};
+  for (const t of wfTemplatesRaw) {
+    wfByName[t.name] = t.id;
+  }
+
   console.log('\n📝 Creando documentos desde plantillas...\n');
 
   let created = 0;
+  const docsCreated: Record<string, number> = {};
 
   // --- Actas de Reunión de Personal (Directora) ---
   const actaId = docTemplateByName['Acta de Reunión de Personal'];
@@ -721,13 +757,14 @@ async function main() {
   } else {
     for (const acta of getActaReunionPersonalData()) {
       try {
-        await createFromTemplate(sessions['director@colegio.edu'].token, {
+        const doc = await createFromTemplate(sessions['director@colegio.edu'].token, {
           templateId: actaId,
           formData: acta.formData,
           filename: acta.filename,
           description: acta.description,
           sectionId: secByName['Gestión Académica'],
         });
+        if (!docsCreated.actaReunionConsejo) docsCreated.actaReunionConsejo = doc.id;
         console.log(`  ✅ ${acta.filename}`);
         created++;
       } catch (e: any) {
@@ -744,13 +781,15 @@ async function main() {
   } else {
     for (const constancia of getConstanciaEstudioData()) {
       try {
-        await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
+        const doc = await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
           templateId: constanciaId,
           formData: constancia.formData,
           filename: constancia.filename,
           description: constancia.description,
           sectionId: secByName['Gestión Institucional'],
         });
+        if (!docsCreated.constanciaValentina) docsCreated.constanciaValentina = doc.id;
+        else docsCreated.constanciaSantiago = doc.id;
         console.log(`  ✅ ${constancia.filename}`);
         created++;
       } catch (e: any) {
@@ -813,13 +852,14 @@ async function main() {
   } else {
     for (const informe of getInformePedagogicoGrupoData()) {
       try {
-        await createFromTemplate(sessions['coord.primaria@colegio.edu'].token, {
+        const doc = await createFromTemplate(sessions['coord.primaria@colegio.edu'].token, {
           templateId: informeId,
           formData: informe.formData,
           filename: informe.filename,
           description: informe.description,
           sectionId: secByName['Gestión Académica'],
         });
+        docsCreated.informePedagogico = doc.id;
         console.log(`  ✅ ${informe.filename}`);
         created++;
       } catch (e: any) {
@@ -884,13 +924,14 @@ async function main() {
   } else {
     for (const doc of getPlanificacionSemanalData()) {
       try {
-        await createFromTemplate(sessions['maestro.3p@colegio.edu'].token, {
+        const created_doc = await createFromTemplate(sessions['maestro.3p@colegio.edu'].token, {
           templateId: planSemanalId,
           formData: doc.formData,
           filename: doc.filename,
           description: doc.description,
           sectionId: secByName['Gestión Académica'],
         });
+        docsCreated.planificacionSemanal3p = created_doc.id;
         console.log(`  ✅ ${doc.filename}`);
         created++;
       } catch (e: any) {
@@ -907,13 +948,14 @@ async function main() {
   } else {
     for (const doc of getProyectoPedagogicoData()) {
       try {
-        await createFromTemplate(sessions['maestro.5p@colegio.edu'].token, {
+        const created_doc = await createFromTemplate(sessions['maestro.5p@colegio.edu'].token, {
           templateId: proyectoId,
           formData: doc.formData,
           filename: doc.filename,
           description: doc.description,
           sectionId: secByName['Gestión Académica'],
         });
+        docsCreated.proyectoPedagogico = created_doc.id;
         console.log(`  ✅ ${doc.filename}`);
         created++;
       } catch (e: any) {
@@ -930,13 +972,14 @@ async function main() {
   } else {
     for (const doc of getPlanEvaluacionData()) {
       try {
-        await createFromTemplate(sessions['prof.matematica@colegio.edu'].token, {
+        const created_doc = await createFromTemplate(sessions['prof.matematica@colegio.edu'].token, {
           templateId: planEvalId,
           formData: doc.formData,
           filename: doc.filename,
           description: doc.description,
           sectionId: secByName['Gestión Académica'],
         });
+        docsCreated.planEvaluacion = created_doc.id;
         console.log(`  ✅ ${doc.filename}`);
         created++;
       } catch (e: any) {
@@ -955,13 +998,14 @@ async function main() {
   } else {
     for (const doc of getActaConsejoGradoData()) {
       try {
-        await createFromTemplate(sessions['coord.secundaria@colegio.edu'].token, {
+        const created_doc = await createFromTemplate(sessions['coord.secundaria@colegio.edu'].token, {
           templateId: actaConsejoId,
           formData: doc.formData,
           filename: doc.filename,
           description: doc.description,
           sectionId: secByName['Gestión Académica'],
         });
+        docsCreated.actaConsejo = created_doc.id;
         console.log(`  ✅ ${doc.filename}`);
         created++;
       } catch (e: any) {
@@ -978,13 +1022,14 @@ async function main() {
   } else {
     for (const doc of getActaCompromisoData()) {
       try {
-        await createFromTemplate(sessions['maestro.2p@colegio.edu'].token, {
+        const created_doc = await createFromTemplate(sessions['maestro.2p@colegio.edu'].token, {
           templateId: actaCompromisoId,
           formData: doc.formData,
           filename: doc.filename,
           description: doc.description,
           sectionId: secByName['Gestión Académica'],
         });
+        docsCreated.actaCompromiso = created_doc.id;
         console.log(`  ✅ ${doc.filename}`);
         created++;
       } catch (e: any) {
@@ -1188,6 +1233,215 @@ async function main() {
     }
   }
 
+  // ============================================================
+  // FASE 2: Iniciar workflows
+  // ============================================================
+  console.log('\n📋 Fase 2: Iniciando workflows...');
+
+  const wfRevisionPlan = wfByName['Revisión de Planificación'];
+  const wfAprobacionAcademica = wfByName['Aprobación Académica'];
+  const wfRevisionActa = wfByName['Revisión de Acta'];
+  const wfEmisionConstancia = wfByName['Emisión de Constancia'];
+
+  // Planificación semanal 3° Grado → pendiente para coordinador de primaria
+  let wfPlanificacion3p: { id: number } | null = null;
+  if (wfRevisionPlan && docsCreated.planificacionSemanal3p) {
+    try {
+      wfPlanificacion3p = await startWorkflow(sessions['maestro.3p@colegio.edu'].token, docsCreated.planificacionSemanal3p, wfRevisionPlan);
+      console.log('  ✅ Workflow iniciado: Planificación Semanal 3° Grado → pendiente coordinador');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Planificación 3°: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Proyecto Pedagógico → pendiente para coordinador de primaria
+  if (wfRevisionPlan && docsCreated.proyectoPedagogico) {
+    try {
+      await startWorkflow(sessions['maestro.5p@colegio.edu'].token, docsCreated.proyectoPedagogico, wfRevisionPlan);
+      console.log('  ✅ Workflow iniciado: Proyecto Pedagógico → pendiente coordinador');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Proyecto Pedagógico: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Acta de Consejo de Grado → pendiente para director
+  if (wfRevisionActa && docsCreated.actaConsejo) {
+    try {
+      await startWorkflow(sessions['coord.secundaria@colegio.edu'].token, docsCreated.actaConsejo, wfRevisionActa);
+      console.log('  ✅ Workflow iniciado: Acta de Consejo de Grado → pendiente director');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Acta Consejo: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Constancia Valentina → pendiente para director
+  if (wfEmisionConstancia && docsCreated.constanciaValentina) {
+    try {
+      await startWorkflow(sessions['secretaria@colegio.edu'].token, docsCreated.constanciaValentina, wfEmisionConstancia);
+      console.log('  ✅ Workflow iniciado: Constancia Valentina → pendiente director');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Constancia Valentina: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Plan de Evaluación → flujo multi-paso: coord.secundaria aprobará en Fase 3 → después pendiente director
+  let wfPlanEval: { id: number } | null = null;
+  if (wfAprobacionAcademica && docsCreated.planEvaluacion) {
+    try {
+      wfPlanEval = await startWorkflow(sessions['prof.matematica@colegio.edu'].token, docsCreated.planEvaluacion, wfAprobacionAcademica);
+      console.log('  ✅ Workflow iniciado: Plan de Evaluación → Aprobación Académica (2 pasos)');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Plan Evaluación: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Constancia Santiago → secretaria inicia, director aprobará en Fase 3
+  let wfConstanciaSantiago: { id: number } | null = null;
+  if (wfEmisionConstancia && docsCreated.constanciaSantiago) {
+    try {
+      wfConstanciaSantiago = await startWorkflow(sessions['secretaria@colegio.edu'].token, docsCreated.constanciaSantiago, wfEmisionConstancia);
+      console.log('  ✅ Workflow iniciado: Constancia Santiago → para aprobar');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Constancia Santiago: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Acta de Compromiso → secretaria inicia, director rechazará en Fase 3
+  let wfActaCompromiso: { id: number } | null = null;
+  if (wfRevisionActa && docsCreated.actaCompromiso) {
+    try {
+      wfActaCompromiso = await startWorkflow(sessions['secretaria@colegio.edu'].token, docsCreated.actaCompromiso, wfRevisionActa);
+      console.log('  ✅ Workflow iniciado: Acta de Compromiso → para rechazar');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Acta Compromiso: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // ============================================================
+  // FASE 3: Procesar aprobaciones
+  // ============================================================
+  console.log('\n✅ Fase 3: Procesando aprobaciones...');
+
+  // Plan de Evaluación — coord.secundaria aprueba paso 1 → avanza al director
+  if (wfPlanEval) {
+    try {
+      await approveWorkflow(sessions['coord.secundaria@colegio.edu'].token, wfPlanEval.id, 'APPROVED', 'Planificación revisada. Criterios de evaluación correctos y alineados al programa.');
+      console.log('  ✅ Coord. Secundaria aprobó Plan de Evaluación (paso 1/2) → ahora pendiente director');
+    } catch (e: any) {
+      console.error(`  ❌ Aprobación Plan Evaluación paso 1: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Constancia Santiago — director aprueba → APROBADO
+  if (wfConstanciaSantiago) {
+    try {
+      await approveWorkflow(sessions['director@colegio.edu'].token, wfConstanciaSantiago.id, 'APPROVED');
+      console.log('  ✅ Director aprobó Constancia de Santiago → APROBADA');
+    } catch (e: any) {
+      console.error(`  ❌ Aprobación Constancia Santiago: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Acta de Compromiso — director rechaza con motivo
+  if (wfActaCompromiso) {
+    try {
+      await approveWorkflow(
+        sessions['director@colegio.edu'].token,
+        wfActaCompromiso.id,
+        'REJECTED',
+        'El acta no incluye las firmas originales de los representantes ni del docente. Favor adjuntar la documentación completa escaneada antes de reenviar.',
+      );
+      console.log('  ✅ Director rechazó Acta de Compromiso con motivo → RECHAZADA');
+    } catch (e: any) {
+      console.error(`  ❌ Rechazo Acta Compromiso: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // ============================================================
+  // FASE 4: Agregar comentarios
+  // ============================================================
+  console.log('\n💬 Fase 4: Agregando comentarios...');
+
+  // Proyecto Pedagógico — coordinadora comenta y maestro responde (threading)
+  if (docsCreated.proyectoPedagogico) {
+    try {
+      const comment1 = await addComment(
+        sessions['coord.primaria@colegio.edu'].token,
+        docsCreated.proyectoPedagogico,
+        'Revisar los objetivos específicos de la Unidad 3. La metodología propuesta para Ciencias Naturales requiere mayor detalle en las actividades experimentales y los recursos necesarios.',
+      );
+      console.log('  ✅ Comentario de Coord. Primaria en Proyecto Pedagógico');
+      await delay(300);
+
+      await addComment(
+        sessions['maestro.5p@colegio.edu'].token,
+        docsCreated.proyectoPedagogico,
+        'Actualizado según las indicaciones. Se incorporaron las actividades de laboratorio con materiales reciclados y se amplió la bibliografía de referencia para cada semana.',
+        comment1.id,
+      );
+      console.log('  ✅ Respuesta del Maestro 5° Grado (reply en thread)');
+    } catch (e: any) {
+      console.error(`  ❌ Comentarios Proyecto Pedagógico: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Acta de Reunión Consejo Docente — director agrega nota
+  if (docsCreated.actaReunionConsejo) {
+    try {
+      await addComment(
+        sessions['director@colegio.edu'].token,
+        docsCreated.actaReunionConsejo,
+        'Confirmar asistencia del representante de 3°C antes de la firma definitiva del acta. Pendiente también el cierre de los acuerdos del punto 4.',
+      );
+      console.log('  ✅ Comentario de Director en Acta de Reunión Consejo Docente');
+    } catch (e: any) {
+      console.error(`  ❌ Comentario Acta Reunión: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Informe Pedagógico — coordinadora agrega observación
+  if (docsCreated.informePedagogico) {
+    try {
+      await addComment(
+        sessions['coord.primaria@colegio.edu'].token,
+        docsCreated.informePedagogico,
+        'Excelente informe. Compartir este análisis con los maestros de apoyo para coordinar el plan de intervención de los alumnos identificados con dificultades lectoras.',
+      );
+      console.log('  ✅ Comentario de Coord. Primaria en Informe Pedagógico');
+    } catch (e: any) {
+      console.error(`  ❌ Comentario Informe Pedagógico: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Planificación Semanal — coordinadora solicita cambio
+  if (docsCreated.planificacionSemanal3p && wfPlanificacion3p) {
+    try {
+      await approveWorkflow(
+        sessions['coord.primaria@colegio.edu'].token,
+        wfPlanificacion3p.id,
+        'REQUESTED_CHANGES',
+        'Agregar los indicadores de evaluación para cada objetivo y especificar los tiempos estimados por actividad. El resto de la planificación está muy bien estructurada.',
+      );
+      console.log('  ✅ Coord. Primaria solicitó cambios en Planificación Semanal 3° Grado');
+    } catch (e: any) {
+      console.error(`  ❌ Solicitud de cambios Planificación: ${e.message}`);
+    }
+    await delay(400);
+  }
+
   console.log(`\n🎉 ${created} documentos generados exitosamente!`);
   console.log('\nDocumentos creados por:');
   console.log('  • Directora: actas de reunión, memorándums, circular informativa, contrato de inscripción');
@@ -1203,6 +1457,12 @@ async function main() {
   console.log('  • Prof. Biología: solicitud de permiso laboral');
   console.log('  • Prof. Matemática: plan de evaluación trimestral');
   console.log('  • Prof. Lengua: informe de rendimiento académico individual');
+  console.log('\nEstado de workflows para la demo:');
+  console.log('  📌 Pendientes para el Director: Acta Consejo de Grado, Constancia Valentina, Plan de Evaluación');
+  console.log('  📌 Pendientes para Coord. Primaria: Proyecto Pedagógico');
+  console.log('  ✅ Aprobados: Constancia Santiago Ramírez');
+  console.log('  ❌ Rechazados: Acta de Compromiso (con motivo del director)');
+  console.log('  🔄 Cambios solicitados: Planificación Semanal 3° Grado');
 }
 
 main().catch((e) => {
