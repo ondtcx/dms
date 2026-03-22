@@ -3,7 +3,9 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
+import { UserRole } from '../auth/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShareService } from '../share/share.service';
 import { BatchUpdateDto } from './dto/batch-update.dto';
@@ -17,6 +19,8 @@ import { join } from 'path';
 
 @Injectable()
 export class BatchService {
+  private readonly logger = new Logger(BatchService.name);
+
   constructor(
     private prisma: PrismaService,
     private shareService: ShareService,
@@ -326,5 +330,115 @@ export class BatchService {
       restored: documents.length,
       documentIds,
     };
+  }
+
+  // ============ Gestión de lotes de documentos ============
+
+  async listBatches(userId: string, userRole: UserRole, page: number | string = 1, limit: number | string = 20) {
+    const pageNum = parseInt(String(page), 10) || 1;
+    const limitNum = parseInt(String(limit), 10) || 20;
+    const where = userRole === UserRole.ADMIN ? {} : { createdById: userId };
+    const skip = (pageNum - 1) * limitNum;
+
+    const [batches, total] = await Promise.all([
+      this.prisma.documentBatch.findMany({
+        where,
+        include: {
+          template: { select: { id: true, name: true, type: true } },
+          createdBy: { select: { id: true, name: true, email: true } },
+          _count: { select: { documents: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limitNum,
+      }),
+      this.prisma.documentBatch.count({ where }),
+    ]);
+
+    return {
+      data: batches,
+      meta: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
+    };
+  }
+
+  async getBatch(id: string, userId: string, userRole: UserRole) {
+    const batch = await this.prisma.documentBatch.findUnique({
+      where: { id },
+      include: {
+        template: { select: { id: true, name: true, type: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        documents: {
+          where: { deletedAt: null },
+          include: {
+            uploadedBy: { select: { id: true, name: true, email: true } },
+            category: {
+              select: {
+                id: true,
+                name: true,
+                color: true,
+                icon: true,
+                section: { select: { id: true, name: true, color: true, icon: true } },
+              },
+            },
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
+    });
+
+    if (!batch) {
+      throw new NotFoundException('Lote no encontrado');
+    }
+
+    if (userRole !== UserRole.ADMIN && batch.createdById !== userId) {
+      throw new ForbiddenException('No tienes permiso para ver este lote');
+    }
+
+    return batch;
+  }
+
+  async deleteBatch(id: string, userId: string, userRole: UserRole) {
+    const batch = await this.getBatch(id, userId, userRole);
+
+    const docsCount = batch.documents.length;
+
+    // Soft-delete todos los documentos del lote
+    await this.prisma.document.updateMany({
+      where: { batchId: id, deletedAt: null },
+      data: { deletedAt: new Date(), deletedById: userId },
+    });
+
+    // Eliminar el registro del lote
+    await this.prisma.documentBatch.delete({ where: { id } });
+
+    this.logger.log(`Batch ${id} deleted by user ${userId}. ${docsCount} documents soft-deleted.`);
+
+    return { success: true, deletedDocuments: docsCount };
+  }
+
+  async exportBatch(id: string, userId: string, userRole: UserRole, res: Response) {
+    const batch = await this.getBatch(id, userId, userRole);
+
+    const batchName = batch.name.replace(/[^a-zA-Z0-9\-_\s]/g, '').trim().replace(/\s+/g, '-');
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="lote-${batchName}-${Date.now()}.zip"`,
+    );
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    for (const doc of batch.documents) {
+      const filePath = join(process.cwd(), doc.path.startsWith('/') ? doc.path.slice(1) : doc.path);
+      if (existsSync(filePath)) {
+        archive.append(createReadStream(filePath), { name: doc.filename });
+      } else {
+        this.logger.warn(`File not found for document ${doc.id}: ${filePath}`);
+      }
+    }
+
+    await archive.finalize();
   }
 }

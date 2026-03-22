@@ -57,11 +57,6 @@ enum DocumentVersionSource {
   CAMBIOS_SOLICITADOS // Reemplazo en respuesta a un workflow activo
 }
 
-enum CategoryContext {
-  ACADEMIC        // Documentos ligados a cursos/materias (planificaciones, informes de clase)
-  ADMINISTRATIVE  // Documentos organizacionales internos (actas, circulares, certificados)
-  INSTITUTIONAL   // Documentos normativos o institucionales (legales, financieros)
-}
 
 enum NotificationType {
   DOCUMENT_SHARED           // Documento compartido
@@ -125,9 +120,9 @@ model WorkflowTemplate {
   id                 Int                @id @default(autoincrement())
   name               String             @unique // Nombre de la plantilla (ej: "Aprobación de Documentos Administrativos")
   description        String? // Descripción del workflow
-  documentType       String? // Tipo de documento al que aplica (ej: "acta", "certificado")
   categoryId         Int? // Categoría de documentos a la que aplica
   category           Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sections           Section[]          // Secciones a las que aplica (M2M)
   stateDefinitions   Json // Definición de estados y transiciones [{state: "pending_coord", role: "coordinador", order: 1}]
   autoAssign            Boolean            @default(true) // Auto-asignar aprobadores según rol
   requiresComment       Boolean            @default(false) // Requiere comentario al aprobar/rechazar
@@ -140,7 +135,6 @@ model WorkflowTemplate {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  @@index([documentType])
   @@index([categoryId])
   @@index([isActive])
 }
@@ -484,6 +478,9 @@ model User {
   transfersFrom       TransferHistory[]   @relation("TransferFromUser") // Transferencias iniciadas por el usuario
   transfersTo         TransferHistory[]   @relation("TransferToUser") // Transferencias recibidas por el usuario
 
+  // Relaciones de lotes de documentos
+  createdBatches      DocumentBatch[]     @relation("CreatedBatches")
+
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
 
@@ -498,30 +495,37 @@ model Category {
   icon              String?            @default("Folder") // Nombre del icono de lucide-react
   isActive          Boolean            @default(true) // Si la categoría está activa
 
-  // Tipo y control de acceso
-  context           CategoryContext    @default(ADMINISTRATIVE) // Tipo de documentos que admite
+  // Sección a la que pertenece esta categoría (jerarquía Section → Category)
+  // El contexto institucional se hereda de section.context
+  sectionId         Int?
+  section           Section?           @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  // Control de acceso
   requiresCourse    Boolean            @default(false) // Si requiere asignar curso al subir
   allowedRoles      Json               @default("[]") // UserRole[] vacío = sin restricción
 
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
+  documentTemplates DocumentTemplate[] // Plantillas de documento de esta categoría
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   @@index([name])
-  @@index([context])
+  @@index([sectionId])
 }
 
 model Section {
-  id          Int        @id @default(autoincrement())
-  name        String     @unique // Nombre de la sección (ej: "Académico", "Administrativo")
+  id          Int              @id @default(autoincrement())
+  name        String           @unique // Nombre de la sección (ej: "Gestión Académica")
   description String? // Descripción de la sección
-  color       String?    @default("#10b981") // Color hexadecimal para identificación visual
-  icon        String?    @default("FolderOpen") // Nombre del icono de lucide-react
-  isActive    Boolean    @default(true) // Si la sección está activa
-  documents   Document[] // Documentos de esta sección
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  color       String?          @default("#10b981") // Color hexadecimal para identificación visual
+  icon        String?          @default("FolderOpen") // Nombre del icono de lucide-react
+  isActive    Boolean          @default(true) // Si la sección está activa
+
+  workflowTemplates WorkflowTemplate[] // Templates de workflow que aplican a esta sección (M2M)
+  categories  Category[] // Categorías que pertenecen a esta sección
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   @@index([name])
 }
@@ -534,10 +538,8 @@ model Document {
   size            Int // Tamaño en bytes
   path            String // Ruta donde está almacenado
   description     String? // Descripción del documento
-  categoryId      Int? // Relación con categoría
+  categoryId      Int? // Relación con categoría (la sección se deriva de category.section)
   category        Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sectionId       Int? // Relación con sección
-  section         Section?           @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
   // Relaciones organizacionales
   courseId        Int? // Relación con curso
@@ -551,6 +553,10 @@ model Document {
   templateId      Int? // Relación con plantilla si fue creado desde una
   template        DocumentTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
   formData        Json? // Datos del formulario si fue creado desde template
+
+  // Lote de generación
+  batchId         String? // FK al lote del que forma parte (null si es documento individual)
+  batch           DocumentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   // Versionado
   currentVersion  Int                @default(1) // Versión actual del documento
@@ -593,9 +599,9 @@ model Document {
   @@index([uploadedById])
   @@index([templateId])
   @@index([categoryId])
-  @@index([sectionId])
   @@index([courseId])
   @@index([subjectId])
+  @@index([batchId])
   @@index([deletedAt]) // Índice para filtrar documentos eliminados
   @@index([createdAt]) // Índice para ordenar por fecha
   @@index([searchVector], type: Gin) // Índice GIN para búsqueda full-text
@@ -636,7 +642,8 @@ model DocumentTemplate {
   id              Int        @id @default(autoincrement())
   name            String     @unique // Nombre de la plantilla (ej: "Acta de Reunión")
   type            String // Tipo de documento (ej: "acta", "certificado", "informe")
-  category        String? // Categoría de la plantilla: "academic", "administrative", "legal"
+  categoryId      Int? // Categoría a la que pertenece esta plantilla
+  category        Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   description     String? // Descripción de la plantilla
   fields          Json // Definición de campos del formulario en formato JSON
   htmlTemplate    String     @db.Text // Plantilla HTML con Handlebars para generar el documento
@@ -650,16 +657,35 @@ model DocumentTemplate {
   usageCount      Int        @default(0) // Contador de uso de la plantilla
   variableSchema  Json? // JSON Schema para validación de variables
   documents       Document[] // Documentos creados con esta plantilla
+  batches         DocumentBatch[] // Lotes generados con esta plantilla
   createdBy       User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdById     String
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
   @@index([type])
-  @@index([category])
+  @@index([categoryId])
   @@index([isPredefined])
   @@index([usageCount])
   @@index([createdById])
+}
+
+// Lote de documentos generados desde una plantilla
+model DocumentBatch {
+  id          String           @id @default(cuid())
+  name        String // Nombre descriptivo del lote
+  templateId  Int
+  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  createdById String
+  createdBy   User             @relation("CreatedBatches", fields: [createdById], references: [id], onDelete: Cascade)
+  documents   Document[] // Documentos que forman parte del lote
+  totalCount  Int              @default(0) // Número de documentos generados exitosamente
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([createdById])
+  @@index([templateId])
+  @@index([createdAt])
 }
 
 model DocumentVersion {

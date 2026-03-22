@@ -8,12 +8,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
+const CATEGORY_INCLUDE = {
+  section: {
+    select: { id: true, name: true, color: true, icon: true },
+  },
+  _count: {
+    select: { documents: true },
+  },
+};
+
 @Injectable()
 export class CategoryService {
   constructor(private prisma: PrismaService) {}
 
   async create(createCategoryDto: CreateCategoryDto) {
-    // Verificar que no exista una categoría con el mismo nombre
     const existing = await this.prisma.category.findUnique({
       where: { name: createCategoryDto.name },
     });
@@ -24,57 +32,31 @@ export class CategoryService {
       );
     }
 
-    const category = await this.prisma.category.create({
+    return this.prisma.category.create({
       data: createCategoryDto,
-      include: {
-        _count: {
-          select: { documents: true },
-        },
-      },
+      include: CATEGORY_INCLUDE,
     });
-
-    return category;
   }
 
   async findAll() {
-    const categories = await this.prisma.category.findMany({
-      include: {
-        _count: {
-          select: { documents: true },
-        },
-      },
-      orderBy: {
-        name: 'asc',
-      },
+    return this.prisma.category.findMany({
+      include: CATEGORY_INCLUDE,
+      orderBy: { name: 'asc' },
     });
-
-    return categories;
   }
 
   async findAllActive() {
-    const categories = await this.prisma.category.findMany({
+    return this.prisma.category.findMany({
       where: { isActive: true },
-      include: {
-        _count: {
-          select: { documents: true },
-        },
-      },
-      orderBy: {
-        name: 'asc',
-      },
+      include: CATEGORY_INCLUDE,
+      orderBy: { name: 'asc' },
     });
-
-    return categories;
   }
 
   async findOne(id: number) {
     const category = await this.prisma.category.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: { documents: true },
-        },
-      },
+      include: CATEGORY_INCLUDE,
     });
 
     if (!category) {
@@ -85,10 +67,8 @@ export class CategoryService {
   }
 
   async update(id: number, updateCategoryDto: UpdateCategoryDto) {
-    // Verificar que existe
     await this.findOne(id);
 
-    // Si se está cambiando el nombre, verificar que no exista otra con ese nombre
     if (updateCategoryDto.name) {
       const existing = await this.prisma.category.findUnique({
         where: { name: updateCategoryDto.name },
@@ -101,32 +81,22 @@ export class CategoryService {
       }
     }
 
-    const category = await this.prisma.category.update({
+    return this.prisma.category.update({
       where: { id },
       data: updateCategoryDto,
-      include: {
-        _count: {
-          select: { documents: true },
-        },
-      },
+      include: CATEGORY_INCLUDE,
     });
-
-    return category;
   }
 
   async remove(id: number) {
-    // Verificar que existe
-    await this.findOne(id);
-
-    // Verificar si tiene documentos asociados
     const category = await this.prisma.category.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: { documents: true },
-        },
-      },
+      include: { _count: { select: { documents: true } } },
     });
+
+    if (!category) {
+      throw new NotFoundException('Categoría no encontrada');
+    }
 
     if (category._count.documents > 0) {
       throw new BadRequestException(
@@ -134,9 +104,7 @@ export class CategoryService {
       );
     }
 
-    await this.prisma.category.delete({
-      where: { id },
-    });
+    await this.prisma.category.delete({ where: { id } });
 
     return { message: 'Categoría eliminada exitosamente' };
   }

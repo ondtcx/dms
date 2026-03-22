@@ -18,8 +18,25 @@ export class DocumentGeneratorService {
   private readonly logger = new Logger(DocumentGeneratorService.name);
 
   constructor() {
-    // Registrar helpers personalizados de Handlebars
     this.registerHandlebarsHelpers();
+    this.registerInstitutionPartial();
+  }
+
+  /**
+   * Registra el partial reutilizable de cabecera institucional.
+   * Usa inline styles para ser independiente del CSS de cada plantilla.
+   */
+  private registerInstitutionPartial() {
+    Handlebars.registerPartial(
+      'institutionHeader',
+      `<div style="text-align:center;margin-bottom:20px;padding-bottom:12px;border-bottom:1px solid #d1d5db;">` +
+        `{{#if _metadata.institutionLogo}}<img src="{{_metadata.institutionLogo}}" alt="Logo" style="height:52px;object-fit:contain;display:block;margin:0 auto 6px;">{{/if}}` +
+        `{{#if _metadata.institutionName}}<div style="font-size:15px;font-weight:700;color:#111827;margin-bottom:2px;">{{_metadata.institutionName}}</div>{{/if}}` +
+        `{{#if _metadata.institutionAddress}}<div style="font-size:9.5px;color:#6b7280;">{{_metadata.institutionAddress}}</div>{{/if}}` +
+        `{{#if _metadata.institutionPhone}}<div style="font-size:9.5px;color:#6b7280;">{{_metadata.institutionPhone}}{{#if _metadata.institutionEmail}} &nbsp;·&nbsp; {{_metadata.institutionEmail}}{{/if}}</div>{{/if}}` +
+        `{{#if _metadata.schoolYearName}}<div style="font-size:9px;color:#9ca3af;margin-top:2px;">Año Escolar {{_metadata.schoolYearName}}</div>{{/if}}` +
+        `</div>`,
+    );
   }
 
   /**

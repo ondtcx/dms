@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsOptional, IsString, IsBoolean, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, Min, IsPositive } from 'class-validator';
 
 export class QueryDocumentTemplateDto {
   @ApiProperty({
@@ -20,6 +20,17 @@ export class QueryDocumentTemplateDto {
   @IsOptional()
   @IsString()
   type?: string;
+
+  @ApiProperty({
+    description: 'Filtrar por categoría',
+    required: false,
+    example: 1,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  categoryId?: number;
 
   @ApiProperty({
     description: 'Filtrar por estado activo',

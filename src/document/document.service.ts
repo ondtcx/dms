@@ -40,12 +40,11 @@ export class DocumentService {
     uploadDocumentDto: UploadDocumentDto,
     userId: string,
   ) {
-    // 0. Validar acceso a la categoría (allowedRoles + requiresCourse) y derivar sección
-    let resolvedSectionId = uploadDocumentDto.sectionId;
+    // 0. Validar acceso a la categoría (allowedRoles + requiresCourse)
     if (uploadDocumentDto.categoryId) {
       const category = await this.prisma.category.findUnique({
         where: { id: uploadDocumentDto.categoryId },
-        select: { allowedRoles: true, requiresCourse: true, context: true },
+        select: { allowedRoles: true, requiresCourse: true },
       });
       if (category) {
         const allowed = category.allowedRoles as string[];
@@ -56,18 +55,6 @@ export class DocumentService {
         }
         if (category.requiresCourse && !uploadDocumentDto.courseId) {
           throw new BadRequestException('Esta categoría requiere especificar un curso');
-        }
-
-        // Auto-asignar sección según el contexto de la categoría
-        const CONTEXT_TO_SECTION: Record<string, string> = {
-          ACADEMIC: 'Gestión Académica',
-          ADMINISTRATIVE: 'Gestión Administrativa',
-          INSTITUTIONAL: 'Gestión Institucional',
-        };
-        const sectionName = CONTEXT_TO_SECTION[category.context as string];
-        if (sectionName) {
-          const section = await this.prisma.section.findFirst({ where: { name: sectionName }, select: { id: true } });
-          if (section) resolvedSectionId = section.id;
         }
       }
     }
@@ -102,7 +89,6 @@ export class DocumentService {
         path: storageLocation.path,
         description: uploadDocumentDto.description,
         categoryId: uploadDocumentDto.categoryId,
-        sectionId: resolvedSectionId,
         courseId: uploadDocumentDto.courseId,
         subjectId: uploadDocumentDto.subjectId,
         isPublic: uploadDocumentDto.isPublic || false,
@@ -113,11 +99,7 @@ export class DocumentService {
       },
       include: {
         uploadedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
+          select: { id: true, name: true, email: true },
         },
         category: {
           select: {
@@ -125,23 +107,11 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            context: true,
-          },
-        },
-        section: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
+            section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
         template: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
+          select: { id: true, name: true, type: true },
         },
       },
     });
@@ -177,7 +147,7 @@ export class DocumentService {
   }
 
   async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
-    const { search, categoryId, sectionId, isPublic, includeDeleted, onlyMine, page = 1, limit = 10 } = query;
+    const { search, categoryId, sectionId, isPublic, includeDeleted, onlyMine, excludeBatched, batchId, page = 1, limit = 10 } = query;
 
     // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
@@ -229,7 +199,7 @@ export class DocumentService {
     }
 
     if (sectionId) {
-      where.AND.push({ sectionId });
+      where.AND.push({ category: { sectionId } });
     }
 
     if (isPublic !== undefined) {
@@ -238,6 +208,14 @@ export class DocumentService {
 
     if (onlyMine) {
       where.AND.push({ uploadedById: userId });
+    }
+
+    if (excludeBatched) {
+      where.AND.push({ batchId: null });
+    }
+
+    if (batchId) {
+      where.AND.push({ batchId });
     }
 
     // Si no hay condiciones AND, usar objeto vacío
@@ -265,14 +243,7 @@ export class DocumentService {
               name: true,
               color: true,
               icon: true,
-            },
-          },
-          section: {
-            select: {
-              id: true,
-              name: true,
-              color: true,
-              icon: true,
+              section: { select: { id: true, name: true, color: true, icon: true } },
             },
           },
           template: {
@@ -288,6 +259,9 @@ export class DocumentService {
               status: true,
               currentState: true,
             },
+          },
+          batch: {
+            select: { id: true, name: true },
           },
         },
         orderBy: {
@@ -343,15 +317,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            context: true,
-          },
-        },
-        section: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
+            section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
         template: {
@@ -403,15 +369,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            context: true,
-          },
-        },
-        section: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
+            section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
         template: {
@@ -665,15 +623,7 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            context: true,
-          },
-        },
-        section: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
+            section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
         template: {
@@ -976,47 +926,25 @@ export class DocumentService {
     }
 
     if (sectionId) {
-      where.AND.push({ sectionId });
+      where.AND.push({ category: { sectionId } });
     }
 
     const documents = await this.prisma.document.findMany({
       where,
       include: {
-        uploadedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        uploadedBy: { select: { id: true, name: true, email: true } },
         category: {
           select: {
             id: true,
             name: true,
             color: true,
             icon: true,
-            context: true,
+            section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
-        section: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
+        template: { select: { id: true, name: true, type: true } },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { createdAt: 'desc' },
     });
 
     // Agrupar por fecha

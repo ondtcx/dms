@@ -80,4 +80,22 @@ export class QueryDocumentDto {
   @IsOptional()
   @Type(() => Number)
   limit?: number = 10;
+
+  @ApiPropertyOptional({
+    description: 'Excluir documentos que pertenecen a un lote',
+    example: true,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  excludeBatched?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar documentos de un lote específico',
+    example: 'clx1234abc',
+  })
+  @IsString()
+  @IsOptional()
+  batchId?: string;
 }

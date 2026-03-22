@@ -6,6 +6,7 @@ import {
   IsObject,
   IsBoolean,
   IsIn,
+  IsInt,
 } from 'class-validator';
 
 export class CreateDocumentTemplateDto {
@@ -136,4 +137,13 @@ p { line-height: 1.6; }`,
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiProperty({
+    description: 'ID de la categoría a la que pertenece esta plantilla',
+    example: 1,
+    required: false,
+  })
+  @IsInt()
+  @IsOptional()
+  categoryId?: number;
 }

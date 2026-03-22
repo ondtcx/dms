@@ -23,15 +23,6 @@ export class UploadDocumentDto {
   categoryId?: number;
 
   @ApiPropertyOptional({
-    description: 'ID de la sección del documento',
-    example: 1,
-  })
-  @IsInt()
-  @IsOptional()
-  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
-  sectionId?: number;
-
-  @ApiPropertyOptional({
     description: 'Si el documento es público',
     example: false,
     default: false,

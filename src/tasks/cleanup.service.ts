@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -7,14 +7,23 @@ import { readdirSync, statSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
 
 @Injectable()
-export class CleanupService {
+export class CleanupService implements OnModuleInit {
   private readonly logger = new Logger(CleanupService.name);
+  private isReady = false;
 
   constructor(
     private prisma: PrismaService,
     private storage: StorageService,
     private settingsService: SettingsService,
   ) {}
+
+  onModuleInit() {
+    // Esperar 30s tras el arranque antes de permitir que los crons toquen la BD,
+    // para asegurarse de que el pool de Prisma está estabilizado.
+    setTimeout(() => {
+      this.isReady = true;
+    }, 30_000);
+  }
 
   /**
    * Limpia archivos temporales mayores a 1 hora
@@ -54,6 +63,7 @@ export class CleanupService {
    */
   @Cron('0 2 * * *')
   async cleanTrash() {
+    if (!this.isReady) return;
     this.logger.log('🗑️  Iniciando limpieza de papelera...');
 
     try {
@@ -126,6 +136,7 @@ export class CleanupService {
    */
   @Cron('0 3 * * *')
   async archiveOldDocuments() {
+    if (!this.isReady) return;
     this.logger.log('📦 Iniciando archivado de documentos antiguos...');
 
     try {
@@ -179,6 +190,7 @@ export class CleanupService {
    */
   @Cron('0 4 1 * *')
   async cleanOldAuditLogs() {
+    if (!this.isReady) return;
     this.logger.log('📋 Iniciando limpieza de logs de auditoría antiguos...');
 
     try {
@@ -205,6 +217,7 @@ export class CleanupService {
    */
   @Cron('0 5 * * 0')
   async verifyFileIntegrity() {
+    if (!this.isReady) return;
     this.logger.log('🔍 Iniciando verificación de integridad de archivos...');
 
     try {

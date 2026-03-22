@@ -8,12 +8,18 @@ import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { QuerySectionDto } from './dto/query-section.dto';
 
+// Los documentos de una sección se cuentan via las categorías que le pertenecen
+const SECTION_INCLUDE = {
+  _count: {
+    select: { categories: true },
+  },
+};
+
 @Injectable()
 export class SectionService {
   constructor(private prisma: PrismaService) {}
 
   async create(createSectionDto: CreateSectionDto) {
-    // Verificar si ya existe una sección con el mismo nombre
     const existing = await this.prisma.section.findUnique({
       where: { name: createSectionDto.name },
     });
@@ -26,13 +32,7 @@ export class SectionService {
 
     return this.prisma.section.create({
       data: createSectionDto,
-      include: {
-        _count: {
-          select: {
-            documents: true,
-          },
-        },
-      },
+      include: SECTION_INCLUDE,
     });
   }
 
@@ -57,16 +57,8 @@ export class SectionService {
     const [sections, total] = await Promise.all([
       this.prisma.section.findMany({
         where,
-        include: {
-          _count: {
-            select: {
-              documents: true,
-            },
-          },
-        },
-        orderBy: {
-          name: 'asc',
-        },
+        include: SECTION_INCLUDE,
+        orderBy: { name: 'asc' },
         skip,
         take: limit,
       }),
@@ -75,25 +67,14 @@ export class SectionService {
 
     return {
       data: sections,
-      meta: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
     };
   }
 
   async findOne(id: number) {
     const section = await this.prisma.section.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: {
-            documents: true,
-          },
-        },
-      },
+      include: SECTION_INCLUDE,
     });
 
     if (!section) {
@@ -104,9 +85,8 @@ export class SectionService {
   }
 
   async update(id: number, updateSectionDto: UpdateSectionDto) {
-    await this.findOne(id); // Verificar que existe
+    await this.findOne(id);
 
-    // Si se está actualizando el nombre, verificar que no exista otro con ese nombre
     if (updateSectionDto.name) {
       const existing = await this.prisma.section.findUnique({
         where: { name: updateSectionDto.name },
@@ -122,58 +102,43 @@ export class SectionService {
     return this.prisma.section.update({
       where: { id },
       data: updateSectionDto,
-      include: {
-        _count: {
-          select: {
-            documents: true,
-          },
-        },
-      },
+      include: SECTION_INCLUDE,
     });
   }
 
   async remove(id: number) {
-    await this.findOne(id); // Verificar que existe
-
-    // Verificar si hay documentos asociados
     const section = await this.prisma.section.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: {
-            documents: true,
-          },
-        },
-      },
+      include: { _count: { select: { categories: true } } },
     });
 
-    if (section._count.documents > 0) {
+    if (!section) {
+      throw new NotFoundException('Sección no encontrada');
+    }
+
+    if (section._count.categories > 0) {
       throw new ConflictException(
-        `No se puede eliminar la sección porque tiene ${section._count.documents} documento(s) asociado(s). Primero reasigna o elimina los documentos.`,
+        `No se puede eliminar la sección porque tiene ${section._count.categories} categoría(s) asociada(s). Primero reasigna las categorías.`,
       );
     }
 
-    await this.prisma.section.delete({
-      where: { id },
-    });
+    await this.prisma.section.delete({ where: { id } });
 
     return { message: 'Sección eliminada exitosamente' };
   }
 
-  // Método para obtener estadísticas
   async getStats() {
     const sections = await this.prisma.section.findMany({
       where: { isActive: true },
       include: {
-        _count: {
+        categories: {
           select: {
-            documents: true,
+            _count: { select: { documents: true } },
           },
         },
+        _count: { select: { categories: true } },
       },
-      orderBy: {
-        name: 'asc',
-      },
+      orderBy: { name: 'asc' },
     });
 
     return sections.map((section) => ({
@@ -181,7 +146,11 @@ export class SectionService {
       name: section.name,
       color: section.color,
       icon: section.icon,
-      documentCount: section._count.documents,
+      categoryCount: section._count.categories,
+      documentCount: section.categories.reduce(
+        (sum, cat) => sum + cat._count.documents,
+        0,
+      ),
     }));
   }
 }

@@ -14,11 +14,26 @@ import { UpdateDocumentTemplateDto } from './dto/update-document-template.dto';
 import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CreateDocumentFromTemplateDto } from './dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from './dto/update-document-from-template.dto';
+import { CreateBatchFromTemplateDto } from './dto/create-batch-from-template.dto';
 import { UserRole } from '../auth/role.enum';
 import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
 import { ThumbnailService } from '../document/thumbnail.service';
+import { SettingsService } from '../settings/settings.service';
+
+const CATEGORY_INCLUDE = {
+  category: {
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      icon: true,
+      allowedRoles: true,
+      section: { select: { id: true, name: true } },
+    },
+  },
+} as const;
 
 @Injectable()
 export class DocumentTemplateService {
@@ -29,7 +44,62 @@ export class DocumentTemplateService {
     private documentGenerator: DocumentGeneratorService,
     @Inject(forwardRef(() => ThumbnailService))
     private thumbnailService: ThumbnailService,
+    private settingsService: SettingsService,
   ) {}
+
+  /**
+   * Retorna los IDs de categorías que el rol puede acceder.
+   * Vacío = sin restricción (categoría sin allowedRoles).
+   */
+  private async getAllowedCategoryIds(userRole: UserRole): Promise<number[]> {
+    const categories = await this.prisma.category.findMany({
+      select: { id: true, allowedRoles: true },
+    });
+    return categories
+      .filter((cat) => {
+        const roles = cat.allowedRoles as string[];
+        return roles.length === 0 || roles.includes(userRole);
+      })
+      .map((cat) => cat.id);
+  }
+
+  /**
+   * Lee la configuración institucional y convierte el logo a base64
+   * para que Puppeteer pueda embeber la imagen sin dependencias de red.
+   */
+  private async getInstitutionMetadata(): Promise<Record<string, string | null>> {
+    try {
+      const settings = await this.settingsService.getSettings();
+      const institution = settings.institution as any;
+      const schoolYear = settings.schoolYear as any;
+
+      let institutionLogo: string | null = null;
+      if (institution?.logoPath) {
+        // logoPath: "/files/active/settings/logo/logo_XXX.png"
+        const relativePath = institution.logoPath.replace('/files/', '');
+        const fsPath = path.join(process.cwd(), 'uploads', relativePath);
+        if (fs.existsSync(fsPath)) {
+          const ext = path.extname(fsPath).toLowerCase().replace('.', '');
+          const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+          const fileBuffer = fs.readFileSync(fsPath);
+          institutionLogo = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
+        }
+      }
+
+      return {
+        institutionName: institution?.name || null,
+        institutionLogo,
+        institutionAddress: institution?.address || null,
+        institutionPhone: institution?.phone || null,
+        institutionEmail: institution?.email || null,
+        institutionWebsite: institution?.website || null,
+        schoolYearName: schoolYear?.name || null,
+      };
+    } catch (error) {
+      this.logger.error('Error obteniendo metadatos institucionales:', error);
+      return { institutionName: null, institutionLogo: null };
+    }
+  }
 
   async create(
     createDocumentTemplateDto: CreateDocumentTemplateDto,
@@ -41,13 +111,8 @@ export class DocumentTemplateService {
         createdById: userId,
       },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        ...CATEGORY_INCLUDE,
       },
     });
 
@@ -55,27 +120,42 @@ export class DocumentTemplateService {
   }
 
   async findAll(query: QueryDocumentTemplateDto, userId: string, userRole: UserRole) {
-    const { search, type, isActive, page = 1, limit = 10 } = query;
+    const { search, type, isActive, categoryId, page = 1, limit = 10 } = query;
 
     const where: any = {};
 
-    // Solo admin puede ver todas las plantillas, usuarios normales solo las suyas y las activas
+    // Filtrar por rol: admin ve todo; demás usuarios ven sus propias plantillas +
+    // plantillas sin categoría (sin restricción) + plantillas de categorías permitidas.
     if (userRole !== UserRole.ADMIN) {
-      where.OR = [
-        { createdById: userId },
+      const allowedCategoryIds = await this.getAllowedCategoryIds(userRole);
+      where.AND = [
         { isActive: true },
+        {
+          OR: [
+            { createdById: userId },
+            { categoryId: null },
+            { categoryId: { in: allowedCategoryIds } },
+          ],
+        },
       ];
     }
 
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { type: { contains: search, mode: 'insensitive' } },
-      ];
+      const searchCondition = {
+        OR: [
+          { name: { contains: search, mode: 'insensitive' } },
+          { type: { contains: search, mode: 'insensitive' } },
+        ],
+      };
+      where.AND = where.AND ? [...where.AND, searchCondition] : [searchCondition];
     }
 
     if (type) {
       where.type = type;
+    }
+
+    if (categoryId !== undefined) {
+      where.categoryId = categoryId;
     }
 
     if (isActive !== undefined) {
@@ -88,22 +168,11 @@ export class DocumentTemplateService {
       this.prisma.documentTemplate.findMany({
         where,
         include: {
-          createdBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
-          },
-          _count: {
-            select: {
-              documents: true,
-            },
-          },
+          createdBy: { select: { id: true, name: true, email: true } },
+          ...CATEGORY_INCLUDE,
+          _count: { select: { documents: true } },
         },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        orderBy: { createdAt: 'desc' },
         skip,
         take: limit,
       }),
@@ -125,18 +194,9 @@ export class DocumentTemplateService {
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id },
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        _count: {
-          select: {
-            documents: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        ...CATEGORY_INCLUDE,
+        _count: { select: { documents: true } },
       },
     });
 
@@ -175,13 +235,8 @@ export class DocumentTemplateService {
       where: { id },
       data: updateDocumentTemplateDto,
       include: {
-        createdBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
+        createdBy: { select: { id: true, name: true, email: true } },
+        ...CATEGORY_INCLUDE,
       },
     });
 
@@ -229,30 +284,28 @@ export class DocumentTemplateService {
     }));
   }
 
-  async createDocumentFromTemplate(
-    createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
+  /**
+   * Helper privado: genera un archivo desde la plantilla y crea el registro en DB.
+   * Usado tanto por createDocumentFromTemplate como por createBatchFromTemplate.
+   */
+  private async generateAndPersistDocument(
+    template: any,
+    row: {
+      formData: Record<string, any>;
+      filename?: string;
+      description?: string;
+      categoryId?: number | null;
+      sectionId?: number | null;
+      isPublic?: boolean;
+      batchId?: string | null;
+    },
     userId: string,
   ) {
-    const { templateId, formData, filename, description, isPublic, categoryId, sectionId } =
-      createDocumentFromTemplateDto;
+    const { formData, filename, description, categoryId, sectionId, isPublic, batchId } = row;
 
-    this.logger.log(`Creating document from template ID: ${templateId}`);
-    this.logger.debug(`Form Data: ${JSON.stringify(formData)}`);
+    const institutionMeta = await this.getInstitutionMetadata();
 
-    // Obtener la plantilla
-    const template = await this.prisma.documentTemplate.findUnique({
-      where: { id: templateId },
-    });
-
-    if (!template) {
-      throw new NotFoundException('Plantilla no encontrada');
-    }
-
-    if (!template.isActive) {
-      throw new BadRequestException('La plantilla no está activa');
-    }
-
-    // Validar que los campos del formulario coincidan con la definición de la plantilla
+    // Validar campos requeridos
     const templateFields = template.fields as any;
     if (templateFields.fields && Array.isArray(templateFields.fields)) {
       const requiredFields = templateFields.fields
@@ -270,16 +323,14 @@ export class DocumentTemplateService {
       }
     }
 
-    // Determinar el formato de salida
+    // Determinar formato de salida
     const outputFormat = template.outputFormat || 'pdf';
     const fileExtension = outputFormat === 'html' ? 'html' : 'pdf';
 
-    // Generar nombre de archivo si no se proporcionó
     const generatedFilename =
       filename ||
       `${template.type}-${new Date().toISOString().split('T')[0]}-${Date.now()}.${fileExtension}`;
 
-    // Preparar datos para la plantilla (agregar metadata útil)
     const templateData = {
       ...formData,
       _metadata: {
@@ -288,27 +339,22 @@ export class DocumentTemplateService {
         generatedTime: new Date().toLocaleTimeString('es-ES'),
         templateName: template.name,
         templateType: template.type,
+        ...institutionMeta,
       },
     };
 
-    this.logger.debug(`Template Data: ${JSON.stringify(templateData)}`);
-
-    // Generar el documento según el formato
     let documentBuffer: Buffer;
     let mimetype: string;
 
     if (outputFormat === 'html') {
-      // Generar HTML
       const htmlContent = await this.documentGenerator.generateHTML({
         htmlTemplate: template.htmlTemplate,
         styles: template.styles,
         data: templateData,
       });
-
       documentBuffer = Buffer.from(htmlContent, 'utf-8');
       mimetype = 'text/html';
     } else {
-      // Generar PDF (por defecto)
       documentBuffer = await this.documentGenerator.generatePDF({
         htmlTemplate: template.htmlTemplate,
         styles: template.styles,
@@ -317,11 +363,9 @@ export class DocumentTemplateService {
         orientation: template.orientation as any,
         outputFormat: 'pdf',
       });
-
       mimetype = 'application/pdf';
     }
 
-    // Guardar el archivo
     const uploadsDir = path.join(process.cwd(), 'uploads');
     if (!fs.existsSync(uploadsDir)) {
       fs.mkdirSync(uploadsDir, { recursive: true });
@@ -336,7 +380,6 @@ export class DocumentTemplateService {
 
     const fileStats = fs.statSync(filePath);
 
-    // Crear el documento en la base de datos
     const document = await this.prisma.document.create({
       data: {
         filename: generatedFilename,
@@ -344,42 +387,179 @@ export class DocumentTemplateService {
         mimetype,
         size: fileStats.size,
         path: filePath,
-        description:
-          description || `${template.name} - Generado desde formulario`,
+        description: description || `${template.name} - Generado desde formulario`,
         isPublic: isPublic || false,
         uploadedById: userId,
         templateId: template.id,
         formData,
         categoryId: categoryId || null,
-        sectionId: sectionId || null,
+        batchId: batchId || null,
       },
       include: {
-        uploadedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-          },
-        },
+        uploadedBy: { select: { id: true, name: true, email: true } },
+        template: { select: { id: true, name: true, type: true } },
         category: {
           select: {
             id: true,
             name: true,
             color: true,
             icon: true,
+            section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
       },
     });
 
     return document;
+  }
+
+  async createDocumentFromTemplate(
+    createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const { templateId, formData, filename, description, isPublic, sectionId } =
+      createDocumentFromTemplateDto;
+
+    this.logger.log(`Creating document from template ID: ${templateId}`);
+    this.logger.debug(`Form Data: ${JSON.stringify(formData)}`);
+
+    const template = await this.prisma.documentTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException('Plantilla no encontrada');
+    }
+
+    if (!template.isActive) {
+      throw new BadRequestException('La plantilla no está activa');
+    }
+
+    // Usar el categoryId de la plantilla; validar que el rol tenga acceso
+    const effectiveCategoryId = template.categoryId ?? null;
+    if (effectiveCategoryId && userRole !== UserRole.ADMIN) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: effectiveCategoryId },
+        select: { allowedRoles: true },
+      });
+      if (category) {
+        const allowed = category.allowedRoles as string[];
+        if (allowed.length > 0 && !allowed.includes(userRole)) {
+          throw new ForbiddenException('Tu rol no tiene permiso para generar documentos con esta plantilla');
+        }
+      }
+    }
+
+    const document = await this.generateAndPersistDocument(
+      template,
+      { formData, filename, description, isPublic, categoryId: effectiveCategoryId, sectionId: sectionId ?? null },
+      userId,
+    );
+
+    await this.incrementUsageCount(templateId);
+
+    return document;
+  }
+
+  async createBatchFromTemplate(dto: CreateBatchFromTemplateDto, userId: string, userRole: UserRole) {
+    const { templateId, batchName, rows, sectionId, isPublic } = dto;
+
+    this.logger.log(`Creating batch from template ID: ${templateId}, rows: ${rows.length}`);
+
+    // Validar y obtener plantilla
+    const template = await this.prisma.documentTemplate.findUnique({
+      where: { id: templateId },
+    });
+
+    if (!template) {
+      throw new NotFoundException('Plantilla no encontrada');
+    }
+
+    if (!template.isActive) {
+      throw new BadRequestException('La plantilla no está activa');
+    }
+
+    // Usar el categoryId de la plantilla; validar que el rol tenga acceso
+    const effectiveCategoryId = template.categoryId ?? null;
+    if (effectiveCategoryId && userRole !== UserRole.ADMIN) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: effectiveCategoryId },
+        select: { allowedRoles: true },
+      });
+      if (category) {
+        const allowed = category.allowedRoles as string[];
+        if (allowed.length > 0 && !allowed.includes(userRole)) {
+          throw new ForbiddenException('Tu rol no tiene permiso para generar documentos con esta plantilla');
+        }
+      }
+    }
+
+    const categoryId = effectiveCategoryId;
+
+    // Nombre del lote
+    const resolvedBatchName =
+      batchName ||
+      `${template.name} - Lote ${new Date().toLocaleDateString('es-ES')}`;
+
+    // Crear registro del lote
+    const batch = await this.prisma.documentBatch.create({
+      data: {
+        name: resolvedBatchName,
+        templateId,
+        createdById: userId,
+        totalCount: rows.length,
+      },
+    });
+
+    // Generar documentos por fila
+    const documents: any[] = [];
+    const errors: string[] = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        const doc = await this.generateAndPersistDocument(
+          template,
+          {
+            formData: row.formData,
+            filename: row.filename,
+            description: row.description,
+            categoryId: categoryId || null,
+            sectionId: sectionId || null,
+            isPublic: isPublic || false,
+            batchId: batch.id,
+          },
+          userId,
+        );
+        documents.push(doc);
+      } catch (error: any) {
+        errors.push(`Fila ${i + 1}: ${error.message || 'Error desconocido'}`);
+        this.logger.warn(`Batch ${batch.id} row ${i + 1} failed: ${error.message}`);
+      }
+    }
+
+    if (documents.length === 0) {
+      // Eliminar el lote vacío y lanzar error
+      await this.prisma.documentBatch.delete({ where: { id: batch.id } });
+      throw new BadRequestException(
+        `No se pudo generar ningún documento. Errores: ${errors.join('; ')}`,
+      );
+    }
+
+    // Actualizar totalCount con los éxitos reales
+    const updatedBatch = await this.prisma.documentBatch.update({
+      where: { id: batch.id },
+      data: { totalCount: documents.length },
+      include: {
+        template: { select: { id: true, name: true, type: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    await this.incrementUsageCount(templateId);
+
+    return { batch: updatedBatch, documents, errors };
   }
 
   /**
@@ -443,6 +623,8 @@ export class DocumentTemplateService {
 
     // Generar datos de ejemplo basados en los campos de la plantilla
     const sampleData = this.generateSampleData(template.fields, template.name);
+    const institutionMeta = await this.getInstitutionMetadata();
+    sampleData._metadata = { ...sampleData._metadata, ...institutionMeta };
 
     // Generar el PDF usando el mismo servicio que genera documentos reales
     const pdfBuffer = await this.documentGenerator.generatePDF({
@@ -481,6 +663,8 @@ export class DocumentTemplateService {
     // Generar PDF con datos de muestra y extraer thumbnail del PDF (mismo flujo que documentos)
     try {
       const sampleData = this.generateSampleData(template.fields, template.name);
+      const institutionMeta = await this.getInstitutionMetadata();
+      sampleData._metadata = { ...sampleData._metadata, ...institutionMeta };
 
       // Generar PDF usando el generador existente (usa page.pdf con printBackground: true)
       const pdfBuffer = await this.documentGenerator.generatePDF({
@@ -518,14 +702,14 @@ export class DocumentTemplateService {
   /**
    * Obtener todas las plantillas predefinidas
    */
-  async getPredefinedTemplates(category?: string) {
+  async getPredefinedTemplates(categoryId?: number) {
     const where: any = {
       isPredefined: true,
       isActive: true,
     };
 
-    if (category) {
-      where.category = category;
+    if (categoryId !== undefined) {
+      where.categoryId = categoryId;
     }
 
     return this.prisma.documentTemplate.findMany({
@@ -534,7 +718,8 @@ export class DocumentTemplateService {
         id: true,
         name: true,
         type: true,
-        category: true,
+        categoryId: true,
+        category: { select: { name: true, color: true } },
         description: true,
         previewImageUrl: true,
         usageCount: true,
@@ -542,7 +727,7 @@ export class DocumentTemplateService {
         createdAt: true,
       },
       orderBy: [
-        { category: 'asc' },
+        { categoryId: 'asc' },
         { name: 'asc' },
       ],
     });
@@ -554,9 +739,9 @@ export class DocumentTemplateService {
   async getGallery() {
     const templates = await this.getPredefinedTemplates();
 
-    // Agrupar por categoría
+    // Agrupar por nombre de categoría
     const gallery = templates.reduce((acc, template) => {
-      const category = template.category || 'other';
+      const category = template.category?.name || 'other';
       if (!acc[category]) {
         acc[category] = [];
       }
@@ -565,7 +750,7 @@ export class DocumentTemplateService {
     }, {} as Record<string, any[]>);
 
     return {
-      categories: ['academic', 'administrative', 'legal'],
+      categories: Object.keys(gallery),
       templates: gallery,
       total: templates.length,
     };
@@ -599,7 +784,7 @@ export class DocumentTemplateService {
       data: {
         name: finalName,
         type: original.type,
-        category: original.category,
+        categoryId: original.categoryId,
         description: original.description,
         fields: original.fields,
         htmlTemplate: original.htmlTemplate,
@@ -640,7 +825,8 @@ export class DocumentTemplateService {
         id: true,
         name: true,
         type: true,
-        category: true,
+        categoryId: true,
+        category: { select: { name: true, color: true } },
         description: true,
         previewImageUrl: true,
         usageCount: true,
@@ -710,6 +896,7 @@ export class DocumentTemplateService {
     }
 
     // 6. Determinar formato de salida y generar nuevo archivo
+    const institutionMeta = await this.getInstitutionMetadata();
     const outputFormat = template.outputFormat || 'pdf';
     const fileExtension = outputFormat === 'html' ? 'html' : 'pdf';
 
@@ -726,6 +913,7 @@ export class DocumentTemplateService {
         generatedTime: new Date().toLocaleTimeString('es-ES'),
         templateName: template.name,
         templateType: template.type,
+        ...institutionMeta,
       },
     };
 
@@ -806,10 +994,7 @@ export class DocumentTemplateService {
           select: { id: true, name: true, type: true },
         },
         category: {
-          select: { id: true, name: true, color: true, icon: true, context: true },
-        },
-        section: {
-          select: { id: true, name: true, color: true, icon: true },
+          select: { id: true, name: true, color: true, icon: true, section: { select: { id: true, name: true, color: true, icon: true } } },
         },
       },
     });

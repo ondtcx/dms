@@ -62,13 +62,17 @@ export class WorkflowService {
     // Validar stateDefinitions
     this.validateStateDefinitions(createDto.stateDefinitions);
 
+    const { sectionIds, ...rest } = createDto;
+
     return this.prisma.workflowTemplate.create({
       data: {
-        ...createDto,
+        ...rest,
         stateDefinitions: createDto.stateDefinitions as any,
+        sections: sectionIds?.length ? { connect: sectionIds.map((id) => ({ id })) } : undefined,
       },
       include: {
         category: true,
+        sections: true,
       },
     });
   }
@@ -77,6 +81,7 @@ export class WorkflowService {
     return this.prisma.workflowTemplate.findMany({
       include: {
         category: true,
+        sections: true,
         _count: {
           select: {
             workflows: true,
@@ -92,6 +97,7 @@ export class WorkflowService {
       where: { id },
       include: {
         category: true,
+        sections: true,
         _count: {
           select: {
             workflows: true,
@@ -146,14 +152,18 @@ export class WorkflowService {
       }
     }
 
+    const { sectionIds, ...rest } = updateDto;
+
     return this.prisma.workflowTemplate.update({
       where: { id },
       data: {
-        ...updateDto,
-        stateDefinitions: updateDto.stateDefinitions as any,
+        ...rest,
+        stateDefinitions: updateDto.stateDefinitions ? (updateDto.stateDefinitions as any) : undefined,
+        ...(sectionIds !== undefined ? { sections: { set: sectionIds.map((id) => ({ id })) } } : {}),
       },
       include: {
         category: true,
+        sections: true,
       },
     });
   }

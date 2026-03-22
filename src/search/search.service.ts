@@ -77,9 +77,9 @@ export class SearchService {
       baseWhere.categoryId = { in: categoryIds };
     }
 
-    // Filtros de sección
+    // Filtros de sección (via categoría — la sección se deriva de category.sectionId)
     if (sectionIds && sectionIds.length > 0) {
-      baseWhere.sectionId = { in: sectionIds };
+      baseWhere.category = { sectionId: { in: sectionIds } };
     }
 
     // Filtros organizacionales (acumulado en AND para no pisar otras cláusulas OR)

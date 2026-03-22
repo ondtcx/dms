@@ -559,8 +559,10 @@ export class DocumentTemplateController {
       ],
     },
   })
-  getPredefined(@Query('category') category?: string) {
-    return this.documentTemplateService.getPredefinedTemplates(category);
+  getPredefined(@Query('categoryId') categoryId?: string) {
+    return this.documentTemplateService.getPredefinedTemplates(
+      categoryId !== undefined ? parseInt(categoryId, 10) : undefined,
+    );
   }
 
   @Get('gallery')

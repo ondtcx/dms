@@ -758,12 +758,13 @@ async function main() {
         continue;
       }
 
-      // Crear plantilla
+      // Crear plantilla (excluir campo 'category' string — ahora es FK categoryId)
+      const { category: _cat, ...templateData } = template;
       await prisma.documentTemplate.create({
         data: {
-          ...template,
-          fields: template.fields,
-          variableSchema: template.variableSchema,
+          ...templateData,
+          fields: templateData.fields,
+          variableSchema: templateData.variableSchema,
           createdById: systemUser.id,
         },
       });

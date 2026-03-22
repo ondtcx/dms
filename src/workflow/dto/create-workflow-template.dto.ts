@@ -47,20 +47,22 @@ export class CreateWorkflowTemplateDto {
   description?: string;
 
   @ApiPropertyOptional({
-    description: 'Tipo de documento al que aplica',
-    example: 'acta',
-  })
-  @IsString()
-  @IsOptional()
-  documentType?: string;
-
-  @ApiPropertyOptional({
     description: 'ID de la categoría a la que aplica',
     example: 1,
   })
   @IsInt()
   @IsOptional()
   categoryId?: number;
+
+  @ApiPropertyOptional({
+    description: 'IDs de las secciones a las que aplica este workflow',
+    example: [1],
+    type: [Number],
+  })
+  @IsArray()
+  @IsInt({ each: true })
+  @IsOptional()
+  sectionIds?: number[];
 
   @ApiProperty({
     description: 'Definiciones de estados del workflow',

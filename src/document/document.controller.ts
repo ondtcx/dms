@@ -46,6 +46,7 @@ import { UserRole } from '../auth/role.enum';
 import { multerConfig, allFilesFilter } from './config/multer.config';
 import { CreateDocumentFromTemplateDto } from '../document-template/dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from '../document-template/dto/update-document-from-template.dto';
+import { CreateBatchFromTemplateDto } from '../document-template/dto/create-batch-from-template.dto';
 import { DocumentTemplateService } from '../document-template/document-template.service';
 import { SettingsService } from '../settings/settings.service';
 
@@ -179,7 +180,20 @@ export class DocumentController {
     return this.documentTemplateService.createDocumentFromTemplate(
       createDocumentFromTemplateDto,
       user.id,
+      user.role,
     );
+  }
+
+  @Post('batch-from-template')
+  @ApiOperation({ summary: 'Generar documentos en lote desde una plantilla' })
+  @ApiResponse({ status: 201, description: 'Lote creado exitosamente' })
+  @ApiResponse({ status: 400, description: 'Sin filas válidas o plantilla inactiva' })
+  @ApiResponse({ status: 404, description: 'Plantilla no encontrada' })
+  createBatchFromTemplate(
+    @Body() dto: CreateBatchFromTemplateDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentTemplateService.createBatchFromTemplate(dto, user.id, user.role);
   }
 
   @Post('upload')

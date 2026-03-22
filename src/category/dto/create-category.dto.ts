@@ -1,6 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsEnum, IsArray } from 'class-validator';
-import { CategoryContext } from '@prisma/client';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, IsArray } from 'class-validator';
 
 export class CreateCategoryDto {
   @ApiProperty({
@@ -47,14 +46,12 @@ export class CreateCategoryDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Contexto semántico de la categoría',
-    enum: CategoryContext,
-    example: CategoryContext.ADMINISTRATIVE,
-    default: CategoryContext.ADMINISTRATIVE,
+    description: 'ID de la sección a la que pertenece esta categoría',
+    example: 1,
   })
-  @IsEnum(CategoryContext)
+  @IsInt()
   @IsOptional()
-  context?: CategoryContext;
+  sectionId?: number;
 
   @ApiPropertyOptional({
     description: 'Si esta categoría requiere especificar un curso al subir documentos',
