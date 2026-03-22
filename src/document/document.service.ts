@@ -99,7 +99,7 @@ export class DocumentService {
       },
       include: {
         uploadedBy: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, email: true, role: true },
         },
         category: {
           select: {
@@ -345,8 +345,12 @@ export class DocumentService {
   ) {
     const document = await this.findOne(id, userId, userRole);
 
-    // Solo el dueño o admin pueden actualizar
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    // El dueño, admin y director pueden actualizar cualquier documento
+    const canEdit =
+      userRole === UserRole.ADMIN ||
+      userRole === UserRole.DIRECTOR ||
+      document.uploadedById === userId;
+    if (!canEdit) {
       throw new ForbiddenException(
         'No tienes permiso para actualizar este documento',
       );
@@ -932,7 +936,7 @@ export class DocumentService {
     const documents = await this.prisma.document.findMany({
       where,
       include: {
-        uploadedBy: { select: { id: true, name: true, email: true } },
+        uploadedBy: { select: { id: true, name: true, email: true, role: true } },
         category: {
           select: {
             id: true,

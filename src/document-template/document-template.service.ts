@@ -111,7 +111,7 @@ export class DocumentTemplateService {
         createdById: userId,
       },
       include: {
-        createdBy: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true, email: true, role: true } },
         ...CATEGORY_INCLUDE,
       },
     });
@@ -168,7 +168,7 @@ export class DocumentTemplateService {
       this.prisma.documentTemplate.findMany({
         where,
         include: {
-          createdBy: { select: { id: true, name: true, email: true } },
+          createdBy: { select: { id: true, name: true, email: true, role: true } },
           ...CATEGORY_INCLUDE,
           _count: { select: { documents: true } },
         },
@@ -194,7 +194,7 @@ export class DocumentTemplateService {
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id },
       include: {
-        createdBy: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true, email: true, role: true } },
         ...CATEGORY_INCLUDE,
         _count: { select: { documents: true } },
       },
@@ -235,7 +235,7 @@ export class DocumentTemplateService {
       where: { id },
       data: updateDocumentTemplateDto,
       include: {
-        createdBy: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true, email: true, role: true } },
         ...CATEGORY_INCLUDE,
       },
     });
@@ -396,7 +396,7 @@ export class DocumentTemplateService {
         batchId: batchId || null,
       },
       include: {
-        uploadedBy: { select: { id: true, name: true, email: true } },
+        uploadedBy: { select: { id: true, name: true, email: true, role: true } },
         template: { select: { id: true, name: true, type: true } },
         category: {
           select: {
@@ -553,7 +553,7 @@ export class DocumentTemplateService {
       data: { totalCount: documents.length },
       include: {
         template: { select: { id: true, name: true, type: true } },
-        createdBy: { select: { id: true, name: true, email: true } },
+        createdBy: { select: { id: true, name: true, email: true, role: true } },
       },
     });
 
@@ -854,8 +854,12 @@ export class DocumentTemplateService {
       throw new NotFoundException('Documento no encontrado');
     }
 
-    // 2. Verificar ownership
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    // 2. Verificar ownership: el dueño, admin y director pueden editar
+    const canEdit =
+      userRole === UserRole.ADMIN ||
+      userRole === UserRole.DIRECTOR ||
+      document.uploadedById === userId;
+    if (!canEdit) {
       throw new ForbiddenException('No tienes permiso para editar este documento');
     }
 
@@ -988,7 +992,7 @@ export class DocumentTemplateService {
       },
       include: {
         uploadedBy: {
-          select: { id: true, name: true, email: true },
+          select: { id: true, name: true, email: true, role: true },
         },
         template: {
           select: { id: true, name: true, type: true },

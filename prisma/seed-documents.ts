@@ -1022,7 +1022,7 @@ async function main() {
   } else {
     for (const doc of getActaCompromisoData()) {
       try {
-        const created_doc = await createFromTemplate(sessions['maestro.2p@colegio.edu'].token, {
+        const created_doc = await createFromTemplate(sessions['coord.primaria@colegio.edu'].token, {
           templateId: actaCompromisoId,
           formData: doc.formData,
           filename: doc.filename,
@@ -1217,7 +1217,7 @@ async function main() {
   } else {
     for (const doc of getPresupuestoActividadData()) {
       try {
-        await createFromTemplate(sessions['coord.primaria@colegio.edu'].token, {
+        await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
           templateId: presupuestoId,
           formData: doc.formData,
           filename: doc.filename,
@@ -1316,7 +1316,7 @@ async function main() {
   let wfActaCompromiso: { id: number } | null = null;
   if (wfRevisionActa && docsCreated.actaCompromiso) {
     try {
-      wfActaCompromiso = await startWorkflow(sessions['secretaria@colegio.edu'].token, docsCreated.actaCompromiso, wfRevisionActa);
+      wfActaCompromiso = await startWorkflow(sessions['coord.primaria@colegio.edu'].token, docsCreated.actaCompromiso, wfRevisionActa);
       console.log('  ✅ Workflow iniciado: Acta de Compromiso → para rechazar');
     } catch (e: any) {
       console.error(`  ❌ Workflow Acta Compromiso: ${e.message}`);
