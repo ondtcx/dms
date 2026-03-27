@@ -23,6 +23,7 @@ import { ShareService } from './share.service';
 import { CreateShareDto } from './dto/create-share.dto';
 import { AccessShareDto } from './dto/access-share.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
+import { Public } from '../auth/decorators/public.decorator';
 
 @ApiTags('shares')
 @Controller('shares')
@@ -31,7 +32,7 @@ export class ShareController {
 
   @Post()
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Crear un nuevo share de documento',
     description: 'Comparte un documento con usuarios, roles, departamentos o cursos específicos',
@@ -68,7 +69,7 @@ export class ShareController {
 
   @Get('received')
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Obtener shares recibidos',
     description: 'Lista de documentos compartidos conmigo',
@@ -83,7 +84,7 @@ export class ShareController {
 
   @Get('sent')
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Obtener shares enviados',
     description: 'Lista de documentos que he compartido',
@@ -98,7 +99,7 @@ export class ShareController {
 
   @Get('document/:documentId')
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiParam({ name: 'documentId', description: 'ID del documento' })
   @ApiOperation({
     summary: 'Obtener shares de un documento',
@@ -114,11 +115,12 @@ export class ShareController {
     return this.shareService.getDocumentShares(+documentId, req.user.id);
   }
 
-  @Get('token/:shareToken')
+  @Post('token/:shareToken')
+  @Public()
   @ApiParam({ name: 'shareToken', description: 'Token del share' })
   @ApiOperation({
     summary: 'Acceder a un share por token',
-    description: 'Permite acceder a un documento compartido usando el token público',
+    description: 'Permite acceder a un documento compartido usando el token público (no requiere autenticación)',
   })
   @ApiResponse({
     status: 200,
@@ -140,7 +142,7 @@ export class ShareController {
 
   @Patch(':id/revoke')
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiParam({ name: 'id', description: 'ID del share' })
   @ApiOperation({
     summary: 'Revocar un share',
@@ -158,7 +160,7 @@ export class ShareController {
 
   @Delete(':id')
   @UseGuards(AuthGuard)
-  @ApiBearerAuth()
+  @ApiBearerAuth('JWT-auth')
   @ApiParam({ name: 'id', description: 'ID del share' })
   @ApiOperation({
     summary: 'Eliminar un share',

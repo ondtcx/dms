@@ -17,9 +17,11 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
+import { Roles } from './decorators/roles.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { UserRole } from './role.enum';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -58,12 +60,13 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
-  @Public()
   @Post('register')
+  @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Registrar nuevo usuario',
-    description: 'Crea una cuenta de usuario con rol USER por defecto',
+    description: 'Crea una cuenta de usuario. Solo accesible por administradores.',
   })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({

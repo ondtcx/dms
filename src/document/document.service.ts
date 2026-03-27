@@ -131,6 +131,9 @@ export class DocumentService {
       },
     });
 
+    // 7. Regenerar thumbnail en background para garantizar que corresponde al archivo actual
+    this.thumbnailService.regenerateThumbnail(storageLocation.path, document.id, file.mimetype).catch(() => {});
+
     return document;
   }
 
@@ -562,11 +565,24 @@ export class DocumentService {
   ) {
     const document = await this.findOne(id, userId, userRole);
 
-    // Solo el dueño o admin pueden reemplazar
+    // Verificar permiso: dueño, admin, o participante con aprobación pendiente en workflow activo
     if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
-      throw new ForbiddenException(
-        'No tienes permiso para reemplazar este documento',
-      );
+      const hasPendingApproval = await this.prisma.workflowApproval.findFirst({
+        where: {
+          workflow: {
+            documentId: id,
+            status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
+          },
+          userId,
+          action: null,
+        },
+      });
+
+      if (!hasPendingApproval) {
+        throw new ForbiddenException(
+          'No tienes permiso para reemplazar este documento',
+        );
+      }
     }
 
     // 1. Copiar versión actual a carpeta de versiones

@@ -14,6 +14,9 @@ import {
   UnauthorizedException,
   StreamableFile,
 } from '@nestjs/common';
+import { ApiOperation } from '@nestjs/swagger';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { CreateBlankDocumentDto } from './dto/create-blank-document.dto';
 import { OnlyofficeService } from './onlyoffice.service';
 import { DocumentService } from '../document/document.service';
 import { StorageService } from '../storage/storage.service';
@@ -34,6 +37,12 @@ export class OnlyofficeController {
     private prisma: PrismaService,
     private config: ConfigService,
   ) {}
+
+  @Post('create-blank')
+  @ApiOperation({ summary: 'Create a blank document and open it in the editor' })
+  async createBlank(@Body() dto: CreateBlankDocumentDto, @CurrentUser() user: any) {
+    return this.onlyofficeService.createBlankDocument(dto, user.sub);
+  }
 
   @Get('config/:documentId')
   async getEditorConfig(

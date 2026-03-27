@@ -33,7 +33,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { Response } from 'express';
-import { createReadStream } from 'fs';
+import { createReadStream, statSync } from 'fs';
 import { DocumentService } from './document.service';
 import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -426,7 +426,14 @@ export class DocumentController {
     // Obtener o generar thumbnail
     let thumbnailPath = this.thumbnailService.getThumbnailPath(id);
 
-    if (!thumbnailPath) {
+    if (thumbnailPath) {
+      // Verificar que el thumbnail no sea anterior al documento (puede quedar de un seed/reset anterior)
+      const thumbMtime = statSync(thumbnailPath).mtime;
+      const docCreatedAt = new Date(doc.createdAt);
+      if (thumbMtime < docCreatedAt) {
+        thumbnailPath = await this.thumbnailService.regenerateThumbnail(doc.path, id, doc.mimetype);
+      }
+    } else {
       // Generar thumbnail si no existe
       thumbnailPath = await this.thumbnailService.generateThumbnail(
         doc.path,

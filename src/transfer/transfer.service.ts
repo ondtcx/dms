@@ -23,8 +23,14 @@ export class TransferService {
         mimetype: true,
         size: true,
         description: true,
-        category: { select: { id: true, name: true, color: true } },
-        section: { select: { id: true, name: true, color: true } },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            section: { select: { id: true, name: true, color: true } },
+          },
+        },
       },
     },
     fromUser: {

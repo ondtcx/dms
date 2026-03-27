@@ -410,6 +410,9 @@ export class DocumentTemplateService {
       },
     });
 
+    // Regenerar thumbnail en background para garantizar que corresponde al archivo actual
+    this.thumbnailService.regenerateThumbnail(filePath, document.id, mimetype).catch(() => {});
+
     return document;
   }
 

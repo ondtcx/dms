@@ -43,6 +43,19 @@ export class ShareService {
       }
     }
 
+    // Resolver email → ID si el userId contiene '@'
+    let resolvedUserId = createShareDto.userId;
+    if (resolvedUserId?.includes('@')) {
+      const targetUser = await this.prisma.user.findUnique({
+        where: { email: resolvedUserId },
+        select: { id: true },
+      });
+      if (!targetUser) {
+        throw new NotFoundException(`Usuario con email ${resolvedUserId} no encontrado`);
+      }
+      resolvedUserId = targetUser.id;
+    }
+
     // Generar token único
     const shareToken = randomUUID();
 
@@ -56,7 +69,7 @@ export class ShareService {
     const share = await this.prisma.documentShare.create({
       data: {
         documentId: createShareDto.documentId,
-        userId: createShareDto.userId,
+        userId: resolvedUserId,
         role: createShareDto.role,
         departmentId: createShareDto.departmentId,
         courseId: createShareDto.courseId,
@@ -104,22 +117,37 @@ export class ShareService {
    * Obtener todos los shares de un usuario (shares recibidos)
    */
   async getReceivedShares(userId: string) {
+    // Obtener rol, departamento y cursos del usuario para filtrar shares por esas dimensiones
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        role: true,
+        departmentId: true,
+        courses: { select: { courseId: true } },
+      },
+    });
+
+    if (!user) throw new NotFoundException('Usuario no encontrado');
+
+    const orConditions: any[] = [
+      { userId },           // Share directo al usuario
+      { role: user.role },  // Share al rol del usuario
+    ];
+
+    if (user.departmentId) {
+      orConditions.push({ departmentId: user.departmentId });
+    }
+
+    const courseIds = user.courses.map((c) => c.courseId);
+    if (courseIds.length > 0) {
+      orConditions.push({ courseId: { in: courseIds } });
+    }
+
     const shares = await this.prisma.documentShare.findMany({
       where: {
-        OR: [
-          { userId },
-          {
-            user: {
-              role: {
-                in: await this.getUserRoles(userId),
-              },
-            },
-          },
-        ],
+        OR: orConditions,
         revokedAt: null,
-        AND: [{
-          OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }],
-        }],
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] }],
       },
       include: {
         document: {
@@ -197,7 +225,7 @@ export class ShareService {
         where: {
           documentId,
           OR: [{ userId }],
-          canView: true,
+          canShare: true,
         },
       });
 
@@ -368,15 +396,4 @@ export class ShareService {
     return { message: 'Share eliminado correctamente' };
   }
 
-  /**
-   * Obtener roles del usuario (helper)
-   */
-  private async getUserRoles(userId: string) {
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    });
-
-    return user ? [user.role] : [];
-  }
 }
