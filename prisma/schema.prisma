@@ -15,6 +15,7 @@ datasource db {
 
 enum UserRole {
   director      // Acceso total a la institución
+  vicerrector   // Segundo en mando — acceso director sin legales/financieros
   coordinador   // Gestión a nivel de departamento
   profesor      // Gestión de cursos y materias
   secretario    // Tareas administrativas

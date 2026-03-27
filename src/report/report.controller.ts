@@ -14,7 +14,7 @@ export class ReportController {
   constructor(private readonly reportService: ReportService) {}
 
   @Get('dashboard')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.VICERRECTOR, UserRole.COORDINADOR)
   @ApiOperation({
     summary: 'Obtener dashboard principal con métricas clave',
     description: 'Retorna un resumen completo con estadísticas y gráficos para el dashboard',
@@ -44,7 +44,7 @@ export class ReportController {
   }
 
   @Get('workflow-bottlenecks')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.VICERRECTOR, UserRole.COORDINADOR)
   @ApiOperation({
     summary: 'Obtener cuellos de botella en workflows',
     description: 'Identifica workflows pendientes con mayor tiempo de espera',
@@ -71,7 +71,7 @@ export class ReportController {
   }
 
   @Get('document-compliance')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.VICERRECTOR, UserRole.COORDINADOR)
   @ApiOperation({
     summary: 'Reporte de cumplimiento de documentos',
     description: 'Muestra tasas de cumplimiento de documentos por categoría',

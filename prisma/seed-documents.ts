@@ -692,6 +692,7 @@ async function main() {
   const users = [
     'admin@colegio.edu',
     'director@colegio.edu',
+    'vicerrector@colegio.edu',
     'coord.primaria@colegio.edu',
     'coord.secundaria@colegio.edu',
     'secretaria@colegio.edu',
@@ -843,6 +844,75 @@ async function main() {
       }
       await delay(500);
     }
+  }
+
+  // --- Documentos de la Vicerrectora ---
+  if (memoId) {
+    const viceMemoData = {
+      formData: {
+        numero: 'MEM-2026-003',
+        fecha: '2026-03-10',
+        para: 'Coordinadores de Primaria y Secundaria',
+        de: 'Lucía Fernanda Castillo - Vicerrectora',
+        asunto: 'Protocolo de Atención a Estudiantes con Necesidades Educativas Especiales',
+        contenido:
+          'Por instrucciones de la Dirección General, se comunica a los coordinadores de nivel la actualización del protocolo institucional para la atención de estudiantes con necesidades educativas especiales (NEE).\n\nA partir del 17 de marzo de 2026 se implementarán las siguientes disposiciones:\n\n1. Todo docente que identifique a un estudiante con posible NEE debe notificarlo por escrito a su coordinación en un lapso no mayor a 5 días hábiles.\n\n2. La coordinación iniciará el proceso de observación y diagnóstico pedagógico en un período de 10 días hábiles.\n\n3. Los ajustes curriculares requeridos serán gestionados conjuntamente con la Vicerrectoría y los docentes de aula.\n\n4. Se habilitará un expediente digital por cada caso en la sección "Administrativos" del sistema documental.\n\nAgradezco la atención y puntual cumplimiento de estas directrices.',
+      },
+      filename: 'memorandum-protocolo-nee-2026.pdf',
+      description: 'Memorándum — Protocolo de atención a estudiantes con NEE',
+    };
+    try {
+      const viceMemo = await createFromTemplate(sessions['vicerrector@colegio.edu'].token, {
+        templateId: memoId,
+        formData: viceMemoData.formData,
+        filename: viceMemoData.filename,
+        description: viceMemoData.description,
+        sectionId: secByName['Gestión Administrativa'],
+      });
+      docsCreated.vicerrectorMemo = viceMemo.id;
+      console.log(`  ✅ ${viceMemoData.filename}`);
+      created++;
+    } catch (e: any) {
+      console.error(`  ❌ ${viceMemoData.filename}: ${e.message}`);
+    }
+    await delay(500);
+  }
+
+  if (actaId) {
+    const viceActaData = {
+      formData: {
+        numero_acta: 'ACTA-VICE-2026-001',
+        fecha: '2026-03-12',
+        hora_inicio: '09:00',
+        hora_fin: '11:30',
+        lugar: 'Sala de Conferencias — Vicerrectoría',
+        tipo_reunion: 'Reunión de Coordinación Pedagógica',
+        presidente: 'Lucía Fernanda Castillo - Vicerrectora',
+        secretario: 'Carlos Alberto Mendoza - Secretario Académico',
+        asistentes: 'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
+        orden_del_dia: '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
+        desarrollo: 'La Vicerrectora dio inicio a la reunión señalando los avances registrados en el segundo lapso. La Coord. de Primaria presentó los indicadores de rendimiento actualizados, destacando una mejora del 8% en lectura comprensiva. La Coord. de Secundaria informó sobre el plan de tutorías implementado en Matemática y Lengua. Se acordó reforzar el seguimiento individualizado de los 14 estudiantes identificados con bajo rendimiento.',
+        acuerdos: '1. Entregar informe de rendimiento consolidado del segundo lapso antes del 20 de marzo.\n2. Implementar tutorías grupales los miércoles de 2:00 PM a 3:30 PM.\n3. Convocar reunión con representantes de estudiantes en riesgo para el 25 de marzo.\n4. Actualizar el registro de seguimiento en el sistema documental.',
+        proxima_reunion: '26 de marzo de 2026, 9:00 AM',
+      },
+      filename: 'acta-reunion-coordinacion-pedagogica-2026-001.pdf',
+      description: 'Acta de reunión de coordinación pedagógica — presidida por Vicerrectoría',
+    };
+    try {
+      const viceActa = await createFromTemplate(sessions['vicerrector@colegio.edu'].token, {
+        templateId: actaId,
+        formData: viceActaData.formData,
+        filename: viceActaData.filename,
+        description: viceActaData.description,
+        sectionId: secByName['Gestión Administrativa'],
+      });
+      docsCreated.vicerrectorActa = viceActa.id;
+      console.log(`  ✅ ${viceActaData.filename}`);
+      created++;
+    } catch (e: any) {
+      console.error(`  ❌ ${viceActaData.filename}: ${e.message}`);
+    }
+    await delay(500);
   }
 
   // --- Informe Pedagógico de Grupo (Coordinadora de Primaria) ---
@@ -1312,7 +1382,18 @@ async function main() {
     await delay(400);
   }
 
-  // Acta de Compromiso → secretaria inicia, director rechazará en Fase 3
+  // Acta de coordinación pedagógica → vicerrectora inicia, pendiente para director
+  if (wfRevisionActa && docsCreated.vicerrectorActa) {
+    try {
+      await startWorkflow(sessions['vicerrector@colegio.edu'].token, docsCreated.vicerrectorActa, wfRevisionActa);
+      console.log('  ✅ Workflow iniciado: Acta Coordinación Pedagógica (Vicerrectoría) → pendiente director');
+    } catch (e: any) {
+      console.error(`  ❌ Workflow Acta Vicerrectoría: ${e.message}`);
+    }
+    await delay(400);
+  }
+
+  // Acta de Compromiso → coord.primaria inicia, director rechazará en Fase 3
   let wfActaCompromiso: { id: number } | null = null;
   if (wfRevisionActa && docsCreated.actaCompromiso) {
     try {
@@ -1445,6 +1526,7 @@ async function main() {
   console.log(`\n🎉 ${created} documentos generados exitosamente!`);
   console.log('\nDocumentos creados por:');
   console.log('  • Directora: actas de reunión, memorándums, circular informativa, contrato de inscripción');
+  console.log('  • Vicerrectora: memorándum protocolo NEE, acta de coordinación pedagógica');
   console.log('  • Secretaria: constancias de estudio, buena conducta, certificado de culminación, recibo de aranceles');
   console.log('  • Coord. Primaria: informe pedagógico de grupo, presupuesto de actividad');
   console.log('  • Coord. Secundaria: acta de consejo de grado');
@@ -1458,7 +1540,7 @@ async function main() {
   console.log('  • Prof. Matemática: plan de evaluación trimestral');
   console.log('  • Prof. Lengua: informe de rendimiento académico individual');
   console.log('\nEstado de workflows para la demo:');
-  console.log('  📌 Pendientes para el Director: Acta Consejo de Grado, Constancia Valentina, Plan de Evaluación');
+  console.log('  📌 Pendientes para el Director: Acta Consejo de Grado, Constancia Valentina, Plan de Evaluación, Acta Coordinación Pedagógica (Vicerrectoría)');
   console.log('  📌 Pendientes para Coord. Primaria: Proyecto Pedagógico');
   console.log('  ✅ Aprobados: Constancia Santiago Ramírez');
   console.log('  ❌ Rechazados: Acta de Compromiso (con motivo del director)');

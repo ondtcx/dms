@@ -348,10 +348,11 @@ export class DocumentService {
   ) {
     const document = await this.findOne(id, userId, userRole);
 
-    // El dueño, admin y director pueden actualizar cualquier documento
+    // El dueño, admin, director y vicerrector pueden actualizar cualquier documento
     const canEdit =
       userRole === UserRole.ADMIN ||
       userRole === UserRole.DIRECTOR ||
+      userRole === UserRole.VICERRECTOR ||
       document.uploadedById === userId;
     if (!canEdit) {
       throw new ForbiddenException(
@@ -1126,6 +1127,7 @@ export class DocumentService {
     const canRestore =
       userRole === UserRole.ADMIN ||
       userRole === UserRole.DIRECTOR ||
+      userRole === UserRole.VICERRECTOR ||
       document.uploadedById === userId;
 
     if (!canRestore) {

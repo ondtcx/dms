@@ -82,6 +82,12 @@ async function main() {
     create: { email: 'director@colegio.edu', password, name: 'María Elena Rodríguez', role: UserRole.DIRECTOR, position: 'Directora General', departmentId: deptDireccion.id, phoneNumber: '0412-5551234' },
   });
 
+  await prisma.user.upsert({
+    where: { email: 'vicerrector@colegio.edu' },
+    update: {},
+    create: { email: 'vicerrector@colegio.edu', password, name: 'Lucía Fernanda Castillo', role: UserRole.VICERRECTOR, position: 'Vicerrectora', departmentId: deptDireccion.id, phoneNumber: '0412-5551235' },
+  });
+
   const coordPrimaria = await prisma.user.upsert({
     where: { email: 'coord.primaria@colegio.edu' },
     update: {},
@@ -190,8 +196,8 @@ async function main() {
     create: { email: 'prof.arte@colegio.edu', password, name: 'Verónica Liliana Castro', role: UserRole.PROFESOR, position: 'Profesora de Arte e Informática', departmentId: deptSecundaria.id },
   });
 
-  console.log('✅ 22 usuarios creados (contraseña: Demo123!)\n');
-  console.log('   Personal directivo: admin, director, coord.primaria, coord.secundaria, secretaria');
+  console.log('✅ 23 usuarios creados (contraseña: Demo123!)\n');
+  console.log('   Personal directivo: admin, director, vicerrector, coord.primaria, coord.secundaria, secretaria');
   console.log('   Maestros primaria: maestro.1p … maestro.7p @colegio.edu');
   console.log('   Profesores secundaria: prof.matematica, prof.lengua, prof.historia,');
   console.log('     prof.cs.sociales, prof.biologia, prof.fisica, prof.quimica,');
@@ -259,7 +265,7 @@ async function main() {
       icon: 'Users',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['coordinador', 'secretario', 'director', 'admin'],
+      allowedRoles: ['coordinador', 'secretario', 'director', 'vicerrector', 'admin'],
     },
     {
       name: 'Constancias y Certificados',
@@ -268,7 +274,7 @@ async function main() {
       icon: 'Award',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['secretario', 'director', 'admin'],
+      allowedRoles: ['secretario', 'director', 'vicerrector', 'admin'],
     },
     {
       name: 'Informes Académicos',
@@ -277,7 +283,7 @@ async function main() {
       icon: 'BarChart3',
       sectionId: sectionAcademica.id,
       requiresCourse: false,
-      allowedRoles: ['profesor', 'coordinador', 'director'],
+      allowedRoles: ['profesor', 'coordinador', 'director', 'vicerrector'],
     },
     {
       name: 'Administrativos',
@@ -286,7 +292,7 @@ async function main() {
       icon: 'FolderKanban',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['profesor', 'coordinador', 'secretario', 'director', 'admin'],
+      allowedRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector', 'admin'],
     },
     {
       name: 'Legales',
@@ -1761,13 +1767,13 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionAcademica.id }] },
       categoryId: null,
-      allowedInitiatorRoles: ['profesor', 'coordinador'],
+      allowedInitiatorRoles: ['profesor', 'coordinador', 'vicerrector'],
     },
     create: {
       name: 'Aprobación Académica',
       description: 'Flujo de aprobación para documentos académicos: Coordinador → Director',
       sections: { connect: [{ id: sectionAcademica.id }] },
-      allowedInitiatorRoles: ['profesor', 'coordinador'],
+      allowedInitiatorRoles: ['profesor', 'coordinador', 'vicerrector'],
       stateDefinitions: [
         { state: 'Revisión del Coordinador', role: 'coordinador', order: 1 },
         { state: 'Aprobación del Director',  role: 'director',    order: 2 },
@@ -1807,13 +1813,13 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionAdministrativa.id }] },
       categoryId: null,
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'director'],
+      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector'],
     },
     create: {
       name: 'Aprobación Administrativa',
       description: 'Flujo de aprobación para documentos administrativos: Director aprueba',
       sections: { connect: [{ id: sectionAdministrativa.id }] },
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'director'],
+      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector'],
       stateDefinitions: [
         { state: 'Aprobación del Director', role: 'director', order: 1 },
       ],
@@ -1829,14 +1835,14 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionAdministrativa.id }] },
       categoryId: catActas?.id ?? null,
-      allowedInitiatorRoles: ['coordinador', 'secretario'],
+      allowedInitiatorRoles: ['coordinador', 'secretario', 'vicerrector'],
     },
     create: {
       name: 'Revisión de Acta',
       description: 'Flujo específico para actas de reuniones: Coordinador/Secretario inicia, Director aprueba',
       sections: { connect: [{ id: sectionAdministrativa.id }] },
       categoryId: catActas?.id ?? null,
-      allowedInitiatorRoles: ['coordinador', 'secretario'],
+      allowedInitiatorRoles: ['coordinador', 'secretario', 'vicerrector'],
       stateDefinitions: [
         { state: 'Aprobación del Director', role: 'director', order: 1 },
       ],
@@ -1875,13 +1881,13 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionInstitucional.id }] },
       categoryId: null,
-      allowedInitiatorRoles: ['director'],
+      allowedInitiatorRoles: ['director', 'vicerrector'],
     },
     create: {
       name: 'Aprobación Institucional',
       description: 'Flujo para documentos legales e institucionales: Director revisa y aprueba',
       sections: { connect: [{ id: sectionInstitucional.id }] },
-      allowedInitiatorRoles: ['director'],
+      allowedInitiatorRoles: ['director', 'vicerrector'],
       stateDefinitions: [
         { state: 'Revisión del Director', role: 'director', order: 1 },
       ],
