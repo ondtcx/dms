@@ -20,6 +20,7 @@ import { UserRole } from '../auth/role.enum';
 import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
 import { v4 as uuidv4 } from 'uuid';
 import { SettingsService } from '../settings/settings.service';
+import { DocumentNumberingService } from './document-numbering.service';
 
 const pdfParse = require('pdf-parse');
 
@@ -33,6 +34,7 @@ export class DocumentService {
     private storage: StorageService,
     private settingsService: SettingsService,
     private thumbnailService: ThumbnailService,
+    private numberingService: DocumentNumberingService,
   ) { }
 
   async upload(
@@ -133,6 +135,9 @@ export class DocumentService {
 
     // 7. Regenerar thumbnail en background para garantizar que corresponde al archivo actual
     this.thumbnailService.regenerateThumbnail(storageLocation.path, document.id, file.mimetype).catch(() => {});
+
+    // 8. Asignar número institucional en background (no bloquea la respuesta)
+    this.numberingService.assignNumber(document.id, uploadDocumentDto.categoryId).catch(() => {});
 
     return document;
   }

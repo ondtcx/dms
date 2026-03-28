@@ -20,6 +20,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
 import { ThumbnailService } from '../document/thumbnail.service';
+import { DocumentNumberingService } from '../document/document-numbering.service';
 import { SettingsService } from '../settings/settings.service';
 
 const CATEGORY_INCLUDE = {
@@ -42,6 +43,7 @@ export class DocumentTemplateService {
   constructor(
     private prisma: PrismaService,
     private documentGenerator: DocumentGeneratorService,
+    private numberingService: DocumentNumberingService,
     @Inject(forwardRef(() => ThumbnailService))
     private thumbnailService: ThumbnailService,
     private settingsService: SettingsService,
@@ -412,6 +414,9 @@ export class DocumentTemplateService {
 
     // Regenerar thumbnail en background para garantizar que corresponde al archivo actual
     this.thumbnailService.regenerateThumbnail(filePath, document.id, mimetype).catch(() => {});
+
+    // Asignar número institucional en background
+    this.numberingService.assignNumber(document.id, categoryId ?? null).catch(() => {});
 
     return document;
   }

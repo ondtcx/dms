@@ -496,6 +496,9 @@ model Category {
   icon              String?            @default("Folder") // Nombre del icono de lucide-react
   isActive          Boolean            @default(true) // Si la categoría está activa
 
+  // Numeración de documentos
+  prefix            String? // Prefijo para numeración (ej: "PLN", "ACT") — se deriva del nombre si es null
+
   // Sección a la que pertenece esta categoría (jerarquía Section → Category)
   // El contexto institucional se hereda de section.context
   sectionId         Int?
@@ -522,6 +525,7 @@ model Section {
   color       String?          @default("#10b981") // Color hexadecimal para identificación visual
   icon        String?          @default("FolderOpen") // Nombre del icono de lucide-react
   isActive    Boolean          @default(true) // Si la sección está activa
+  prefix      String?          @unique // Prefijo para numeración de documentos (ej: "GA", "ADM") — se deriva del nombre si es null
 
   workflowTemplates WorkflowTemplate[] // Templates de workflow que aplican a esta sección (M2M)
   categories  Category[] // Categorías que pertenecen a esta sección
@@ -592,6 +596,9 @@ model Document {
 
   // Transferencias
   transferHistory TransferHistory[] // Historial de transferencias del documento
+
+  // Numeración institucional
+  documentNumber  String?              @unique // Código oficial asignado (ej: "GA-PLN-2026-0042") — null mientras es borrador sin workflow
 
   // Búsqueda full-text
   searchVector    Unsupported("tsvector")? // Vector de búsqueda full-text de PostgreSQL
@@ -778,6 +785,21 @@ model ReportExecution {
   @@index([executedById])
   @@index([createdAt])
   @@index([status])
+}
+
+// ===== NUMERACIÓN DE DOCUMENTOS =====
+
+// Contador correlativo por sección + categoría + año
+// Garantiza secuencias independientes: GA-PLN-2026-xxxx, GA-ACT-2026-xxxx, etc.
+model DocumentCounter {
+  id             Int    @id @default(autoincrement())
+  sectionPrefix  String // Prefijo de la sección (ej: "GA")
+  categoryPrefix String // Prefijo de la categoría (ej: "PLN")
+  year           Int    // Año del ciclo (ej: 2026)
+  lastNumber     Int    @default(0) // Último correlativo asignado
+
+  @@unique([sectionPrefix, categoryPrefix, year])
+  @@index([year])
 }
 
 // ===== CONFIGURACIÓN DEL SISTEMA =====

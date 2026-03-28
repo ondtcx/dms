@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, IsArray } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, IsArray, Matches } from 'class-validator';
 
 export class CreateCategoryDto {
   @ApiProperty({
@@ -70,4 +70,13 @@ export class CreateCategoryDto {
   @IsArray()
   @IsOptional()
   allowedRoles?: string[];
+
+  @ApiPropertyOptional({
+    description: 'Prefijo para numeración de documentos (máx. 6 chars, mayúsculas y números). Si no se indica, se deriva automáticamente del nombre.',
+    example: 'PLN',
+  })
+  @IsString()
+  @IsOptional()
+  @Matches(/^[A-Z0-9]{1,6}$/, { message: 'El prefijo debe tener entre 1 y 6 caracteres en mayúsculas o números' })
+  prefix?: string;
 }

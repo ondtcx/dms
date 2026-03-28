@@ -210,34 +210,37 @@ async function main() {
 
   const sectionAcademica = await prisma.section.upsert({
     where: { name: 'Gestión Académica' },
-    update: {},
+    update: { prefix: 'GA' },
     create: {
       name: 'Gestión Académica',
       description: 'Planificaciones, evaluaciones, actas de notas e informes pedagógicos',
       color: '#2563eb',
       icon: 'BookOpen',
+      prefix: 'GA',
     },
   });
 
   const sectionAdministrativa = await prisma.section.upsert({
     where: { name: 'Gestión Administrativa' },
-    update: {},
+    update: { prefix: 'ADM' },
     create: {
       name: 'Gestión Administrativa',
       description: 'Solicitudes, memorándums, permisos y comunicaciones internas',
       color: '#d97706',
       icon: 'FileText',
+      prefix: 'ADM',
     },
   });
 
   const sectionInstitucional = await prisma.section.upsert({
     where: { name: 'Gestión Institucional' },
-    update: {},
+    update: { prefix: 'GI' },
     create: {
       name: 'Gestión Institucional',
       description: 'Constancias, certificados, reglamentos y documentos oficiales',
       color: '#7c3aed',
       icon: 'Building',
+      prefix: 'GI',
     },
   });
 
@@ -257,6 +260,7 @@ async function main() {
       sectionId: sectionAcademica.id,
       requiresCourse: true,
       allowedRoles: ['profesor', 'coordinador'],
+      prefix: 'PLN',
     },
     {
       name: 'Actas y Reuniones',
@@ -266,6 +270,7 @@ async function main() {
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
       allowedRoles: ['coordinador', 'secretario', 'director', 'vicerrector', 'admin'],
+      prefix: 'ACT',
     },
     {
       name: 'Constancias y Certificados',
@@ -275,6 +280,7 @@ async function main() {
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
       allowedRoles: ['secretario', 'director', 'vicerrector', 'admin'],
+      prefix: 'CST',
     },
     {
       name: 'Informes Académicos',
@@ -284,6 +290,7 @@ async function main() {
       sectionId: sectionAcademica.id,
       requiresCourse: false,
       allowedRoles: ['profesor', 'coordinador', 'director', 'vicerrector'],
+      prefix: 'INF',
     },
     {
       name: 'Administrativos',
@@ -293,6 +300,7 @@ async function main() {
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
       allowedRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector', 'admin'],
+      prefix: 'ADMD',
     },
     {
       name: 'Legales',
@@ -302,6 +310,7 @@ async function main() {
       sectionId: sectionInstitucional.id,
       requiresCourse: false,
       allowedRoles: ['director', 'admin'],
+      prefix: 'LEG',
     },
     {
       name: 'Financieros',
@@ -311,6 +320,7 @@ async function main() {
       sectionId: sectionInstitucional.id,
       requiresCourse: false,
       allowedRoles: ['secretario', 'director', 'admin'],
+      prefix: 'FIN',
     },
   ];
 
@@ -321,6 +331,7 @@ async function main() {
         sectionId: category.sectionId,
         requiresCourse: category.requiresCourse,
         allowedRoles: category.allowedRoles,
+        prefix: category.prefix,
       },
       create: category,
     });
