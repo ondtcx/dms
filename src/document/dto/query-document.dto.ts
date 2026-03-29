@@ -98,4 +98,13 @@ export class QueryDocumentDto {
   @IsString()
   @IsOptional()
   batchId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por año lectivo. Los documentos sin año (permanentes) siempre se incluyen.',
+    example: 1,
+  })
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  academicYearId?: number;
 }

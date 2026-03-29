@@ -65,6 +65,25 @@ async function main() {
   console.log('✅ 4 departamentos creados\n');
 
   // ============================================================
+  // AÑO LECTIVO
+  // ============================================================
+  console.log('📅 Creando año lectivo...');
+
+  await prisma.academicYear.upsert({
+    where: { name: '2025-2026' },
+    update: { isCurrent: true, isActive: true },
+    create: {
+      name: '2025-2026',
+      startDate: new Date('2025-03-01'),
+      endDate: new Date('2026-02-28'),
+      isCurrent: true,
+      isActive: true,
+    },
+  });
+
+  console.log('✅ Año lectivo 2025-2026 creado (activo y actual)\n');
+
+  // ============================================================
   // USUARIOS
   // ============================================================
   console.log('👥 Creando usuarios...');
@@ -336,6 +355,13 @@ async function main() {
       create: category,
     });
   }
+
+  // Marcar categorías Legales y Financieros para que sus documentos
+  // ignoren el filtro de año lectivo (tienen vigencia propia)
+  await prisma.category.updateMany({
+    where: { name: { in: ['Legales', 'Financieros'] } },
+    data: { bypassAcademicYear: true },
+  });
 
   console.log('✅ 7 categorías creadas\n');
 

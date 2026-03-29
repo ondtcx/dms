@@ -25,6 +25,7 @@ import { ConfigModule } from '@nestjs/config';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { OnlyofficeModule } from './onlyoffice/onlyoffice.module';
 import { SettingsModule } from './settings/settings.module';
+import { AcademicYearModule } from './academic-year/academic-year.module';
 import { join } from 'path';
 
 @Module({
@@ -54,6 +55,7 @@ import { join } from 'path';
     ShareModule, // Sistema de compartir documentos
     TransferModule, // Sistema de transferencias de documentos
     BatchModule, // Operaciones en lote
+    AcademicYearModule, // Gestión de años lectivos
     DocumentModule,
     DocumentTemplateModule,
     OnlyofficeModule, // Integración con OnlyOffice

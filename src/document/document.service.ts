@@ -61,7 +61,17 @@ export class DocumentService {
       }
     }
 
-    // 1. Generar nombre único y ruta estructurada
+    // 1. Resolver año lectivo: usar el especificado o asignar el año isCurrent automáticamente
+    let resolvedAcademicYearId: number | null = uploadDocumentDto.academicYearId ?? null;
+    if (resolvedAcademicYearId === null) {
+      const currentYear = await this.prisma.academicYear.findFirst({
+        where: { isCurrent: true, isActive: true },
+        select: { id: true },
+      });
+      resolvedAcademicYearId = currentYear?.id ?? null;
+    }
+
+    // 2. Generar nombre único y ruta estructurada
     const uniqueFilename = `${uuidv4()}${extname(file.originalname)}`;
     const storageLocation = this.storage.generateStructuredPath(
       userId,
@@ -93,6 +103,7 @@ export class DocumentService {
         categoryId: uploadDocumentDto.categoryId,
         courseId: uploadDocumentDto.courseId,
         subjectId: uploadDocumentDto.subjectId,
+        academicYearId: resolvedAcademicYearId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
         checksumSHA256: checksum,
@@ -226,6 +237,18 @@ export class DocumentService {
       where.AND.push({ batchId });
     }
 
+    // Filtro por año lectivo — omitido para roles PADRE y ESTUDIANTE
+    const skipYearFilter = ([UserRole.PADRE, UserRole.ESTUDIANTE] as string[]).includes(userRole as string);
+    if (query.academicYearId && !skipYearFilter) {
+      where.AND.push({
+        OR: [
+          { academicYearId: query.academicYearId },
+          { academicYearId: null },
+          { category: { bypassAcademicYear: true } },
+        ],
+      });
+    }
+
     // Si no hay condiciones AND, usar objeto vacío
     if (where.AND.length === 0) {
       delete where.AND;
@@ -251,6 +274,7 @@ export class DocumentService {
               name: true,
               color: true,
               icon: true,
+              bypassAcademicYear: true,
               section: { select: { id: true, name: true, color: true, icon: true } },
             },
           },

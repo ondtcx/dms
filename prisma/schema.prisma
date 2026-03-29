@@ -343,6 +343,21 @@ model Department {
   @@index([isActive])
 }
 
+model AcademicYear {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique // "2025-2026"
+  startDate DateTime
+  endDate   DateTime
+  isCurrent Boolean    @default(false) // Solo uno puede ser true — reforzado por índice único parcial en la migración
+  isActive  Boolean    @default(true)
+  documents Document[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@index([isCurrent])
+  @@index([isActive])
+}
+
 model Course {
   id           Int              @id @default(autoincrement())
   name         String
@@ -507,6 +522,7 @@ model Category {
   // Control de acceso
   requiresCourse    Boolean            @default(false) // Si requiere asignar curso al subir
   allowedRoles      Json               @default("[]") // UserRole[] vacío = sin restricción
+  bypassAcademicYear Boolean           @default(false) // Si true, docs de esta categoría ignoran el filtro de año lectivo (ej: Legales, Financieros)
 
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
@@ -551,6 +567,10 @@ model Document {
   course          Course?            @relation(fields: [courseId], references: [id], onDelete: SetNull)
   subjectId       Int? // Relación con materia
   subject         Subject?           @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+
+  // Año lectivo al que pertenece (null = documento permanente/institucional sin ciclo específico)
+  academicYearId  Int?
+  academicYear    AcademicYear?      @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
 
   isPublic        Boolean            @default(false) // Si es público o privado
   uploadedBy      User               @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
@@ -616,6 +636,7 @@ model Document {
   @@index([deletedAt]) // Índice para filtrar documentos eliminados
   @@index([archivedAt]) // Índice para filtrar documentos archivados
   @@index([createdAt]) // Índice para ordenar por fecha
+  @@index([academicYearId]) // Índice para filtrar por año lectivo
   @@index([searchVector], type: Gin) // Índice GIN para búsqueda full-text
 }
 
