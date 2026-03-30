@@ -22,6 +22,15 @@ export class QueryDocumentDto {
   categoryId?: number;
 
   @ApiPropertyOptional({
+    description: 'Filtrar por ID de subtipo de documento (DocumentType)',
+    example: 3,
+  })
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  documentTypeId?: number;
+
+  @ApiPropertyOptional({
     description: 'Filtrar por ID de sección',
     example: 1,
   })

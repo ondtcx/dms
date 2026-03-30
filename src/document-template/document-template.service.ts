@@ -23,7 +23,7 @@ import { ThumbnailService } from '../document/thumbnail.service';
 import { DocumentNumberingService } from '../document/document-numbering.service';
 import { SettingsService } from '../settings/settings.service';
 
-const CATEGORY_INCLUDE = {
+const TEMPLATE_INCLUDE = {
   category: {
     select: {
       id: true,
@@ -33,6 +33,9 @@ const CATEGORY_INCLUDE = {
       allowedRoles: true,
       section: { select: { id: true, name: true } },
     },
+  },
+  documentType: {
+    select: { id: true, name: true, categoryId: true },
   },
 } as const;
 
@@ -114,7 +117,7 @@ export class DocumentTemplateService {
       },
       include: {
         createdBy: { select: { id: true, name: true, email: true, role: true } },
-        ...CATEGORY_INCLUDE,
+        ...TEMPLATE_INCLUDE,
       },
     });
 
@@ -122,7 +125,7 @@ export class DocumentTemplateService {
   }
 
   async findAll(query: QueryDocumentTemplateDto, userId: string, userRole: UserRole) {
-    const { search, type, isActive, categoryId, page = 1, limit = 10 } = query;
+    const { search, documentTypeId, isActive, categoryId, page = 1, limit = 10 } = query;
 
     const where: any = {};
 
@@ -146,14 +149,14 @@ export class DocumentTemplateService {
       const searchCondition = {
         OR: [
           { name: { contains: search, mode: 'insensitive' } },
-          { type: { contains: search, mode: 'insensitive' } },
+          { documentType: { name: { contains: search, mode: 'insensitive' } } },
         ],
       };
       where.AND = where.AND ? [...where.AND, searchCondition] : [searchCondition];
     }
 
-    if (type) {
-      where.type = type;
+    if (documentTypeId !== undefined) {
+      where.documentTypeId = documentTypeId;
     }
 
     if (categoryId !== undefined) {
@@ -171,7 +174,7 @@ export class DocumentTemplateService {
         where,
         include: {
           createdBy: { select: { id: true, name: true, email: true, role: true } },
-          ...CATEGORY_INCLUDE,
+          ...TEMPLATE_INCLUDE,
           _count: { select: { documents: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -197,7 +200,7 @@ export class DocumentTemplateService {
       where: { id },
       include: {
         createdBy: { select: { id: true, name: true, email: true, role: true } },
-        ...CATEGORY_INCLUDE,
+        ...TEMPLATE_INCLUDE,
         _count: { select: { documents: true } },
       },
     });
@@ -238,7 +241,7 @@ export class DocumentTemplateService {
       data: updateDocumentTemplateDto,
       include: {
         createdBy: { select: { id: true, name: true, email: true, role: true } },
-        ...CATEGORY_INCLUDE,
+        ...TEMPLATE_INCLUDE,
       },
     });
 
@@ -260,30 +263,6 @@ export class DocumentTemplateService {
     });
 
     return { message: 'Plantilla eliminada exitosamente' };
-  }
-
-  async getTemplateTypes(userId: string, userRole: UserRole) {
-    const where: any = {};
-
-    if (userRole !== UserRole.ADMIN) {
-      where.OR = [
-        { createdById: userId },
-        { isActive: true },
-      ];
-    }
-
-    const types = await this.prisma.documentTemplate.groupBy({
-      by: ['type'],
-      where,
-      _count: {
-        type: true,
-      },
-    });
-
-    return types.map((item) => ({
-      type: item.type,
-      count: item._count.type,
-    }));
   }
 
   /**
@@ -329,9 +308,13 @@ export class DocumentTemplateService {
     const outputFormat = template.outputFormat || 'pdf';
     const fileExtension = outputFormat === 'html' ? 'html' : 'pdf';
 
+    const typeSlug = (template.documentType?.name ?? template.name)
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
     const generatedFilename =
       filename ||
-      `${template.type}-${new Date().toISOString().split('T')[0]}-${Date.now()}.${fileExtension}`;
+      `${typeSlug}-${new Date().toISOString().split('T')[0]}-${Date.now()}.${fileExtension}`;
 
     const templateData = {
       ...formData,
@@ -340,7 +323,7 @@ export class DocumentTemplateService {
         generatedDate: new Date().toLocaleDateString('es-ES'),
         generatedTime: new Date().toLocaleTimeString('es-ES'),
         templateName: template.name,
-        templateType: template.type,
+        templateType: template.documentType?.name ?? template.name,
         ...institutionMeta,
       },
     };
@@ -399,7 +382,7 @@ export class DocumentTemplateService {
       },
       include: {
         uploadedBy: { select: { id: true, name: true, email: true, role: true } },
-        template: { select: { id: true, name: true, type: true } },
+        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
         category: {
           select: {
             id: true,
@@ -560,7 +543,7 @@ export class DocumentTemplateService {
       where: { id: batch.id },
       data: { totalCount: documents.length },
       include: {
-        template: { select: { id: true, name: true, type: true } },
+        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
         createdBy: { select: { id: true, name: true, email: true, role: true } },
       },
     });
@@ -725,7 +708,8 @@ export class DocumentTemplateService {
       select: {
         id: true,
         name: true,
-        type: true,
+        documentTypeId: true,
+        documentType: { select: { id: true, name: true } },
         categoryId: true,
         category: { select: { name: true, color: true } },
         description: true,
@@ -791,7 +775,7 @@ export class DocumentTemplateService {
     const duplicate = await this.prisma.documentTemplate.create({
       data: {
         name: finalName,
-        type: original.type,
+        documentTypeId: original.documentTypeId,
         categoryId: original.categoryId,
         description: original.description,
         fields: original.fields,
@@ -832,7 +816,8 @@ export class DocumentTemplateService {
       select: {
         id: true,
         name: true,
-        type: true,
+        documentTypeId: true,
+        documentType: { select: { id: true, name: true } },
         categoryId: true,
         category: { select: { name: true, color: true } },
         description: true,
@@ -912,10 +897,14 @@ export class DocumentTemplateService {
     const outputFormat = template.outputFormat || 'pdf';
     const fileExtension = outputFormat === 'html' ? 'html' : 'pdf';
 
+    const typeSlug = (template.documentType?.name ?? template.name)
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '');
     const baseFilename =
       dto.filename ||
       document.filename ||
-      `${template.type}-${new Date().toISOString().split('T')[0]}.${fileExtension}`;
+      `${typeSlug}-${new Date().toISOString().split('T')[0]}.${fileExtension}`;
 
     const templateData = {
       ...dto.formData,
@@ -924,7 +913,7 @@ export class DocumentTemplateService {
         generatedDate: new Date().toLocaleDateString('es-ES'),
         generatedTime: new Date().toLocaleTimeString('es-ES'),
         templateName: template.name,
-        templateType: template.type,
+        templateType: template.documentType?.name ?? template.name,
         ...institutionMeta,
       },
     };
@@ -1003,7 +992,7 @@ export class DocumentTemplateService {
           select: { id: true, name: true, email: true, role: true },
         },
         template: {
-          select: { id: true, name: true, type: true },
+          select: { id: true, name: true, documentType: { select: { id: true, name: true } } },
         },
         category: {
           select: { id: true, name: true, color: true, icon: true, section: { select: { id: true, name: true, color: true, icon: true } } },

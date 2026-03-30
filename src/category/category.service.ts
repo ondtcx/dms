@@ -13,7 +13,7 @@ const CATEGORY_INCLUDE = {
     select: { id: true, name: true, color: true, icon: true },
   },
   _count: {
-    select: { documents: true },
+    select: { documents: true, documentTypes: true },
   },
 };
 

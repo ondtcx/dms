@@ -13,13 +13,15 @@ export class QueryDocumentTemplateDto {
   search?: string;
 
   @ApiProperty({
-    description: 'Filtrar por tipo de documento',
+    description: 'Filtrar por subtipo de documento (DocumentType)',
     required: false,
-    example: 'acta',
+    example: 1,
   })
   @IsOptional()
-  @IsString()
-  type?: string;
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  documentTypeId?: number;
 
   @ApiProperty({
     description: 'Filtrar por categoría',

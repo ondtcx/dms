@@ -101,6 +101,7 @@ export class DocumentService {
         path: storageLocation.path,
         description: uploadDocumentDto.description,
         categoryId: uploadDocumentDto.categoryId,
+        documentTypeId: uploadDocumentDto.documentTypeId,
         courseId: uploadDocumentDto.courseId,
         subjectId: uploadDocumentDto.subjectId,
         academicYearId: resolvedAcademicYearId,
@@ -123,8 +124,11 @@ export class DocumentService {
             section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
+        documentType: {
+          select: { id: true, name: true },
+        },
         template: {
-          select: { id: true, name: true, type: true },
+          select: { id: true, name: true, documentType: { select: { id: true, name: true } } },
         },
       },
     });
@@ -166,7 +170,7 @@ export class DocumentService {
   }
 
   async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
-    const { search, categoryId, sectionId, isPublic, includeDeleted, onlyMine, excludeBatched, batchId, page = 1, limit = 10 } = query;
+    const { search, categoryId, documentTypeId, sectionId, isPublic, includeDeleted, onlyMine, excludeBatched, batchId, page = 1, limit = 10 } = query;
 
     // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
@@ -215,6 +219,10 @@ export class DocumentService {
 
     if (categoryId) {
       where.AND.push({ categoryId });
+    }
+
+    if (documentTypeId) {
+      where.AND.push({ documentTypeId });
     }
 
     if (sectionId) {
@@ -278,11 +286,14 @@ export class DocumentService {
               section: { select: { id: true, name: true, color: true, icon: true } },
             },
           },
+          documentType: {
+            select: { id: true, name: true },
+          },
           template: {
             select: {
               id: true,
               name: true,
-              type: true,
+              documentType: { select: { id: true, name: true } },
             },
           },
           workflow: {
@@ -352,11 +363,14 @@ export class DocumentService {
             section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
+        documentType: {
+          select: { id: true, name: true },
+        },
         template: {
           select: {
             id: true,
             name: true,
-            type: true,
+            documentType: { select: { id: true, name: true } },
           },
         },
       },
@@ -409,11 +423,14 @@ export class DocumentService {
             section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
+        documentType: {
+          select: { id: true, name: true },
+        },
         template: {
           select: {
             id: true,
             name: true,
-            type: true,
+            documentType: { select: { id: true, name: true } },
           },
         },
       },
@@ -680,7 +697,7 @@ export class DocumentService {
           select: {
             id: true,
             name: true,
-            type: true,
+            documentType: { select: { id: true, name: true } },
           },
         },
       },
@@ -992,7 +1009,7 @@ export class DocumentService {
             section: { select: { id: true, name: true, color: true, icon: true } },
           },
         },
-        template: { select: { id: true, name: true, type: true } },
+        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1075,7 +1092,7 @@ export class DocumentService {
               section: { select: { id: true, name: true, color: true, icon: true } },
             },
           },
-          template: { select: { id: true, name: true, type: true } },
+          template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
         },
         orderBy: { archivedAt: 'desc' },
         skip,

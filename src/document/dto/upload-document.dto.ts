@@ -33,6 +33,15 @@ export class UploadDocumentDto {
   isPublic?: boolean;
 
   @ApiPropertyOptional({
+    description: 'ID del subtipo de documento (DocumentType)',
+    example: 3,
+  })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  documentTypeId?: number;
+
+  @ApiPropertyOptional({
     description: 'ID del curso al que pertenece el documento',
     example: 1,
   })

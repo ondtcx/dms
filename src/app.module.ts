@@ -26,6 +26,7 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { OnlyofficeModule } from './onlyoffice/onlyoffice.module';
 import { SettingsModule } from './settings/settings.module';
 import { AcademicYearModule } from './academic-year/academic-year.module';
+import { DocumentTypeModule } from './document-type/document-type.module';
 import { join } from 'path';
 
 @Module({
@@ -56,6 +57,7 @@ import { join } from 'path';
     TransferModule, // Sistema de transferencias de documentos
     BatchModule, // Operaciones en lote
     AcademicYearModule, // Gestión de años lectivos
+    DocumentTypeModule, // Subtipos de documento por categoría
     DocumentModule,
     DocumentTemplateModule,
     OnlyofficeModule, // Integración con OnlyOffice

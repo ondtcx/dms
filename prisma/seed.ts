@@ -559,6 +559,54 @@ async function main() {
   const catLegales          = await prisma.category.findUniqueOrThrow({ where: { name: 'Legales' } });
   const catFinancieros      = await prisma.category.findUniqueOrThrow({ where: { name: 'Financieros' } });
 
+  // ── Subtipos de documento (DocumentType) por categoría ──────────────────────
+  console.log('🗂️  Creando subtipos de documento...');
+
+  const upsertDocType = (name: string, categoryId: number, description?: string) =>
+    prisma.documentType.upsert({
+      where: { name_categoryId: { name, categoryId } },
+      update: {},
+      create: { name, description, categoryId, isActive: true },
+    });
+
+  const [
+    dtPlanSemanal, dtProyecto, dtPlanEvaluacion,
+    dtActaReunion, dtActaConsejo, dtActaCompromiso,
+    dtConstanciaEstudios, dtConstanciaConducta, dtCertificado,
+    dtInformeRendimiento, dtInformeGrupo, dtBoletin,
+    dtMemorando, dtCircular, dtComunicado, dtSolicitudPermiso, dtReporteIncidencia,
+    dtContratoInscripcion,
+    dtReciboPago, dtPresupuesto,
+  ] = await Promise.all([
+    // Planificaciones
+    upsertDocType('Planificación Semanal',    catPlanificaciones.id, 'Planificación semanal de clase por docente'),
+    upsertDocType('Proyecto Pedagógico',      catPlanificaciones.id, 'Proyecto pedagógico de aula'),
+    upsertDocType('Plan de Evaluación',       catPlanificaciones.id, 'Plan de evaluación trimestral'),
+    // Actas y Reuniones
+    upsertDocType('Acta de Reunión',          catActas.id, 'Acta de reunión general o de departamento'),
+    upsertDocType('Acta de Consejo',          catActas.id, 'Acta de consejo directivo o académico'),
+    upsertDocType('Acta de Compromiso',       catActas.id, 'Acta de compromiso de representante o estudiante'),
+    // Constancias y Certificados
+    upsertDocType('Constancia de Estudios',   catConstancias.id, 'Constancia de estudios activos'),
+    upsertDocType('Constancia de Conducta',   catConstancias.id, 'Constancia de buena conducta'),
+    upsertDocType('Certificado',              catConstancias.id, 'Certificado general'),
+    // Informes Académicos
+    upsertDocType('Informe de Rendimiento',   catInformes.id, 'Informe de rendimiento estudiantil'),
+    upsertDocType('Informe de Grupo',         catInformes.id, 'Informe de rendimiento del grupo'),
+    upsertDocType('Boletín de Calificaciones', catInformes.id, 'Boletín de calificaciones trimestral'),
+    // Administrativos
+    upsertDocType('Memorando',                catAdministrativos.id, 'Comunicación interna formal'),
+    upsertDocType('Circular',                 catAdministrativos.id, 'Comunicado circular a la comunidad'),
+    upsertDocType('Comunicado',               catAdministrativos.id, 'Comunicado general'),
+    upsertDocType('Solicitud de Permiso',     catAdministrativos.id, 'Solicitud de permiso o ausencia'),
+    upsertDocType('Reporte de Incidencia',    catAdministrativos.id, 'Reporte de incidencia disciplinaria'),
+    // Legales
+    upsertDocType('Contrato de Inscripción',  catLegales.id, 'Contrato de inscripción y compromiso'),
+    // Financieros
+    upsertDocType('Recibo de Pago',           catFinancieros.id, 'Recibo de pago de aranceles'),
+    upsertDocType('Presupuesto de Actividad', catFinancieros.id, 'Presupuesto estimado de actividad escolar'),
+  ]);
+
   const _PLACEHOLDER_actaReunionHtml = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -1347,7 +1395,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── PLANIFICACIONES (roles: profesor, coordinador)
     {
       name: 'Planificación Semanal de Clase',
-      type: 'planificacion',
+      documentTypeId: dtPlanSemanal.id,
       description: 'Planificación detallada de actividades, objetivos y estrategias para la semana de clases',
       htmlTemplate: planSemanalHtml,
       categoryId: catPlanificaciones.id,
@@ -1366,7 +1414,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Proyecto Pedagógico de Aula',
-      type: 'proyecto',
+      documentTypeId: dtProyecto.id,
       description: 'Proyecto pedagógico integrador para el aula con propósitos, actividades y evaluación',
       htmlTemplate: proyectoPedagogicoHtml,
       categoryId: catPlanificaciones.id,
@@ -1386,7 +1434,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Plan de Evaluación Trimestral',
-      type: 'plan_evaluacion',
+      documentTypeId: dtPlanEvaluacion.id,
       description: 'Plan de evaluación con criterios, instrumentos y ponderación para el trimestre',
       htmlTemplate: planEvaluacionHtml,
       categoryId: catPlanificaciones.id,
@@ -1415,7 +1463,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── ACTAS Y REUNIONES (roles: coordinador, secretario, director)
     {
       name: 'Acta de Reunión de Personal',
-      type: 'acta',
+      documentTypeId: dtActaReunion.id,
       description: 'Registro de reuniones de personal docente y administrativo con acuerdos y compromisos',
       htmlTemplate: actaReunionPersonalHtml,
       categoryId: catActas.id,
@@ -1434,7 +1482,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Acta de Consejo de Grado',
-      type: 'acta_consejo',
+      documentTypeId: dtActaConsejo.id,
       description: 'Acta de consejo de grado o año con la situación académica y acuerdos pedagógicos del período',
       htmlTemplate: actaConsejoGradoHtml,
       categoryId: catActas.id,
@@ -1454,7 +1502,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Acta de Compromiso con Representantes',
-      type: 'acta_compromiso',
+      documentTypeId: dtActaCompromiso.id,
       description: 'Registro formal de compromisos asumidos por representantes en reunión con el docente',
       htmlTemplate: actaCompromisoHtml,
       categoryId: catActas.id,
@@ -1477,7 +1525,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── CONSTANCIAS Y CERTIFICADOS (roles: secretario, director)
     {
       name: 'Constancia de Estudio',
-      type: 'constancia',
+      documentTypeId: dtConstanciaEstudios.id,
       description: 'Constancia oficial de inscripción y estudios activos del estudiante en la institución',
       htmlTemplate: constanciaEstudioHtml,
       categoryId: catConstancias.id,
@@ -1494,7 +1542,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Constancia de Buena Conducta',
-      type: 'constancia_conducta',
+      documentTypeId: dtConstanciaConducta.id,
       description: 'Constancia que acredita el comportamiento ejemplar del estudiante en la institución',
       htmlTemplate: constanciaBuenaConductaHtml,
       categoryId: catConstancias.id,
@@ -1510,7 +1558,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Certificado de Culminación de Estudios',
-      type: 'certificado',
+      documentTypeId: dtCertificado.id,
       description: 'Certificado oficial que acredita la culminación exitosa de un nivel educativo',
       htmlTemplate: certificadoCulminacionHtml,
       categoryId: catConstancias.id,
@@ -1528,7 +1576,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── INFORMES ACADÉMICOS (roles: profesor, coordinador, director)
     {
       name: 'Informe de Rendimiento Académico Individual',
-      type: 'informe_rendimiento',
+      documentTypeId: dtInformeRendimiento.id,
       description: 'Informe detallado del desempeño académico individual de un estudiante por período',
       htmlTemplate: informeRendimientoHtml,
       categoryId: catInformes.id,
@@ -1549,7 +1597,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Informe Pedagógico de Grupo',
-      type: 'informe_grupo',
+      documentTypeId: dtInformeGrupo.id,
       description: 'Informe del desempeño pedagógico colectivo del grupo durante el período evaluativo',
       htmlTemplate: informePedagogicoGrupoHtml,
       categoryId: catInformes.id,
@@ -1570,7 +1618,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Boletín de Calificaciones',
-      type: 'boletin',
+      documentTypeId: dtBoletin.id,
       description: 'Boletín simplificado con las calificaciones del estudiante por materias y período',
       htmlTemplate: boletinCalificacionesHtml,
       categoryId: catInformes.id,
@@ -1605,7 +1653,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── ADMINISTRATIVOS (roles: coordinador, secretario, director)
     {
       name: 'Memorándum Interno',
-      type: 'memorandum',
+      documentTypeId: dtMemorando.id,
       description: 'Comunicación interna oficial entre departamentos o personal de la institución',
       htmlTemplate: memorandumHtml,
       categoryId: catAdministrativos.id,
@@ -1621,7 +1669,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Circular Informativa',
-      type: 'circular',
+      documentTypeId: dtCircular.id,
       description: 'Comunicado oficial dirigido a docentes, personal administrativo o representantes',
       htmlTemplate: circularInformativaHtml,
       categoryId: catAdministrativos.id,
@@ -1639,7 +1687,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Comunicado a Representantes',
-      type: 'comunicado',
+      documentTypeId: dtComunicado.id,
       description: 'Comunicado formal para los representantes de un estudiante específico',
       htmlTemplate: comunicadoRepresentantesHtml,
       categoryId: catAdministrativos.id,
@@ -1657,7 +1705,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Solicitud de Permiso Laboral',
-      type: 'solicitud_permiso',
+      documentTypeId: dtSolicitudPermiso.id,
       description: 'Solicitud formal de permiso laboral para el personal docente o administrativo',
       htmlTemplate: solicitudPermisoHtml,
       categoryId: catAdministrativos.id,
@@ -1677,7 +1725,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── LEGALES (roles: director, admin)
     {
       name: 'Reporte de Incidencia Escolar',
-      type: 'reporte_incidencia',
+      documentTypeId: dtReporteIncidencia.id,
       description: 'Registro formal de incidencias, accidentes o situaciones disciplinarias en la institución',
       htmlTemplate: reporteIncidenciaHtml,
       categoryId: catAdministrativos.id,
@@ -1697,7 +1745,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Contrato de Inscripción Estudiantil',
-      type: 'contrato_inscripcion',
+      documentTypeId: dtContratoInscripcion.id,
       description: 'Contrato formal entre la institución y el representante al momento de la inscripción',
       htmlTemplate: contratoInscripcionHtml,
       categoryId: catLegales.id,
@@ -1720,7 +1768,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     // ── FINANCIEROS (roles: secretario, director, admin)
     {
       name: 'Recibo de Pago de Aranceles',
-      type: 'recibo_pago',
+      documentTypeId: dtReciboPago.id,
       description: 'Recibo oficial de pago de aranceles escolares con desglose de conceptos',
       htmlTemplate: reciboArancelesHtml,
       categoryId: catFinancieros.id,
@@ -1748,7 +1796,7 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     {
       name: 'Presupuesto de Actividad Escolar',
-      type: 'presupuesto',
+      documentTypeId: dtPresupuesto.id,
       description: 'Presupuesto estimado para actividades escolares con desglose de ítems y costos',
       htmlTemplate: presupuestoActividadHtml,
       categoryId: catFinancieros.id,
@@ -1784,7 +1832,10 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
   for (const templateData of templates) {
     await prisma.documentTemplate.upsert({
       where: { name: templateData.name },
-      update: { categoryId: templateData.categoryId ?? null },
+      update: {
+        categoryId: templateData.categoryId ?? null,
+        documentTypeId: (templateData as any).documentTypeId ?? null,
+      },
       create: templateData as any,
     });
   }

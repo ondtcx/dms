@@ -188,27 +188,6 @@ export class DocumentTemplateController {
     return this.documentTemplateService.findAll(query, user.id, user.role);
   }
 
-  @Get('types')
-  @ApiOperation({
-    summary: 'Obtener tipos de plantillas disponibles',
-    description:
-      'Retorna una lista de todos los tipos de plantillas con su conteo',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Lista de tipos de plantillas',
-    schema: {
-      example: [
-        { type: 'acta', count: 3 },
-        { type: 'certificado', count: 5 },
-        { type: 'informe', count: 2 },
-      ],
-    },
-  })
-  getTypes(@CurrentUser() user: any) {
-    return this.documentTemplateService.getTemplateTypes(user.id, user.role);
-  }
-
   @Get(':id/preview')
   @ApiOperation({
     summary: 'Generar vista previa de una plantilla',

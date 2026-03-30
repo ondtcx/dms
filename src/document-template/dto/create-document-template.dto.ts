@@ -19,14 +19,6 @@ export class CreateDocumentTemplateDto {
   name: string;
 
   @ApiProperty({
-    description: 'Tipo de documento',
-    example: 'acta',
-  })
-  @IsString()
-  @IsNotEmpty()
-  type: string;
-
-  @ApiProperty({
     description: 'Descripción de la plantilla',
     example: 'Plantilla para actas de reunión',
     required: false,
@@ -146,4 +138,13 @@ p { line-height: 1.6; }`,
   @IsInt()
   @IsOptional()
   categoryId?: number;
+
+  @ApiProperty({
+    description: 'ID del subtipo de documento (DocumentType) al que pertenece esta plantilla',
+    example: 3,
+    required: false,
+  })
+  @IsInt()
+  @IsOptional()
+  documentTypeId?: number;
 }

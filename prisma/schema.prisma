@@ -527,11 +527,31 @@ model Category {
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
   documentTemplates DocumentTemplate[] // Plantillas de documento de esta categoría
+  documentTypes     DocumentType[] // Subtipos de documento de esta categoría
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   @@index([name])
   @@index([sectionId])
+}
+
+// Subtipo de documento dentro de una categoría (ej: "Oficio Interno" dentro de "Administrativos")
+model DocumentType {
+  id          Int      @id @default(autoincrement())
+  name        String // Nombre del subtipo (ej: "Oficio Interno", "Planificación Semanal")
+  description String? // Descripción opcional del subtipo
+  categoryId  Int // Categoría a la que pertenece este subtipo
+  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  documents         Document[] // Documentos de este subtipo
+  documentTemplates DocumentTemplate[] // Plantillas de este subtipo
+
+  @@unique([name, categoryId]) // Mismo nombre no puede repetirse dentro de la misma categoría
+  @@index([categoryId])
+  @@index([isActive])
 }
 
 model Section {
@@ -571,6 +591,10 @@ model Document {
   // Año lectivo al que pertenece (null = documento permanente/institucional sin ciclo específico)
   academicYearId  Int?
   academicYear    AcademicYear?      @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+
+  // Subtipo de documento (jerarquía: Section → Category → DocumentType)
+  documentTypeId  Int? // Subtipo del documento dentro de su categoría
+  documentType    DocumentType?      @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
 
   isPublic        Boolean            @default(false) // Si es público o privado
   uploadedBy      User               @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
@@ -630,6 +654,7 @@ model Document {
   @@index([uploadedById])
   @@index([templateId])
   @@index([categoryId])
+  @@index([documentTypeId])
   @@index([courseId])
   @@index([subjectId])
   @@index([batchId])
@@ -672,11 +697,12 @@ model TransferHistory {
 }
 
 model DocumentTemplate {
-  id              Int        @id @default(autoincrement())
-  name            String     @unique // Nombre de la plantilla (ej: "Acta de Reunión")
-  type            String // Tipo de documento (ej: "acta", "certificado", "informe")
+  id              Int           @id @default(autoincrement())
+  name            String        @unique // Nombre de la plantilla (ej: "Acta de Reunión")
   categoryId      Int? // Categoría a la que pertenece esta plantilla
-  category        Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category        Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  documentTypeId  Int? // Subtipo de documento al que pertenece esta plantilla
+  documentType    DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
   description     String? // Descripción de la plantilla
   fields          Json // Definición de campos del formulario en formato JSON
   htmlTemplate    String     @db.Text // Plantilla HTML con Handlebars para generar el documento
@@ -696,7 +722,7 @@ model DocumentTemplate {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  @@index([type])
+  @@index([documentTypeId])
   @@index([categoryId])
   @@index([isPredefined])
   @@index([usageCount])
