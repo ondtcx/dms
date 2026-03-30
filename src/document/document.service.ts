@@ -170,7 +170,7 @@ export class DocumentService {
   }
 
   async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
-    const { search, categoryId, documentTypeId, sectionId, isPublic, includeDeleted, onlyMine, excludeBatched, batchId, page = 1, limit = 10 } = query;
+    const { search, categoryId, documentTypeId, sectionId, isPublic, includeDeleted, onlyMine, excludeBatched, batchId, page = 1, limit = 10, excludeComposites } = query;
 
     // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
@@ -243,6 +243,10 @@ export class DocumentService {
 
     if (batchId) {
       where.AND.push({ batchId });
+    }
+
+    if (excludeComposites) {
+      where.AND.push({ isComposite: false });
     }
 
     // Filtro por año lectivo — omitido para roles PADRE y ESTUDIANTE

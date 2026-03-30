@@ -648,6 +648,11 @@ model Document {
   searchVector    Unsupported("tsvector")? // Vector de búsqueda full-text de PostgreSQL
   extractedText   String?                  @db.Text // Texto extraído del PDF para búsqueda
 
+  // Composición de documentos
+  isComposite Boolean @default(false) // true = este documento agrupa otros
+  components  DocumentCompositionItem[] @relation("ComposedDocument")
+  partOf      DocumentCompositionItem[] @relation("ComponentDocument")
+
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -663,6 +668,25 @@ model Document {
   @@index([createdAt]) // Índice para ordenar por fecha
   @@index([academicYearId]) // Índice para filtrar por año lectivo
   @@index([searchVector], type: Gin) // Índice GIN para búsqueda full-text
+  @@index([isComposite])
+}
+
+model DocumentCompositionItem {
+  id              Int      @id @default(autoincrement())
+  parentId        Int      // El informe contenedor
+  parent          Document @relation("ComposedDocument", fields: [parentId], references: [id], onDelete: Cascade)
+  childId         Int      // El acta/anexo incluido
+  child           Document @relation("ComponentDocument", fields: [childId], references: [id], onDelete: Restrict)
+  order           Int      // Orden de aparición (0-indexed)
+  label           String?  // Etiqueta opcional ("Acta Reunión 15/03")
+  insertAfterPage Int?     // null = al final del bloque anterior; número = insertar después de esa página
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([parentId, childId])
+  @@index([parentId])
+  @@index([childId])
 }
 
 // Enum para estados de transferencia

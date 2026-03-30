@@ -27,6 +27,7 @@ import { OnlyofficeModule } from './onlyoffice/onlyoffice.module';
 import { SettingsModule } from './settings/settings.module';
 import { AcademicYearModule } from './academic-year/academic-year.module';
 import { DocumentTypeModule } from './document-type/document-type.module';
+import { DocumentCompositionModule } from './document-composition/document-composition.module';
 import { join } from 'path';
 
 @Module({
@@ -60,6 +61,7 @@ import { join } from 'path';
     DocumentTypeModule, // Subtipos de documento por categoría
     DocumentModule,
     DocumentTemplateModule,
+    DocumentCompositionModule,
     OnlyofficeModule, // Integración con OnlyOffice
     SettingsModule, // Configuración del sistema
   ],

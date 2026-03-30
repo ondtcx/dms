@@ -1,7 +1,7 @@
 // src/documents/dto/query-documents.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsOptional, IsString, IsBoolean, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 
 export class QueryDocumentDto {
   @ApiPropertyOptional({
@@ -116,4 +116,10 @@ export class QueryDocumentDto {
   @IsOptional()
   @Type(() => Number)
   academicYearId?: number;
+
+  @ApiPropertyOptional({ description: 'Excluir documentos compuestos del resultado' })
+  @IsOptional()
+  @IsBoolean()
+  @Transform(({ value }) => value === 'true' || value === true)
+  excludeComposites?: boolean;
 }
