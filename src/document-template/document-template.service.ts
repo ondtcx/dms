@@ -864,6 +864,7 @@ export class DocumentTemplateService {
     // 4. Obtener la plantilla
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id: document.templateId },
+      include: { documentType: { select: { id: true, name: true } } },
     });
 
     if (!template) {

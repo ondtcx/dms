@@ -344,7 +344,7 @@ export class BatchService {
       this.prisma.documentBatch.findMany({
         where,
         include: {
-          template: { select: { id: true, name: true, type: true } },
+          template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
           createdBy: { select: { id: true, name: true, email: true } },
           _count: { select: { documents: true } },
         },
@@ -365,7 +365,7 @@ export class BatchService {
     const batch = await this.prisma.documentBatch.findUnique({
       where: { id },
       include: {
-        template: { select: { id: true, name: true, type: true } },
+        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
         createdBy: { select: { id: true, name: true, email: true } },
         documents: {
           where: { deletedAt: null },
@@ -400,7 +400,7 @@ export class BatchService {
   async deleteBatch(id: string, userId: string, userRole: UserRole) {
     const batch = await this.getBatch(id, userId, userRole);
 
-    const docsCount = batch.documents.length;
+    const docsCount = await this.prisma.document.count({ where: { batchId: id, deletedAt: null } });
 
     // Soft-delete todos los documentos del lote
     await this.prisma.document.updateMany({
@@ -430,7 +430,12 @@ export class BatchService {
     const archive = archiver('zip', { zlib: { level: 9 } });
     archive.pipe(res);
 
-    for (const doc of batch.documents) {
+    const batchDocuments = await this.prisma.document.findMany({
+      where: { batchId: id, deletedAt: null },
+      select: { id: true, filename: true, path: true },
+    });
+
+    for (const doc of batchDocuments) {
       const filePath = join(process.cwd(), doc.path.startsWith('/') ? doc.path.slice(1) : doc.path);
       if (existsSync(filePath)) {
         archive.append(createReadStream(filePath), { name: doc.filename });
