@@ -24,7 +24,8 @@ export class CreateSubjectDto {
   @IsString()
   @Length(2, 20)
   @Matches(/^[A-Z0-9-]+$/, {
-    message: 'El código debe contener solo letras mayúsculas, números y guiones',
+    message:
+      'El código debe contener solo letras mayúsculas, números y guiones',
   })
   code: string;
 

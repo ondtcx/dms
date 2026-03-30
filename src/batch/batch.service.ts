@@ -48,7 +48,9 @@ export class BatchService {
     }
 
     // Verificar permisos
-    const unauthorizedDocs = documents.filter((doc) => doc.uploadedById !== userId);
+    const unauthorizedDocs = documents.filter(
+      (doc) => doc.uploadedById !== userId,
+    );
     if (unauthorizedDocs.length > 0) {
       // Verificar si tiene permisos en cada documento
       for (const doc of unauthorizedDocs) {
@@ -61,7 +63,9 @@ export class BatchService {
         });
 
         if (!hasPermission) {
-          throw new ForbiddenException(`No tienes permiso para editar el documento ${doc.id}`);
+          throw new ForbiddenException(
+            `No tienes permiso para editar el documento ${doc.id}`,
+          );
         }
       }
     }
@@ -104,7 +108,9 @@ export class BatchService {
     }
 
     // Verificar permisos
-    const unauthorizedDocs = documents.filter((doc) => doc.uploadedById !== userId);
+    const unauthorizedDocs = documents.filter(
+      (doc) => doc.uploadedById !== userId,
+    );
     if (unauthorizedDocs.length > 0) {
       // Verificar si tiene permisos en cada documento
       for (const doc of unauthorizedDocs) {
@@ -117,7 +123,9 @@ export class BatchService {
         });
 
         if (!hasPermission) {
-          throw new ForbiddenException(`No tienes permiso para eliminar el documento ${doc.id}`);
+          throw new ForbiddenException(
+            `No tienes permiso para eliminar el documento ${doc.id}`,
+          );
         }
       }
     }
@@ -206,7 +214,11 @@ export class BatchService {
   /**
    * Exportar documentos en lote a ZIP
    */
-  async batchExport(batchExportDto: BatchExportDto, userId: string, res: Response) {
+  async batchExport(
+    batchExportDto: BatchExportDto,
+    userId: string,
+    res: Response,
+  ) {
     const { documentIds } = batchExportDto;
 
     // Verificar que todos los documentos existen y el usuario tiene permisos
@@ -238,7 +250,9 @@ export class BatchService {
         });
 
         if (!hasPermission) {
-          throw new ForbiddenException(`No tienes permiso para ver el documento ${doc.id}`);
+          throw new ForbiddenException(
+            `No tienes permiso para ver el documento ${doc.id}`,
+          );
         }
       }
     }
@@ -250,7 +264,10 @@ export class BatchService {
 
     // Configurar response headers
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename=documents-${Date.now()}.zip`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=documents-${Date.now()}.zip`,
+    );
 
     // Pipe del archivo al response
     archive.pipe(res);
@@ -293,11 +310,15 @@ export class BatchService {
     });
 
     if (documents.length === 0) {
-      throw new NotFoundException('No se encontraron documentos eliminados para restaurar');
+      throw new NotFoundException(
+        'No se encontraron documentos eliminados para restaurar',
+      );
     }
 
     // Verificar permisos
-    const unauthorizedDocs = documents.filter((doc) => doc.uploadedById !== userId);
+    const unauthorizedDocs = documents.filter(
+      (doc) => doc.uploadedById !== userId,
+    );
     if (unauthorizedDocs.length > 0) {
       for (const doc of unauthorizedDocs) {
         const hasPermission = await this.prisma.documentPermission.findFirst({
@@ -309,7 +330,9 @@ export class BatchService {
         });
 
         if (!hasPermission) {
-          throw new ForbiddenException(`No tienes permiso para restaurar el documento ${doc.id}`);
+          throw new ForbiddenException(
+            `No tienes permiso para restaurar el documento ${doc.id}`,
+          );
         }
       }
     }
@@ -334,7 +357,12 @@ export class BatchService {
 
   // ============ Gestión de lotes de documentos ============
 
-  async listBatches(userId: string, userRole: UserRole, page: number | string = 1, limit: number | string = 20) {
+  async listBatches(
+    userId: string,
+    userRole: UserRole,
+    page: number | string = 1,
+    limit: number | string = 20,
+  ) {
     const pageNum = parseInt(String(page), 10) || 1;
     const limitNum = parseInt(String(limit), 10) || 20;
     const where = userRole === UserRole.ADMIN ? {} : { createdById: userId };
@@ -344,7 +372,13 @@ export class BatchService {
       this.prisma.documentBatch.findMany({
         where,
         include: {
-          template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
+          template: {
+            select: {
+              id: true,
+              name: true,
+              documentType: { select: { id: true, name: true } },
+            },
+          },
           createdBy: { select: { id: true, name: true, email: true } },
           _count: { select: { documents: true } },
         },
@@ -357,7 +391,12 @@ export class BatchService {
 
     return {
       data: batches,
-      meta: { total, page: pageNum, limit: limitNum, totalPages: Math.ceil(total / limitNum) },
+      meta: {
+        total,
+        page: pageNum,
+        limit: limitNum,
+        totalPages: Math.ceil(total / limitNum),
+      },
     };
   }
 
@@ -365,7 +404,13 @@ export class BatchService {
     const batch = await this.prisma.documentBatch.findUnique({
       where: { id },
       include: {
-        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
+        },
         createdBy: { select: { id: true, name: true, email: true } },
         documents: {
           where: { deletedAt: null },
@@ -377,7 +422,9 @@ export class BatchService {
                 name: true,
                 color: true,
                 icon: true,
-                section: { select: { id: true, name: true, color: true, icon: true } },
+                section: {
+                  select: { id: true, name: true, color: true, icon: true },
+                },
               },
             },
           },
@@ -400,7 +447,9 @@ export class BatchService {
   async deleteBatch(id: string, userId: string, userRole: UserRole) {
     const batch = await this.getBatch(id, userId, userRole);
 
-    const docsCount = await this.prisma.document.count({ where: { batchId: id, deletedAt: null } });
+    const docsCount = await this.prisma.document.count({
+      where: { batchId: id, deletedAt: null },
+    });
 
     // Soft-delete todos los documentos del lote
     await this.prisma.document.updateMany({
@@ -411,15 +460,25 @@ export class BatchService {
     // Eliminar el registro del lote
     await this.prisma.documentBatch.delete({ where: { id } });
 
-    this.logger.log(`Batch ${id} deleted by user ${userId}. ${docsCount} documents soft-deleted.`);
+    this.logger.log(
+      `Batch ${id} deleted by user ${userId}. ${docsCount} documents soft-deleted.`,
+    );
 
     return { success: true, deletedDocuments: docsCount };
   }
 
-  async exportBatch(id: string, userId: string, userRole: UserRole, res: Response) {
+  async exportBatch(
+    id: string,
+    userId: string,
+    userRole: UserRole,
+    res: Response,
+  ) {
     const batch = await this.getBatch(id, userId, userRole);
 
-    const batchName = batch.name.replace(/[^a-zA-Z0-9\-_\s]/g, '').trim().replace(/\s+/g, '-');
+    const batchName = batch.name
+      .replace(/[^a-zA-Z0-9\-_\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '-');
 
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(
@@ -436,7 +495,10 @@ export class BatchService {
     });
 
     for (const doc of batchDocuments) {
-      const filePath = join(process.cwd(), doc.path.startsWith('/') ? doc.path.slice(1) : doc.path);
+      const filePath = join(
+        process.cwd(),
+        doc.path.startsWith('/') ? doc.path.slice(1) : doc.path,
+      );
       if (existsSync(filePath)) {
         archive.append(createReadStream(filePath), { name: doc.filename });
       } else {

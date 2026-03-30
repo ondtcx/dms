@@ -221,11 +221,12 @@ export class DocumentTemplateController {
     @CurrentUser() user: any,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { buffer, filename } = await this.documentTemplateService.generatePreview(
-      id,
-      user.id,
-      user.role,
-    );
+    const { buffer, filename } =
+      await this.documentTemplateService.generatePreview(
+        id,
+        user.id,
+        user.role,
+      );
 
     res.set({
       'Content-Type': 'application/pdf',
@@ -268,14 +269,17 @@ export class DocumentTemplateController {
     @CurrentUser() user: any,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const thumbnailPath = await this.documentTemplateService.getTemplateThumbnail(
-      id,
-      user.id,
-      user.role,
-    );
+    const thumbnailPath =
+      await this.documentTemplateService.getTemplateThumbnail(
+        id,
+        user.id,
+        user.role,
+      );
 
     if (!thumbnailPath || !existsSync(thumbnailPath)) {
-      throw new NotFoundException('Thumbnail no disponible para esta plantilla');
+      throw new NotFoundException(
+        'Thumbnail no disponible para esta plantilla',
+      );
     }
 
     const file = createReadStream(thumbnailPath);
@@ -658,7 +662,9 @@ export class DocumentTemplateController {
       ],
     },
   })
-  getPopular(@Query('limit', new ParseIntPipe({ optional: true })) limit?: number) {
+  getPopular(
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
     return this.documentTemplateService.getPopular(limit);
   }
 }

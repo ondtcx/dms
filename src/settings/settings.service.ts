@@ -111,7 +111,9 @@ export class SettingsService {
   async getSettings() {
     if (this.cache) return this.cache;
 
-    let settings = await this.prisma.systemSettings.findUnique({ where: { id: 1 } });
+    let settings = await this.prisma.systemSettings.findUnique({
+      where: { id: 1 },
+    });
 
     if (!settings) {
       settings = await this.prisma.systemSettings.create({
@@ -147,7 +149,10 @@ export class SettingsService {
 
     // Eliminar logo anterior si existe
     if (institution.logoPath) {
-      const oldPath = join('./uploads', institution.logoPath.replace('/files/', ''));
+      const oldPath = join(
+        './uploads',
+        institution.logoPath.replace('/files/', ''),
+      );
       if (existsSync(oldPath)) {
         unlinkSync(oldPath);
       }

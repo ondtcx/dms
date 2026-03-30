@@ -60,11 +60,16 @@ export class UploadDocumentDto {
   subjectId?: number;
 
   @ApiPropertyOptional({
-    description: 'ID del año lectivo al que pertenece. Si no se especifica, se asigna el año actual. Omitir para documentos permanentes sin año.',
+    description:
+      'ID del año lectivo al que pertenece. Si no se especifica, se asigna el año actual. Omitir para documentos permanentes sin año.',
     example: 1,
   })
   @IsInt()
   @IsOptional()
-  @Transform(({ value }) => (value !== undefined && value !== null && value !== '' ? parseInt(value, 10) : undefined))
+  @Transform(({ value }) =>
+    value !== undefined && value !== null && value !== ''
+      ? parseInt(value, 10)
+      : undefined,
+  )
   academicYearId?: number;
 }

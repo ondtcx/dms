@@ -86,7 +86,10 @@ export class CourseController {
 
   @Get(':id/subjects')
   @ApiOperation({ summary: 'Listar materias de un curso' })
-  @ApiResponse({ status: 200, description: 'Lista de materias activas del curso' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de materias activas del curso',
+  })
   @ApiResponse({ status: 404, description: 'Curso no encontrado' })
   findSubjects(@Param('id', ParseIntPipe) id: number) {
     return this.courseService.findSubjects(id);

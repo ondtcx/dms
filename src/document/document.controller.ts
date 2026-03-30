@@ -187,13 +187,20 @@ export class DocumentController {
   @Post('batch-from-template')
   @ApiOperation({ summary: 'Generar documentos en lote desde una plantilla' })
   @ApiResponse({ status: 201, description: 'Lote creado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Sin filas válidas o plantilla inactiva' })
+  @ApiResponse({
+    status: 400,
+    description: 'Sin filas válidas o plantilla inactiva',
+  })
   @ApiResponse({ status: 404, description: 'Plantilla no encontrada' })
   createBatchFromTemplate(
     @Body() dto: CreateBatchFromTemplateDto,
     @CurrentUser() user: any,
   ) {
-    return this.documentTemplateService.createBatchFromTemplate(dto, user.id, user.role);
+    return this.documentTemplateService.createBatchFromTemplate(
+      dto,
+      user.id,
+      user.role,
+    );
   }
 
   @Post('upload')
@@ -285,31 +292,44 @@ export class DocumentController {
 
   @Get('archive/stats')
   @ApiOperation({ summary: 'Obtener estadísticas del archivo histórico' })
-  @ApiResponse({ status: 200, description: 'Total archivados y distribución por categoría' })
+  @ApiResponse({
+    status: 200,
+    description: 'Total archivados y distribución por categoría',
+  })
   getArchiveStats(@CurrentUser() user: any) {
     return this.documentsService.getArchiveStats(user.id, user.role);
   }
 
   @Get('archive')
   @ApiOperation({ summary: 'Listar documentos archivados' })
-  @ApiResponse({ status: 200, description: 'Lista paginada de documentos archivados' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de documentos archivados',
+  })
   findArchived(@Query() query: QueryDocumentDto, @CurrentUser() user: any) {
     return this.documentsService.findArchived(query, user.id, user.role);
   }
 
   @Post(':id/restore-from-archive')
-  @ApiOperation({ summary: 'Restaurar documento desde el archivo histórico al activo' })
+  @ApiOperation({
+    summary: 'Restaurar documento desde el archivo histórico al activo',
+  })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({ status: 200, description: 'Documento restaurado al activo' })
   @ApiResponse({ status: 400, description: 'El documento no está archivado' })
   @ApiResponse({ status: 403, description: 'Sin permiso para restaurar' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
-  restoreFromArchive(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+  restoreFromArchive(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.documentsService.restoreFromArchive(id, user.id, user.role);
   }
 
   @Get('calendar')
-  @ApiOperation({ summary: 'Obtener documentos agrupados por fecha para vista de calendario' })
+  @ApiOperation({
+    summary: 'Obtener documentos agrupados por fecha para vista de calendario',
+  })
   @ApiResponse({
     status: 200,
     description: 'Documentos agrupados por fecha',
@@ -324,13 +344,13 @@ export class DocumentController {
               createdAt: '2026-01-07T10:30:00Z',
               uploadedBy: { name: 'Juan Pérez' },
               category: { name: 'Académico', color: '#3b82f6' },
-              section: { name: 'Calendario', color: '#10b981' }
-            }
-          ]
+              section: { name: 'Calendario', color: '#10b981' },
+            },
+          ],
         },
-        totalDocuments: 1
-      }
-    }
+        totalDocuments: 1,
+      },
+    },
   })
   getDocumentsByDate(
     @Query() query: CalendarQueryDto,
@@ -431,7 +451,11 @@ export class DocumentController {
       const thumbMtime = statSync(thumbnailPath).mtime;
       const docCreatedAt = new Date(doc.createdAt);
       if (thumbMtime < docCreatedAt) {
-        thumbnailPath = await this.thumbnailService.regenerateThumbnail(doc.path, id, doc.mimetype);
+        thumbnailPath = await this.thumbnailService.regenerateThumbnail(
+          doc.path,
+          id,
+          doc.mimetype,
+        );
       }
     } else {
       // Generar thumbnail si no existe
@@ -443,7 +467,9 @@ export class DocumentController {
     }
 
     if (!thumbnailPath) {
-      throw new NotFoundException('Thumbnail no disponible para este tipo de archivo');
+      throw new NotFoundException(
+        'Thumbnail no disponible para este tipo de archivo',
+      );
     }
 
     const file = createReadStream(thumbnailPath);
@@ -457,10 +483,18 @@ export class DocumentController {
   }
 
   @Patch(':id/from-template')
-  @ApiOperation({ summary: 'Regenerar documento desde formulario de plantilla' })
+  @ApiOperation({
+    summary: 'Regenerar documento desde formulario de plantilla',
+  })
   @ApiParam({ name: 'id', description: 'ID del documento' })
-  @ApiResponse({ status: 200, description: 'Documento regenerado exitosamente' })
-  @ApiResponse({ status: 400, description: 'Documento sin plantilla o campos inválidos' })
+  @ApiResponse({
+    status: 200,
+    description: 'Documento regenerado exitosamente',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Documento sin plantilla o campos inválidos',
+  })
   @ApiResponse({ status: 403, description: 'Sin permiso para editar' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   updateFromTemplate(
@@ -581,7 +615,10 @@ export class DocumentController {
     summary: 'Eliminar permanentemente un documento (Solo ADMIN)',
   })
   @ApiParam({ name: 'id', description: 'ID del documento' })
-  @ApiResponse({ status: 200, description: 'Documento eliminado permanentemente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Documento eliminado permanentemente',
+  })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   permanentDelete(
     @Param('id', ParseIntPipe) id: number,
@@ -604,13 +641,21 @@ export class DocumentController {
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiParam({ name: 'version', description: 'Número de versión a restaurar' })
   @ApiResponse({ status: 200, description: 'Versión restaurada exitosamente' })
-  @ApiResponse({ status: 404, description: 'Documento o versión no encontrada' })
+  @ApiResponse({
+    status: 404,
+    description: 'Documento o versión no encontrada',
+  })
   restoreVersion(
     @Param('id', ParseIntPipe) id: number,
     @Param('version', ParseIntPipe) version: number,
     @CurrentUser() user: any,
   ) {
-    return this.documentsService.restoreVersion(id, version, user.id, user.role);
+    return this.documentsService.restoreVersion(
+      id,
+      version,
+      user.id,
+      user.role,
+    );
   }
 
   // ── Validación dinámica de archivos según SystemSettings ─────────────────
@@ -623,7 +668,10 @@ export class DocumentController {
     }
 
     const allowedMimeTypes = await this.settingsService.getAllowedMimeTypes();
-    if (allowedMimeTypes.length > 0 && !allowedMimeTypes.includes(file.mimetype)) {
+    if (
+      allowedMimeTypes.length > 0 &&
+      !allowedMimeTypes.includes(file.mimetype)
+    ) {
       throw new BadRequestException(
         `Tipo de archivo no permitido: ${file.mimetype}`,
       );

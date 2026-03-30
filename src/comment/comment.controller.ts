@@ -51,7 +51,10 @@ export class CommentController {
   @Patch(':id')
   @ApiOperation({ summary: 'Actualizar un comentario' })
   @ApiResponse({ status: 200, description: 'Comentario actualizado' })
-  @ApiResponse({ status: 403, description: 'No tienes permiso para editar este comentario' })
+  @ApiResponse({
+    status: 403,
+    description: 'No tienes permiso para editar este comentario',
+  })
   @ApiResponse({ status: 404, description: 'Comentario no encontrado' })
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -64,7 +67,10 @@ export class CommentController {
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar un comentario (soft delete)' })
   @ApiResponse({ status: 200, description: 'Comentario eliminado' })
-  @ApiResponse({ status: 403, description: 'No tienes permiso para eliminar este comentario' })
+  @ApiResponse({
+    status: 403,
+    description: 'No tienes permiso para eliminar este comentario',
+  })
   @ApiResponse({ status: 404, description: 'Comentario no encontrado' })
   delete(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.commentService.delete(id, req.user.id);

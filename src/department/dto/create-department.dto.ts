@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, Length, Matches } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsBoolean,
+  Length,
+  Matches,
+} from 'class-validator';
 
 export class CreateDepartmentDto {
   @ApiProperty({
@@ -17,7 +23,8 @@ export class CreateDepartmentDto {
   @IsString()
   @Length(2, 20)
   @Matches(/^[A-Z0-9-]+$/, {
-    message: 'El código debe contener solo letras mayúsculas, números y guiones',
+    message:
+      'El código debe contener solo letras mayúsculas, números y guiones',
   })
   code: string;
 

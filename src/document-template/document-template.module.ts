@@ -10,7 +10,13 @@ import { SettingsModule } from '../settings/settings.module';
 @Module({
   imports: [SettingsModule],
   controllers: [DocumentTemplateController],
-  providers: [DocumentTemplateService, DocumentGeneratorService, PrismaService, ThumbnailService, DocumentNumberingService],
+  providers: [
+    DocumentTemplateService,
+    DocumentGeneratorService,
+    PrismaService,
+    ThumbnailService,
+    DocumentNumberingService,
+  ],
   exports: [DocumentTemplateService, DocumentGeneratorService],
 })
 export class DocumentTemplateModule {}

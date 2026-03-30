@@ -27,7 +27,9 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Búsqueda avanzada de documentos con full-text search' })
+  @ApiOperation({
+    summary: 'Búsqueda avanzada de documentos con full-text search',
+  })
   @ApiResponse({ status: 200, description: 'Resultados de búsqueda' })
   @ApiResponse({ status: 400, description: 'Parámetros inválidos' })
   search(@Request() req, @Query() searchDto: SearchQueryDto) {
@@ -37,7 +39,12 @@ export class SearchController {
   @Get('suggestions')
   @ApiOperation({ summary: 'Obtener sugerencias de autocompletado' })
   @ApiQuery({ name: 'q', description: 'Término de búsqueda', required: true })
-  @ApiQuery({ name: 'limit', description: 'Número máximo de sugerencias', required: false, type: Number })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Número máximo de sugerencias',
+    required: false,
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: 'Lista de sugerencias' })
   getSuggestions(
     @Request() req,
@@ -49,7 +56,12 @@ export class SearchController {
 
   @Get('history')
   @ApiOperation({ summary: 'Obtener historial de búsquedas del usuario' })
-  @ApiQuery({ name: 'limit', description: 'Número máximo de resultados', required: false, type: Number })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Número máximo de resultados',
+    required: false,
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: 'Historial de búsqueda' })
   getHistory(
     @Request() req,
@@ -67,7 +79,12 @@ export class SearchController {
 
   @Get('popular')
   @ApiOperation({ summary: 'Obtener búsquedas populares (últimos 30 días)' })
-  @ApiQuery({ name: 'limit', description: 'Número máximo de resultados', required: false, type: Number })
+  @ApiQuery({
+    name: 'limit',
+    description: 'Número máximo de resultados',
+    required: false,
+    type: Number,
+  })
   @ApiResponse({ status: 200, description: 'Búsquedas populares' })
   getPopular(
     @Request() req,

@@ -38,7 +38,8 @@ export class BatchController {
   @Patch('update')
   @ApiOperation({
     summary: 'Actualización masiva de documentos',
-    description: 'Actualiza múltiples documentos a la vez (categoría, sección, curso, etc.)',
+    description:
+      'Actualiza múltiples documentos a la vez (categoría, sección, curso, etc.)',
   })
   @ApiResponse({
     status: 200,
@@ -51,8 +52,14 @@ export class BatchController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'Algunos documentos no encontrados' })
-  @ApiResponse({ status: 403, description: 'Sin permiso para editar algunos documentos' })
+  @ApiResponse({
+    status: 404,
+    description: 'Algunos documentos no encontrados',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permiso para editar algunos documentos',
+  })
   batchUpdate(@Body() batchUpdateDto: BatchUpdateDto, @Request() req: any) {
     return this.batchService.batchUpdate(batchUpdateDto, req.user.id);
   }
@@ -61,7 +68,8 @@ export class BatchController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Eliminación masiva de documentos',
-    description: 'Elimina múltiples documentos a la vez (soft delete o permanente)',
+    description:
+      'Elimina múltiples documentos a la vez (soft delete o permanente)',
   })
   @ApiResponse({
     status: 200,
@@ -75,8 +83,14 @@ export class BatchController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'Algunos documentos no encontrados' })
-  @ApiResponse({ status: 403, description: 'Sin permiso para eliminar algunos documentos' })
+  @ApiResponse({
+    status: 404,
+    description: 'Algunos documentos no encontrados',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permiso para eliminar algunos documentos',
+  })
   batchDelete(@Body() batchDeleteDto: BatchDeleteDto, @Request() req: any) {
     return this.batchService.batchDelete(batchDeleteDto, req.user.id);
   }
@@ -106,7 +120,10 @@ export class BatchController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'Algunos documentos no encontrados' })
+  @ApiResponse({
+    status: 404,
+    description: 'Algunos documentos no encontrados',
+  })
   batchShare(@Body() batchShareDto: BatchShareDto, @Request() req: any) {
     return this.batchService.batchShare(batchShareDto, req.user.id);
   }
@@ -129,7 +146,10 @@ export class BatchController {
     },
   })
   @ApiResponse({ status: 404, description: 'No se encontraron documentos' })
-  @ApiResponse({ status: 403, description: 'Sin permiso para ver algunos documentos' })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permiso para ver algunos documentos',
+  })
   async batchExport(
     @Body() batchExportDto: BatchExportDto,
     @Request() req: any,
@@ -154,8 +174,14 @@ export class BatchController {
       },
     },
   })
-  @ApiResponse({ status: 404, description: 'No se encontraron documentos eliminados' })
-  @ApiResponse({ status: 403, description: 'Sin permiso para restaurar algunos documentos' })
+  @ApiResponse({
+    status: 404,
+    description: 'No se encontraron documentos eliminados',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permiso para restaurar algunos documentos',
+  })
   batchRestore(@Body() body: { documentIds: number[] }, @Request() req: any) {
     return this.batchService.batchRestore(body.documentIds, req.user.id);
   }
@@ -187,16 +213,31 @@ export class BatchController {
   @ApiOperation({ summary: 'Eliminar un lote (soft-delete de documentos)' })
   @ApiResponse({ status: 200, description: 'Lote eliminado' })
   @ApiResponse({ status: 404, description: 'Lote no encontrado' })
-  @ApiResponse({ status: 403, description: 'Sin permiso para eliminar este lote' })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permiso para eliminar este lote',
+  })
   deleteBatch(@Param('id') id: string, @CurrentUser() user: any) {
     return this.batchService.deleteBatch(id, user.id, user.role);
   }
 
   @Post('document-batches/:id/export')
-  @ApiOperation({ summary: 'Descargar todos los documentos de un lote como ZIP' })
-  @ApiResponse({ status: 200, description: 'ZIP generado exitosamente', content: { 'application/zip': { schema: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({
+    summary: 'Descargar todos los documentos de un lote como ZIP',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'ZIP generado exitosamente',
+    content: {
+      'application/zip': { schema: { type: 'string', format: 'binary' } },
+    },
+  })
   @ApiResponse({ status: 404, description: 'Lote no encontrado' })
-  exportBatch(@Param('id') id: string, @CurrentUser() user: any, @Res() res: Response) {
+  exportBatch(
+    @Param('id') id: string,
+    @CurrentUser() user: any,
+    @Res() res: Response,
+  ) {
     return this.batchService.exportBatch(id, user.id, user.role, res);
   }
 }

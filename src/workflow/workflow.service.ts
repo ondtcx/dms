@@ -68,7 +68,9 @@ export class WorkflowService {
       data: {
         ...rest,
         stateDefinitions: createDto.stateDefinitions as any,
-        sections: sectionIds?.length ? { connect: sectionIds.map((id) => ({ id })) } : undefined,
+        sections: sectionIds?.length
+          ? { connect: sectionIds.map((id) => ({ id })) }
+          : undefined,
       },
       include: {
         category: true,
@@ -158,8 +160,12 @@ export class WorkflowService {
       where: { id },
       data: {
         ...rest,
-        stateDefinitions: updateDto.stateDefinitions ? (updateDto.stateDefinitions as any) : undefined,
-        ...(sectionIds !== undefined ? { sections: { set: sectionIds.map((id) => ({ id })) } } : {}),
+        stateDefinitions: updateDto.stateDefinitions
+          ? (updateDto.stateDefinitions as any)
+          : undefined,
+        ...(sectionIds !== undefined
+          ? { sections: { set: sectionIds.map((id) => ({ id })) } }
+          : {}),
       },
       include: {
         category: true,
@@ -209,7 +215,10 @@ export class WorkflowService {
       select: { id: true, role: true, departmentId: true },
     });
     const accessFilter = userForAccess
-      ? buildDocumentAccessFilter({ ...userForAccess, role: userForAccess.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...userForAccess,
+          role: userForAccess.role as unknown as UserRole,
+        })
       : null;
 
     const document = await this.prisma.document.findFirst({
@@ -239,7 +248,10 @@ export class WorkflowService {
     });
 
     if (existingWorkflow) {
-      const activeStatuses = [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS];
+      const activeStatuses = [
+        WorkflowStatus.PENDING,
+        WorkflowStatus.IN_PROGRESS,
+      ];
       if (activeStatuses.includes(existingWorkflow.status as WorkflowStatus)) {
         throw new ConflictException(
           `El documento ya tiene un workflow activo en estado "${existingWorkflow.status}"`,
@@ -277,7 +289,10 @@ export class WorkflowService {
     const isAdmin = userForAccess?.role === UserRole.ADMIN;
     if (!isAdmin) {
       const initiatorRoles = (template.allowedInitiatorRoles as string[]) ?? [];
-      if (initiatorRoles.length > 0 && !initiatorRoles.includes(userForAccess?.role ?? '')) {
+      if (
+        initiatorRoles.length > 0 &&
+        !initiatorRoles.includes(userForAccess?.role ?? '')
+      ) {
         throw new ForbiddenException(
           `Tu rol no tiene permiso para iniciar el workflow "${template.name}"`,
         );
@@ -285,7 +300,8 @@ export class WorkflowService {
     }
 
     // Obtener el primer estado del workflow
-    const stateDefinitions = template.stateDefinitions as unknown as StateDefinition[];
+    const stateDefinitions =
+      template.stateDefinitions as unknown as StateDefinition[];
     const firstState = stateDefinitions.sort((a, b) => a.order - b.order)[0];
 
     if (!firstState) {
@@ -295,7 +311,10 @@ export class WorkflowService {
     }
 
     // Verificar que hay usuarios disponibles para el primer estado
-    const usersForFirst = await this.findUsersForState(firstState.role, documentDeptId);
+    const usersForFirst = await this.findUsersForState(
+      firstState.role,
+      documentDeptId,
+    );
     if (usersForFirst.length === 0) {
       throw new BadRequestException(
         `No hay usuarios con el rol "${firstState.role}" disponibles para la etapa "${firstState.state}". No se puede iniciar el workflow.`,
@@ -414,7 +433,8 @@ export class WorkflowService {
 
     const isInitiator = workflow.initiatedById === userId;
     const hasApproved = workflow.approvals.some((a) => a.userId === userId);
-    const states = workflow.template.stateDefinitions as unknown as StateDefinition[];
+    const states = workflow.template
+      .stateDefinitions as unknown as StateDefinition[];
     const hasRoleInTemplate = states.some((s) => s.role === user?.role);
 
     if (!isInitiator && !hasApproved && !hasRoleInTemplate) {
@@ -425,7 +445,11 @@ export class WorkflowService {
   }
 
   async getPendingWorkflows(userId: string) {
-    const NON_APPROVER_ROLES = [UserRole.PADRE, UserRole.ESTUDIANTE, UserRole.USER];
+    const NON_APPROVER_ROLES = [
+      UserRole.PADRE,
+      UserRole.ESTUDIANTE,
+      UserRole.USER,
+    ];
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
@@ -659,7 +683,9 @@ export class WorkflowService {
     });
 
     if (!workflow) {
-      throw new NotFoundException(`Workflow con ID ${workflowId} no encontrado`);
+      throw new NotFoundException(
+        `Workflow con ID ${workflowId} no encontrado`,
+      );
     }
 
     if (workflow.status !== WorkflowStatus.CHANGES_REQUESTED) {
@@ -669,7 +695,9 @@ export class WorkflowService {
     }
 
     if (workflow.initiatedById !== userId) {
-      throw new ForbiddenException('Solo el iniciador puede reenviar el workflow');
+      throw new ForbiddenException(
+        'Solo el iniciador puede reenviar el workflow',
+      );
     }
 
     // Resetear los registros de aprobación del estado actual (los que tuvieron REQUESTED_CHANGES)
@@ -705,7 +733,10 @@ export class WorkflowService {
       ),
     );
 
-    return { status: WorkflowStatus.IN_PROGRESS, message: 'Workflow reenviado para revisión' };
+    return {
+      status: WorkflowStatus.IN_PROGRESS,
+      message: 'Workflow reenviado para revisión',
+    };
   }
 
   async getMyInitiatedWorkflows(userId: string, query: MyInitiatedQueryDto) {
@@ -713,7 +744,11 @@ export class WorkflowService {
     const safeLimit = Math.min(limit, 100);
 
     const STATUS_MAP: Record<string, WorkflowStatus[]> = {
-      active:    [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING, WorkflowStatus.CHANGES_REQUESTED],
+      active: [
+        WorkflowStatus.IN_PROGRESS,
+        WorkflowStatus.PENDING,
+        WorkflowStatus.CHANGES_REQUESTED,
+      ],
       completed: [WorkflowStatus.APPROVED, WorkflowStatus.REJECTED],
       cancelled: [WorkflowStatus.CANCELLED],
     };
@@ -730,7 +765,9 @@ export class WorkflowService {
         where,
         include: {
           document: { select: { id: true, filename: true, description: true } },
-          template: { select: { id: true, name: true, stateDefinitions: true } },
+          template: {
+            select: { id: true, name: true, stateDefinitions: true },
+          },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -741,7 +778,12 @@ export class WorkflowService {
 
     return {
       data,
-      meta: { total, page, limit: safeLimit, totalPages: Math.ceil(total / safeLimit) },
+      meta: {
+        total,
+        page,
+        limit: safeLimit,
+        totalPages: Math.ceil(total / safeLimit),
+      },
     };
   }
 
@@ -805,9 +847,7 @@ export class WorkflowService {
     // Buscar el siguiente estado
     const sortedStates = stateDefinitions.sort((a, b) => a.order - b.order);
     const nextStateIndex =
-      sortedStates.findIndex(
-        (s) => s.order === workflow.currentStateOrder,
-      ) + 1;
+      sortedStates.findIndex((s) => s.order === workflow.currentStateOrder) + 1;
 
     if (nextStateIndex >= sortedStates.length) {
       // No hay más estados, aprobar el workflow
@@ -907,7 +947,10 @@ export class WorkflowService {
     }
 
     const deptUsers = await this.prisma.user.findMany({
-      where: { role: role as PrismaUserRole, departmentId: documentDepartmentId },
+      where: {
+        role: role as PrismaUserRole,
+        departmentId: documentDepartmentId,
+      },
       select: { id: true },
     });
 

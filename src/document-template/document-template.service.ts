@@ -72,7 +72,9 @@ export class DocumentTemplateService {
    * Lee la configuración institucional y convierte el logo a base64
    * para que Puppeteer pueda embeber la imagen sin dependencias de red.
    */
-  private async getInstitutionMetadata(): Promise<Record<string, string | null>> {
+  private async getInstitutionMetadata(): Promise<
+    Record<string, string | null>
+  > {
     try {
       const settings = await this.settingsService.getSettings();
       const institution = settings.institution as any;
@@ -85,7 +87,10 @@ export class DocumentTemplateService {
         const fsPath = path.join(process.cwd(), 'uploads', relativePath);
         if (fs.existsSync(fsPath)) {
           const ext = path.extname(fsPath).toLowerCase().replace('.', '');
-          const mimeType = ext === 'svg' ? 'image/svg+xml' : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
+          const mimeType =
+            ext === 'svg'
+              ? 'image/svg+xml'
+              : `image/${ext === 'jpg' ? 'jpeg' : ext}`;
           const fileBuffer = fs.readFileSync(fsPath);
           institutionLogo = `data:${mimeType};base64,${fileBuffer.toString('base64')}`;
         }
@@ -116,7 +121,9 @@ export class DocumentTemplateService {
         createdById: userId,
       },
       include: {
-        createdBy: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
         ...TEMPLATE_INCLUDE,
       },
     });
@@ -124,8 +131,19 @@ export class DocumentTemplateService {
     return template;
   }
 
-  async findAll(query: QueryDocumentTemplateDto, userId: string, userRole: UserRole) {
-    const { search, documentTypeId, isActive, categoryId, page = 1, limit = 10 } = query;
+  async findAll(
+    query: QueryDocumentTemplateDto,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const {
+      search,
+      documentTypeId,
+      isActive,
+      categoryId,
+      page = 1,
+      limit = 10,
+    } = query;
 
     const where: any = {};
 
@@ -152,7 +170,9 @@ export class DocumentTemplateService {
           { documentType: { name: { contains: search, mode: 'insensitive' } } },
         ],
       };
-      where.AND = where.AND ? [...where.AND, searchCondition] : [searchCondition];
+      where.AND = where.AND
+        ? [...where.AND, searchCondition]
+        : [searchCondition];
     }
 
     if (documentTypeId !== undefined) {
@@ -173,7 +193,9 @@ export class DocumentTemplateService {
       this.prisma.documentTemplate.findMany({
         where,
         include: {
-          createdBy: { select: { id: true, name: true, email: true, role: true } },
+          createdBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
           ...TEMPLATE_INCLUDE,
           _count: { select: { documents: true } },
         },
@@ -199,7 +221,9 @@ export class DocumentTemplateService {
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id },
       include: {
-        createdBy: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
         ...TEMPLATE_INCLUDE,
         _count: { select: { documents: true } },
       },
@@ -240,7 +264,9 @@ export class DocumentTemplateService {
       where: { id },
       data: updateDocumentTemplateDto,
       include: {
-        createdBy: { select: { id: true, name: true, email: true, role: true } },
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
         ...TEMPLATE_INCLUDE,
       },
     });
@@ -282,7 +308,15 @@ export class DocumentTemplateService {
     },
     userId: string,
   ) {
-    const { formData, filename, description, categoryId, sectionId, isPublic, batchId } = row;
+    const {
+      formData,
+      filename,
+      description,
+      categoryId,
+      sectionId,
+      isPublic,
+      batchId,
+    } = row;
 
     const institutionMeta = await this.getInstitutionMetadata();
 
@@ -365,6 +399,11 @@ export class DocumentTemplateService {
 
     const fileStats = fs.statSync(filePath);
 
+    const currentYear = await this.prisma.academicYear.findFirst({
+      where: { isCurrent: true, isActive: true },
+      select: { id: true },
+    });
+
     const document = await this.prisma.document.create({
       data: {
         filename: generatedFilename,
@@ -372,34 +411,50 @@ export class DocumentTemplateService {
         mimetype,
         size: fileStats.size,
         path: filePath,
-        description: description || `${template.name} - Generado desde formulario`,
+        description:
+          description || `${template.name} - Generado desde formulario`,
         isPublic: isPublic || false,
         uploadedById: userId,
         templateId: template.id,
         formData,
         categoryId: categoryId || null,
         batchId: batchId || null,
+        academicYearId: currentYear?.id ?? null,
       },
       include: {
-        uploadedBy: { select: { id: true, name: true, email: true, role: true } },
-        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
+        uploadedBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
+        },
         category: {
           select: {
             id: true,
             name: true,
             color: true,
             icon: true,
-            section: { select: { id: true, name: true, color: true, icon: true } },
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
           },
         },
       },
     });
 
     // Regenerar thumbnail en background para garantizar que corresponde al archivo actual
-    this.thumbnailService.regenerateThumbnail(filePath, document.id, mimetype).catch(() => {});
+    this.thumbnailService
+      .regenerateThumbnail(filePath, document.id, mimetype)
+      .catch(() => {});
 
     // Asignar número institucional en background
-    this.numberingService.assignNumber(document.id, categoryId ?? null).catch(() => {});
+    this.numberingService
+      .assignNumber(document.id, categoryId ?? null)
+      .catch(() => {});
 
     return document;
   }
@@ -437,14 +492,23 @@ export class DocumentTemplateService {
       if (category) {
         const allowed = category.allowedRoles as string[];
         if (allowed.length > 0 && !allowed.includes(userRole)) {
-          throw new ForbiddenException('Tu rol no tiene permiso para generar documentos con esta plantilla');
+          throw new ForbiddenException(
+            'Tu rol no tiene permiso para generar documentos con esta plantilla',
+          );
         }
       }
     }
 
     const document = await this.generateAndPersistDocument(
       template,
-      { formData, filename, description, isPublic, categoryId: effectiveCategoryId, sectionId: sectionId ?? null },
+      {
+        formData,
+        filename,
+        description,
+        isPublic,
+        categoryId: effectiveCategoryId,
+        sectionId: sectionId ?? null,
+      },
       userId,
     );
 
@@ -453,10 +517,16 @@ export class DocumentTemplateService {
     return document;
   }
 
-  async createBatchFromTemplate(dto: CreateBatchFromTemplateDto, userId: string, userRole: UserRole) {
+  async createBatchFromTemplate(
+    dto: CreateBatchFromTemplateDto,
+    userId: string,
+    userRole: UserRole,
+  ) {
     const { templateId, batchName, rows, sectionId, isPublic } = dto;
 
-    this.logger.log(`Creating batch from template ID: ${templateId}, rows: ${rows.length}`);
+    this.logger.log(
+      `Creating batch from template ID: ${templateId}, rows: ${rows.length}`,
+    );
 
     // Validar y obtener plantilla
     const template = await this.prisma.documentTemplate.findUnique({
@@ -481,7 +551,9 @@ export class DocumentTemplateService {
       if (category) {
         const allowed = category.allowedRoles as string[];
         if (allowed.length > 0 && !allowed.includes(userRole)) {
-          throw new ForbiddenException('Tu rol no tiene permiso para generar documentos con esta plantilla');
+          throw new ForbiddenException(
+            'Tu rol no tiene permiso para generar documentos con esta plantilla',
+          );
         }
       }
     }
@@ -526,7 +598,9 @@ export class DocumentTemplateService {
         documents.push(doc);
       } catch (error: any) {
         errors.push(`Fila ${i + 1}: ${error.message || 'Error desconocido'}`);
-        this.logger.warn(`Batch ${batch.id} row ${i + 1} failed: ${error.message}`);
+        this.logger.warn(
+          `Batch ${batch.id} row ${i + 1} failed: ${error.message}`,
+        );
       }
     }
 
@@ -543,8 +617,16 @@ export class DocumentTemplateService {
       where: { id: batch.id },
       data: { totalCount: documents.length },
       include: {
-        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
-        createdBy: { select: { id: true, name: true, email: true, role: true } },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
+        },
+        createdBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
       },
     });
 
@@ -579,7 +661,8 @@ export class DocumentTemplateService {
             sampleData[fieldName] = `Ejemplo de ${field.label || fieldName}`;
             break;
           case 'textarea':
-            sampleData[fieldName] = `Este es un texto de ejemplo para el campo "${field.label || fieldName}". Aquí iría el contenido extenso que el usuario ingresaría en este campo.`;
+            sampleData[fieldName] =
+              `Este es un texto de ejemplo para el campo "${field.label || fieldName}". Aquí iría el contenido extenso que el usuario ingresaría en este campo.`;
             break;
           case 'number':
             sampleData[fieldName] = '12345';
@@ -653,7 +736,10 @@ export class DocumentTemplateService {
 
     // Generar PDF con datos de muestra y extraer thumbnail del PDF (mismo flujo que documentos)
     try {
-      const sampleData = this.generateSampleData(template.fields, template.name);
+      const sampleData = this.generateSampleData(
+        template.fields,
+        template.name,
+      );
       const institutionMeta = await this.getInstitutionMetadata();
       sampleData._metadata = { ...sampleData._metadata, ...institutionMeta };
 
@@ -667,7 +753,10 @@ export class DocumentTemplateService {
       // Guardar PDF en archivo temporal
       const tempDir = path.join('./uploads/temp');
       if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-      const tempPdfPath = path.join(tempDir, `thumb_tpl_${id}_${Date.now()}.pdf`);
+      const tempPdfPath = path.join(
+        tempDir,
+        `thumb_tpl_${id}_${Date.now()}.pdf`,
+      );
       await fs.promises.writeFile(tempPdfPath, pdfBuffer);
 
       try {
@@ -683,7 +772,10 @@ export class DocumentTemplateService {
 
       return thumbnailPath;
     } catch (error) {
-      this.logger.error(`Error generating thumbnail for template ${id}:`, error);
+      this.logger.error(
+        `Error generating thumbnail for template ${id}:`,
+        error,
+      );
       return null;
     }
   }
@@ -718,10 +810,7 @@ export class DocumentTemplateService {
         fields: true,
         createdAt: true,
       },
-      orderBy: [
-        { categoryId: 'asc' },
-        { name: 'asc' },
-      ],
+      orderBy: [{ categoryId: 'asc' }, { name: 'asc' }],
     });
   }
 
@@ -732,14 +821,17 @@ export class DocumentTemplateService {
     const templates = await this.getPredefinedTemplates();
 
     // Agrupar por nombre de categoría
-    const gallery = templates.reduce((acc, template) => {
-      const category = template.category?.name || 'other';
-      if (!acc[category]) {
-        acc[category] = [];
-      }
-      acc[category].push(template);
-      return acc;
-    }, {} as Record<string, any[]>);
+    const gallery = templates.reduce(
+      (acc, template) => {
+        const category = template.category?.name || 'other';
+        if (!acc[category]) {
+          acc[category] = [];
+        }
+        acc[category].push(template);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
 
     return {
       categories: Object.keys(gallery),
@@ -766,7 +858,11 @@ export class DocumentTemplateService {
     let counter = 1;
 
     // Verificar si el nombre ya existe
-    while (await this.prisma.documentTemplate.findUnique({ where: { name: finalName } })) {
+    while (
+      await this.prisma.documentTemplate.findUnique({
+        where: { name: finalName },
+      })
+    ) {
       finalName = `${baseName} ${counter}`;
       counter++;
     }
@@ -853,12 +949,16 @@ export class DocumentTemplateService {
       userRole === UserRole.DIRECTOR ||
       document.uploadedById === userId;
     if (!canEdit) {
-      throw new ForbiddenException('No tienes permiso para editar este documento');
+      throw new ForbiddenException(
+        'No tienes permiso para editar este documento',
+      );
     }
 
     // 3. Verificar que el documento fue creado desde una plantilla
     if (!document.templateId) {
-      throw new BadRequestException('El documento no fue creado desde una plantilla');
+      throw new BadRequestException(
+        'El documento no fue creado desde una plantilla',
+      );
     }
 
     // 4. Obtener la plantilla
@@ -993,19 +1093,38 @@ export class DocumentTemplateService {
           select: { id: true, name: true, email: true, role: true },
         },
         template: {
-          select: { id: true, name: true, documentType: { select: { id: true, name: true } } },
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
         },
         category: {
-          select: { id: true, name: true, color: true, icon: true, section: { select: { id: true, name: true, color: true, icon: true } } },
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
+          },
         },
       },
     });
 
     // 10. Regenerar thumbnail con el nuevo archivo
     try {
-      await this.thumbnailService.regenerateThumbnail(newFilePath, id, mimetype);
+      await this.thumbnailService.regenerateThumbnail(
+        newFilePath,
+        id,
+        mimetype,
+      );
     } catch (error) {
-      this.logger.error(`Error regenerando thumbnail para documento ${id}:`, error);
+      this.logger.error(
+        `Error regenerando thumbnail para documento ${id}:`,
+        error,
+      );
     }
 
     return updatedDocument;
@@ -1026,7 +1145,10 @@ export class DocumentTemplateService {
         },
       });
     } catch (error) {
-      this.logger.error(`Error incrementing usage count for template ${id}:`, error);
+      this.logger.error(
+        `Error incrementing usage count for template ${id}:`,
+        error,
+      );
     }
   }
 }

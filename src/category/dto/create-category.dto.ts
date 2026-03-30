@@ -1,5 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsBoolean, IsInt, IsArray, Matches } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsBoolean,
+  IsInt,
+  IsArray,
+  Matches,
+} from 'class-validator';
 
 export class CreateCategoryDto {
   @ApiProperty({
@@ -54,7 +62,8 @@ export class CreateCategoryDto {
   sectionId?: number;
 
   @ApiPropertyOptional({
-    description: 'Si esta categoría requiere especificar un curso al subir documentos',
+    description:
+      'Si esta categoría requiere especificar un curso al subir documentos',
     example: false,
     default: false,
   })
@@ -63,7 +72,8 @@ export class CreateCategoryDto {
   requiresCourse?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Roles que pueden subir documentos a esta categoría (vacío = sin restricción)',
+    description:
+      'Roles que pueden subir documentos a esta categoría (vacío = sin restricción)',
     example: ['profesor', 'coordinador'],
     default: [],
   })
@@ -72,11 +82,15 @@ export class CreateCategoryDto {
   allowedRoles?: string[];
 
   @ApiPropertyOptional({
-    description: 'Prefijo para numeración de documentos (máx. 6 chars, mayúsculas y números). Si no se indica, se deriva automáticamente del nombre.',
+    description:
+      'Prefijo para numeración de documentos (máx. 6 chars, mayúsculas y números). Si no se indica, se deriva automáticamente del nombre.',
     example: 'PLN',
   })
   @IsString()
   @IsOptional()
-  @Matches(/^[A-Z0-9]{1,6}$/, { message: 'El prefijo debe tener entre 1 y 6 caracteres en mayúsculas o números' })
+  @Matches(/^[A-Z0-9]{1,6}$/, {
+    message:
+      'El prefijo debe tener entre 1 y 6 caracteres en mayúsculas o números',
+  })
   prefix?: string;
 }

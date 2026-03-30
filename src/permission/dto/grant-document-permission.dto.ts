@@ -12,7 +12,8 @@ import { UserRole } from '../../auth/role.enum';
 
 export class GrantDocumentPermissionDto {
   @ApiPropertyOptional({
-    description: 'ID del usuario específico (al menos uno de userId, role, o departmentId debe estar presente)',
+    description:
+      'ID del usuario específico (al menos uno de userId, role, o departmentId debe estar presente)',
     example: 'cuid123',
   })
   @IsString()

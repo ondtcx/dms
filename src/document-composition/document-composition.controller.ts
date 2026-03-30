@@ -31,7 +31,9 @@ export class DocumentCompositionController {
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Obtener la composición de un documento (componentes + parte de)' })
+  @ApiOperation({
+    summary: 'Obtener la composición de un documento (componentes + parte de)',
+  })
   getComposition(@Param('id', ParseIntPipe) parentId: number) {
     return this.compositionService.getComposition(parentId);
   }
@@ -75,7 +77,9 @@ export class DocumentCompositionController {
   }
 
   @Get('download')
-  @ApiOperation({ summary: 'Descargar el PDF mergeado del documento compuesto' })
+  @ApiOperation({
+    summary: 'Descargar el PDF mergeado del documento compuesto',
+  })
   async downloadMerged(
     @Param('id', ParseIntPipe) parentId: number,
     @Res() res: Response,

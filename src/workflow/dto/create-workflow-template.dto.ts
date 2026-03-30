@@ -15,7 +15,10 @@ class StateDefinition {
   @IsString()
   state: string;
 
-  @ApiProperty({ description: 'Rol requerido para aprobar', example: 'coordinador' })
+  @ApiProperty({
+    description: 'Rol requerido para aprobar',
+    example: 'coordinador',
+  })
   @IsString()
   role: string;
 
@@ -96,7 +99,8 @@ export class CreateWorkflowTemplateDto {
   requiresComment?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Roles que pueden iniciar esta plantilla. Vacío = sin restricción. ADMIN bypasea siempre.',
+    description:
+      'Roles que pueden iniciar esta plantilla. Vacío = sin restricción. ADMIN bypasea siempre.',
     example: ['profesor', 'coordinador'],
     default: [],
   })

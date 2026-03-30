@@ -30,7 +30,9 @@ export class PermissionService {
     });
 
     if (!document) {
-      throw new NotFoundException(`Documento con ID ${documentId} no encontrado`);
+      throw new NotFoundException(
+        `Documento con ID ${documentId} no encontrado`,
+      );
     }
 
     const grantedBy = await this.prisma.user.findUnique({
@@ -38,7 +40,9 @@ export class PermissionService {
     });
 
     if (!grantedBy) {
-      throw new NotFoundException(`Usuario con ID ${grantedById} no encontrado`);
+      throw new NotFoundException(
+        `Usuario con ID ${grantedById} no encontrado`,
+      );
     }
 
     if (userId) {
@@ -88,7 +92,9 @@ export class PermissionService {
       );
     }
 
-    await this.prisma.documentPermission.delete({ where: { id: permissionId } });
+    await this.prisma.documentPermission.delete({
+      where: { id: permissionId },
+    });
 
     return { message: 'Permiso de documento revocado exitosamente' };
   }

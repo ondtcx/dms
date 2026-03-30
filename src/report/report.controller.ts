@@ -1,5 +1,10 @@
 import { Controller, Get, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { ReportService } from './report.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -14,10 +19,16 @@ export class ReportController {
   constructor(private readonly reportService: ReportService) {}
 
   @Get('dashboard')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.VICERRECTOR, UserRole.COORDINADOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.DIRECTOR,
+    UserRole.VICERRECTOR,
+    UserRole.COORDINADOR,
+  )
   @ApiOperation({
     summary: 'Obtener dashboard principal con métricas clave',
-    description: 'Retorna un resumen completo con estadísticas y gráficos para el dashboard',
+    description:
+      'Retorna un resumen completo con estadísticas y gráficos para el dashboard',
   })
   @ApiResponse({
     status: 200,
@@ -31,9 +42,14 @@ export class ReportController {
         },
         charts: {
           recentUploads: [{ date: '2024-01-01', count: 45 }],
-          categoryDistribution: [{ categoryName: 'Académico', count: 580, color: '#3b82f6' }],
+          categoryDistribution: [
+            { categoryName: 'Académico', count: 580, color: '#3b82f6' },
+          ],
           userActivity: [{ userName: 'Juan Pérez', documentCount: 120 }],
-          workflowStats: { total: 250, byStatus: [{ status: 'APPROVED', count: 200 }] },
+          workflowStats: {
+            total: 250,
+            byStatus: [{ status: 'APPROVED', count: 200 }],
+          },
         },
         executionTime: 245,
       },
@@ -44,7 +60,12 @@ export class ReportController {
   }
 
   @Get('workflow-bottlenecks')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.VICERRECTOR, UserRole.COORDINADOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.DIRECTOR,
+    UserRole.VICERRECTOR,
+    UserRole.COORDINADOR,
+  )
   @ApiOperation({
     summary: 'Obtener cuellos de botella en workflows',
     description: 'Identifica workflows pendientes con mayor tiempo de espera',
@@ -71,7 +92,12 @@ export class ReportController {
   }
 
   @Get('document-compliance')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.VICERRECTOR, UserRole.COORDINADOR)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.DIRECTOR,
+    UserRole.VICERRECTOR,
+    UserRole.COORDINADOR,
+  )
   @ApiOperation({
     summary: 'Reporte de cumplimiento de documentos',
     description: 'Muestra tasas de cumplimiento de documentos por categoría',

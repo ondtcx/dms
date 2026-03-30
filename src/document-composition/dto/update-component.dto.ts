@@ -8,7 +8,10 @@ export class UpdateComponentDto {
   @IsString()
   label?: string;
 
-  @ApiPropertyOptional({ example: 10, description: 'null = al final del bloque anterior' })
+  @ApiPropertyOptional({
+    example: 10,
+    description: 'null = al final del bloque anterior',
+  })
   @IsOptional()
   @IsInt()
   @Min(1)

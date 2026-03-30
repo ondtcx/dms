@@ -66,7 +66,8 @@ export class AuthController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Registrar nuevo usuario',
-    description: 'Crea una cuenta de usuario. Solo accesible por administradores.',
+    description:
+      'Crea una cuenta de usuario. Solo accesible por administradores.',
   })
   @ApiBody({ type: RegisterDto })
   @ApiResponse({

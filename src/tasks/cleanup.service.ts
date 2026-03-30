@@ -51,9 +51,13 @@ export class CleanupService implements OnModuleInit {
         }
       }
 
-      this.logger.log(`✅ Limpieza de archivos temporales completada: ${deleted} archivos eliminados`);
+      this.logger.log(
+        `✅ Limpieza de archivos temporales completada: ${deleted} archivos eliminados`,
+      );
     } catch (error) {
-      this.logger.error(`❌ Error en limpieza de archivos temporales: ${error.message}`);
+      this.logger.error(
+        `❌ Error en limpieza de archivos temporales: ${error.message}`,
+      );
     }
   }
 
@@ -71,7 +75,9 @@ export class CleanupService implements OnModuleInit {
       const cutoffDate = new Date();
       cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
 
-      this.logger.log(`🗑️  Retención configurada: ${retentionDays} días (corte: ${cutoffDate.toISOString().split('T')[0]})`);
+      this.logger.log(
+        `🗑️  Retención configurada: ${retentionDays} días (corte: ${cutoffDate.toISOString().split('T')[0]})`,
+      );
 
       // Buscar documentos eliminados hace más días que el período de retención
       const documentsToDelete = await this.prisma.document.findMany({
@@ -118,7 +124,9 @@ export class CleanupService implements OnModuleInit {
 
           deletedRecords++;
         } catch (error) {
-          this.logger.error(`❌ Error eliminando documento ${doc.id}: ${error.message}`);
+          this.logger.error(
+            `❌ Error eliminando documento ${doc.id}: ${error.message}`,
+          );
         }
       }
 
@@ -174,11 +182,15 @@ export class CleanupService implements OnModuleInit {
 
           archived++;
         } catch (error) {
-          this.logger.error(`❌ Error archivando documento ${doc.id}: ${error.message}`);
+          this.logger.error(
+            `❌ Error archivando documento ${doc.id}: ${error.message}`,
+          );
         }
       }
 
-      this.logger.log(`✅ Archivado completado: ${archived} documentos movidos a archivo`);
+      this.logger.log(
+        `✅ Archivado completado: ${archived} documentos movidos a archivo`,
+      );
     } catch (error) {
       this.logger.error(`❌ Error en archivado: ${error.message}`);
     }
@@ -205,7 +217,9 @@ export class CleanupService implements OnModuleInit {
         },
       });
 
-      this.logger.log(`✅ Limpieza de auditoría completada: ${result.count} registros eliminados`);
+      this.logger.log(
+        `✅ Limpieza de auditoría completada: ${result.count} registros eliminados`,
+      );
     } catch (error) {
       this.logger.error(`❌ Error en limpieza de auditoría: ${error.message}`);
     }
@@ -241,7 +255,9 @@ export class CleanupService implements OnModuleInit {
       for (const doc of documents) {
         try {
           if (!this.storage.fileExists(doc.path)) {
-            this.logger.warn(`⚠️  Archivo faltante: ${doc.filename} (ID: ${doc.id})`);
+            this.logger.warn(
+              `⚠️  Archivo faltante: ${doc.filename} (ID: ${doc.id})`,
+            );
             continue;
           }
 
@@ -252,13 +268,17 @@ export class CleanupService implements OnModuleInit {
 
           if (!isValid) {
             corrupted++;
-            this.logger.error(`❌ Archivo corrupto detectado: ${doc.filename} (ID: ${doc.id})`);
+            this.logger.error(
+              `❌ Archivo corrupto detectado: ${doc.filename} (ID: ${doc.id})`,
+            );
             // Aquí podrías enviar alerta por email, Slack, etc.
           } else {
             verified++;
           }
         } catch (error) {
-          this.logger.error(`❌ Error verificando documento ${doc.id}: ${error.message}`);
+          this.logger.error(
+            `❌ Error verificando documento ${doc.id}: ${error.message}`,
+          );
         }
       }
 
@@ -266,7 +286,9 @@ export class CleanupService implements OnModuleInit {
         `✅ Verificación completada: ${verified} OK, ${corrupted} corruptos de ${documents.length} verificados`,
       );
     } catch (error) {
-      this.logger.error(`❌ Error en verificación de integridad: ${error.message}`);
+      this.logger.error(
+        `❌ Error en verificación de integridad: ${error.message}`,
+      );
     }
   }
 }

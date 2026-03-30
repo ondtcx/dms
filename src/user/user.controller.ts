@@ -103,7 +103,8 @@ export class UserController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Listar usuarios para selección (id, name, email)',
-    description: 'Retorna una lista reducida de usuarios para usar en dropdowns y selects',
+    description:
+      'Retorna una lista reducida de usuarios para usar en dropdowns y selects',
   })
   @ApiResponse({
     status: 200,

@@ -18,7 +18,17 @@ import { SettingsModule } from '../settings/settings.module';
     SettingsModule,
   ],
   controllers: [DocumentController],
-  providers: [DocumentService, ThumbnailService, PrismaService, DocumentNumberingService],
-  exports: [DocumentService, ThumbnailService, DocumentNumberingService, DocumentModule],
+  providers: [
+    DocumentService,
+    ThumbnailService,
+    PrismaService,
+    DocumentNumberingService,
+  ],
+  exports: [
+    DocumentService,
+    ThumbnailService,
+    DocumentNumberingService,
+    DocumentModule,
+  ],
 })
 export class DocumentModule {}

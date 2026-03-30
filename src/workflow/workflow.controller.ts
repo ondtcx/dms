@@ -41,7 +41,10 @@ export class WorkflowController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Crear una plantilla de workflow' })
   @ApiResponse({ status: 201, description: 'Plantilla creada exitosamente' })
-  @ApiResponse({ status: 409, description: 'Ya existe una plantilla con ese nombre' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya existe una plantilla con ese nombre',
+  })
   createTemplate(@Body() createDto: CreateWorkflowTemplateDto) {
     return this.workflowService.createTemplate(createDto);
   }
@@ -77,7 +80,10 @@ export class WorkflowController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Eliminar una plantilla de workflow' })
   @ApiResponse({ status: 200, description: 'Plantilla eliminada' })
-  @ApiResponse({ status: 400, description: 'Hay workflows activos usando esta plantilla' })
+  @ApiResponse({
+    status: 400,
+    description: 'Hay workflows activos usando esta plantilla',
+  })
   deleteTemplate(@Param('id', ParseIntPipe) id: number) {
     return this.workflowService.deleteTemplate(id);
   }
@@ -85,11 +91,23 @@ export class WorkflowController {
   // ============ Gestión de Workflows ============
 
   @Post('documents/:documentId/initiate')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR, UserRole.PROFESOR, UserRole.SECRETARIO)
+  @Roles(
+    UserRole.ADMIN,
+    UserRole.DIRECTOR,
+    UserRole.COORDINADOR,
+    UserRole.PROFESOR,
+    UserRole.SECRETARIO,
+  )
   @ApiOperation({ summary: 'Iniciar un workflow para un documento' })
   @ApiResponse({ status: 201, description: 'Workflow iniciado exitosamente' })
-  @ApiResponse({ status: 404, description: 'Documento o plantilla no encontrada' })
-  @ApiResponse({ status: 409, description: 'El documento ya tiene un workflow activo' })
+  @ApiResponse({
+    status: 404,
+    description: 'Documento o plantilla no encontrada',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El documento ya tiene un workflow activo',
+  })
   initiateWorkflow(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Request() req,
@@ -103,8 +121,13 @@ export class WorkflowController {
   }
 
   @Get('my-initiated')
-  @ApiOperation({ summary: 'Obtener workflows iniciados por el usuario actual' })
-  @ApiResponse({ status: 200, description: 'Lista paginada de workflows iniciados' })
+  @ApiOperation({
+    summary: 'Obtener workflows iniciados por el usuario actual',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista paginada de workflows iniciados',
+  })
   getMyInitiatedWorkflows(@Request() req, @Query() query: MyInitiatedQueryDto) {
     return this.workflowService.getMyInitiatedWorkflows(req.user.id, query);
   }
@@ -113,7 +136,10 @@ export class WorkflowController {
   @ApiOperation({ summary: 'Obtener el workflow de un documento' })
   @ApiResponse({ status: 200, description: 'Workflow encontrado' })
   @ApiResponse({ status: 403, description: 'Sin acceso a este workflow' })
-  @ApiResponse({ status: 404, description: 'No se encontró workflow para este documento' })
+  @ApiResponse({
+    status: 404,
+    description: 'No se encontró workflow para este documento',
+  })
   getWorkflowByDocument(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Request() req,
@@ -122,7 +148,10 @@ export class WorkflowController {
   }
 
   @Get('pending')
-  @ApiOperation({ summary: 'Obtener workflows pendientes de aprobación para el usuario actual' })
+  @ApiOperation({
+    summary:
+      'Obtener workflows pendientes de aprobación para el usuario actual',
+  })
   @ApiResponse({ status: 200, description: 'Lista de workflows pendientes' })
   getPendingWorkflows(@Request() req) {
     return this.workflowService.getPendingWorkflows(req.user.id);
@@ -131,7 +160,10 @@ export class WorkflowController {
   @Post(':id/approve')
   @ApiOperation({ summary: 'Aprobar/rechazar un workflow' })
   @ApiResponse({ status: 200, description: 'Acción procesada exitosamente' })
-  @ApiResponse({ status: 403, description: 'No tiene permisos para aprobar en este estado' })
+  @ApiResponse({
+    status: 403,
+    description: 'No tiene permisos para aprobar en este estado',
+  })
   @ApiResponse({ status: 404, description: 'Workflow no encontrado' })
   processApproval(
     @Param('id', ParseIntPipe) id: number,
@@ -144,17 +176,28 @@ export class WorkflowController {
   @Patch(':id/cancel')
   @ApiOperation({ summary: 'Cancelar un workflow' })
   @ApiResponse({ status: 200, description: 'Workflow cancelado' })
-  @ApiResponse({ status: 403, description: 'No tiene permisos para cancelar este workflow' })
+  @ApiResponse({
+    status: 403,
+    description: 'No tiene permisos para cancelar este workflow',
+  })
   @ApiResponse({ status: 404, description: 'Workflow no encontrado' })
   cancelWorkflow(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.workflowService.cancelWorkflow(id, req.user.id);
   }
 
   @Patch(':id/resubmit')
-  @ApiOperation({ summary: 'Reenviar un workflow para revisión después de cambios' })
+  @ApiOperation({
+    summary: 'Reenviar un workflow para revisión después de cambios',
+  })
   @ApiResponse({ status: 200, description: 'Workflow reenviado para revisión' })
-  @ApiResponse({ status: 400, description: 'El workflow no está en estado de cambios solicitados' })
-  @ApiResponse({ status: 403, description: 'Solo el iniciador puede reenviar el workflow' })
+  @ApiResponse({
+    status: 400,
+    description: 'El workflow no está en estado de cambios solicitados',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Solo el iniciador puede reenviar el workflow',
+  })
   @ApiResponse({ status: 404, description: 'Workflow no encontrado' })
   resubmitWorkflow(@Param('id', ParseIntPipe) id: number, @Request() req) {
     return this.workflowService.resubmitWorkflow(id, req.user.id);

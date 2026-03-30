@@ -19,7 +19,14 @@ export class CreateCommentDto {
 
   @ApiPropertyOptional({
     description: 'Datos de anotación en PDF',
-    example: { x: 100, y: 200, width: 150, height: 50, page: 1, type: 'highlight' },
+    example: {
+      x: 100,
+      y: 200,
+      width: 150,
+      height: 50,
+      page: 1,
+      type: 'highlight',
+    },
   })
   @IsObject()
   @IsOptional()

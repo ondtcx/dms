@@ -250,7 +250,12 @@ export class TransferService {
     const isToUser = transfer.toUserId === userId;
     let isDepartmentMember = false;
 
-    if (!isFromUser && !isToUser && transfer.toDepartmentId && !transfer.toUserId) {
+    if (
+      !isFromUser &&
+      !isToUser &&
+      transfer.toDepartmentId &&
+      !transfer.toUserId
+    ) {
       const user = await this.prisma.user.findUnique({
         where: { id: userId },
         select: { departmentId: true },
@@ -310,7 +315,9 @@ export class TransferService {
         data: {
           status: 'COMPLETED',
           completedAt: new Date(),
-          ...(isDepartmentMember && !transfer.toUserId ? { toUserId: userId } : {}),
+          ...(isDepartmentMember && !transfer.toUserId
+            ? { toUserId: userId }
+            : {}),
         },
         include: this.transferInclude,
       }),

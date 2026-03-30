@@ -35,7 +35,8 @@ export class ShareController {
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Crear un nuevo share de documento',
-    description: 'Comparte un documento con usuarios, roles, departamentos o cursos específicos',
+    description:
+      'Comparte un documento con usuarios, roles, departamentos o cursos específicos',
   })
   @ApiResponse({
     status: 201,
@@ -111,7 +112,10 @@ export class ShareController {
   })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   @ApiResponse({ status: 403, description: 'Sin permiso para ver shares' })
-  getDocumentShares(@Param('documentId') documentId: string, @Request() req: any) {
+  getDocumentShares(
+    @Param('documentId') documentId: string,
+    @Request() req: any,
+  ) {
     return this.shareService.getDocumentShares(+documentId, req.user.id);
   }
 
@@ -120,14 +124,18 @@ export class ShareController {
   @ApiParam({ name: 'shareToken', description: 'Token del share' })
   @ApiOperation({
     summary: 'Acceder a un share por token',
-    description: 'Permite acceder a un documento compartido usando el token público (no requiere autenticación)',
+    description:
+      'Permite acceder a un documento compartido usando el token público (no requiere autenticación)',
   })
   @ApiResponse({
     status: 200,
     description: 'Acceso al share exitoso',
   })
   @ApiResponse({ status: 404, description: 'Share no encontrado' })
-  @ApiResponse({ status: 403, description: 'Share revocado, expirado o sin acceso' })
+  @ApiResponse({
+    status: 403,
+    description: 'Share revocado, expirado o sin acceso',
+  })
   @ApiResponse({ status: 400, description: 'Se requiere contraseña' })
   accessByToken(
     @Param('shareToken') shareToken: string,
@@ -137,7 +145,13 @@ export class ShareController {
     @Headers('user-agent') userAgent: string,
   ) {
     const userId = req.user?.id;
-    return this.shareService.accessByToken(shareToken, accessDto, userId, ipAddress, userAgent);
+    return this.shareService.accessByToken(
+      shareToken,
+      accessDto,
+      userId,
+      ipAddress,
+      userAgent,
+    );
   }
 
   @Patch(':id/revoke')

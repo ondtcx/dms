@@ -40,7 +40,7 @@ export class CommentService {
     const users = await this.prisma.user.findMany({
       where: {
         email: {
-          in: usernames.map((u) => u.includes('@') ? u : `${u}@example.com`),
+          in: usernames.map((u) => (u.includes('@') ? u : `${u}@example.com`)),
         },
       },
       select: { id: true },

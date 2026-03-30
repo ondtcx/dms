@@ -3,7 +3,10 @@ import { IsString, IsNotEmpty, IsIn, IsOptional, IsInt } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class CreateBlankDocumentDto {
-  @ApiProperty({ description: 'Nombre del documento', example: 'Nuevo Documento' })
+  @ApiProperty({
+    description: 'Nombre del documento',
+    example: 'Nuevo Documento',
+  })
   @IsString()
   @IsNotEmpty()
   title: string;
@@ -27,4 +30,13 @@ export class CreateBlankDocumentDto {
   @IsOptional()
   @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
   courseId?: number;
+
+  @ApiPropertyOptional({
+    description: 'ID del subtipo de documento',
+    example: 1,
+  })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (value ? parseInt(value, 10) : undefined))
+  documentTypeId?: number;
 }

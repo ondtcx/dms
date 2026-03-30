@@ -171,7 +171,10 @@ export class CourseService {
   }
 
   async findSubjects(courseId: number) {
-    const course = await this.prisma.course.findUnique({ where: { id: courseId }, select: { id: true } });
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true },
+    });
     if (!course) {
       throw new NotFoundException(`Curso con ID ${courseId} no encontrado`);
     }
@@ -290,9 +293,7 @@ export class CourseService {
     });
 
     if (existing) {
-      throw new ConflictException(
-        `El profesor ya está asignado a este curso`,
-      );
+      throw new ConflictException(`El profesor ya está asignado a este curso`);
     }
 
     return this.prisma.userCourse.create({
@@ -330,9 +331,7 @@ export class CourseService {
     });
 
     if (!userCourse) {
-      throw new NotFoundException(
-        `El profesor no está asignado a este curso`,
-      );
+      throw new NotFoundException(`El profesor no está asignado a este curso`);
     }
 
     await this.prisma.userCourse.delete({

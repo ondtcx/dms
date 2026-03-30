@@ -35,7 +35,10 @@ export class PermissionController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Otorgar permisos específicos sobre un documento' })
   @ApiResponse({ status: 201, description: 'Permiso otorgado exitosamente' })
-  @ApiResponse({ status: 404, description: 'Documento o usuario no encontrado' })
+  @ApiResponse({
+    status: 404,
+    description: 'Documento o usuario no encontrado',
+  })
   grantDocumentPermission(
     @Param('id', ParseIntPipe) documentId: number,
     @Request() req,

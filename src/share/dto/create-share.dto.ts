@@ -67,7 +67,9 @@ export class CreateShareDto {
   @IsBoolean()
   requiresPassword?: boolean;
 
-  @ApiPropertyOptional({ description: 'Contraseña del share (si requiresPassword es true)' })
+  @ApiPropertyOptional({
+    description: 'Contraseña del share (si requiresPassword es true)',
+  })
   @IsOptional()
   @IsString()
   password?: string;

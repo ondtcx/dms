@@ -75,5 +75,4 @@ export class CreateDocumentFromTemplateDto {
   @IsInt()
   @IsOptional()
   sectionId?: number;
-
 }

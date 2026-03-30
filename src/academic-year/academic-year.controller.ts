@@ -9,7 +9,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { AcademicYearService } from './academic-year.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
@@ -31,7 +36,10 @@ export class AcademicYearController {
   // IMPORTANTE: declarado antes de /:id para evitar conflicto de rutas
   @Get('current')
   @ApiOperation({ summary: 'Obtener el año lectivo actual' })
-  @ApiResponse({ status: 200, description: 'Año lectivo actual o null si no hay ninguno' })
+  @ApiResponse({
+    status: 200,
+    description: 'Año lectivo actual o null si no hay ninguno',
+  })
   findCurrent() {
     return this.academicYearService.findCurrent();
   }
@@ -53,7 +61,10 @@ export class AcademicYearController {
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Actualizar un año lectivo' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateAcademicYearDto) {
+  update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateAcademicYearDto,
+  ) {
     return this.academicYearService.update(id, dto);
   }
 
@@ -68,7 +79,10 @@ export class AcademicYearController {
   @Patch(':id/deactivate')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Desactivar un año lectivo (no puede ser el actual ni tener documentos activos)' })
+  @ApiOperation({
+    summary:
+      'Desactivar un año lectivo (no puede ser el actual ni tener documentos activos)',
+  })
   deactivate(@Param('id', ParseIntPipe) id: number) {
     return this.academicYearService.deactivate(id);
   }

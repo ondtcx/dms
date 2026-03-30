@@ -55,7 +55,8 @@ export class DocumentCompositionService {
       },
     });
 
-    if (!doc) throw new NotFoundException(`Documento ${parentId} no encontrado`);
+    if (!doc)
+      throw new NotFoundException(`Documento ${parentId} no encontrado`);
     return doc;
   }
 
@@ -65,11 +66,14 @@ export class DocumentCompositionService {
       where: { id: parentId, deletedAt: null },
       select: { id: true, isComposite: true },
     });
-    if (!parent) throw new NotFoundException(`Documento padre ${parentId} no encontrado`);
+    if (!parent)
+      throw new NotFoundException(`Documento padre ${parentId} no encontrado`);
 
     // Validar que no se agrega a sí mismo
     if (dto.childId === parentId) {
-      throw new BadRequestException('Un documento no puede ser componente de sí mismo');
+      throw new BadRequestException(
+        'Un documento no puede ser componente de sí mismo',
+      );
     }
 
     // Validar que el hijo existe y no es compuesto
@@ -77,9 +81,14 @@ export class DocumentCompositionService {
       where: { id: dto.childId, deletedAt: null },
       select: { id: true, isComposite: true },
     });
-    if (!child) throw new NotFoundException(`Documento hijo ${dto.childId} no encontrado`);
+    if (!child)
+      throw new NotFoundException(
+        `Documento hijo ${dto.childId} no encontrado`,
+      );
     if (child.isComposite) {
-      throw new BadRequestException('No se puede agregar un documento compuesto como componente de otro');
+      throw new BadRequestException(
+        'No se puede agregar un documento compuesto como componente de otro',
+      );
     }
 
     // Calcular el siguiente orden
@@ -127,7 +136,9 @@ export class DocumentCompositionService {
       });
     } catch (err) {
       if (err.code === 'P2002') {
-        throw new ConflictException('Este documento ya es componente de este informe');
+        throw new ConflictException(
+          'Este documento ya es componente de este informe',
+        );
       }
       throw err;
     }
@@ -139,7 +150,8 @@ export class DocumentCompositionService {
     const item = await this.prisma.documentCompositionItem.findUnique({
       where: { parentId_childId: { parentId, childId } },
     });
-    if (!item) throw new NotFoundException('Componente no encontrado en este documento');
+    if (!item)
+      throw new NotFoundException('Componente no encontrado en este documento');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.documentCompositionItem.delete({
@@ -147,7 +159,9 @@ export class DocumentCompositionService {
       });
 
       // Si ya no quedan componentes, desactivar isComposite
-      const remaining = await tx.documentCompositionItem.count({ where: { parentId } });
+      const remaining = await tx.documentCompositionItem.count({
+        where: { parentId },
+      });
       if (remaining === 0) {
         await tx.document.update({
           where: { id: parentId },
@@ -157,11 +171,16 @@ export class DocumentCompositionService {
     });
   }
 
-  async updateComponent(parentId: number, childId: number, dto: UpdateComponentDto) {
+  async updateComponent(
+    parentId: number,
+    childId: number,
+    dto: UpdateComponentDto,
+  ) {
     const item = await this.prisma.documentCompositionItem.findUnique({
       where: { parentId_childId: { parentId, childId } },
     });
-    if (!item) throw new NotFoundException('Componente no encontrado en este documento');
+    if (!item)
+      throw new NotFoundException('Componente no encontrado en este documento');
 
     return this.prisma.documentCompositionItem.update({
       where: { parentId_childId: { parentId, childId } },
@@ -194,7 +213,9 @@ export class DocumentCompositionService {
 
     for (const item of dto.items) {
       if (!existingIds.has(item.childId)) {
-        throw new BadRequestException(`Documento ${item.childId} no es componente de este informe`);
+        throw new BadRequestException(
+          `Documento ${item.childId} no es componente de este informe`,
+        );
       }
     }
 

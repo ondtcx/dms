@@ -14,7 +14,10 @@ class ReorderItemDto {
 }
 
 export class ReorderComponentsDto {
-  @ApiProperty({ type: [ReorderItemDto], description: 'Array con el nuevo orden de cada componente' })
+  @ApiProperty({
+    type: [ReorderItemDto],
+    description: 'Array con el nuevo orden de cada componente',
+  })
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => ReorderItemDto)

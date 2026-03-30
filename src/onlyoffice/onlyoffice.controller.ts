@@ -39,8 +39,13 @@ export class OnlyofficeController {
   ) {}
 
   @Post('create-blank')
-  @ApiOperation({ summary: 'Create a blank document and open it in the editor' })
-  async createBlank(@Body() dto: CreateBlankDocumentDto, @CurrentUser() user: any) {
+  @ApiOperation({
+    summary: 'Create a blank document and open it in the editor',
+  })
+  async createBlank(
+    @Body() dto: CreateBlankDocumentDto,
+    @CurrentUser() user: any,
+  ) {
     return this.onlyofficeService.createBlankDocument(dto, user.sub);
   }
 

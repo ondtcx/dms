@@ -36,7 +36,10 @@ export class SubjectController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Crear una nueva materia' })
   @ApiResponse({ status: 201, description: 'Materia creada exitosamente' })
-  @ApiResponse({ status: 409, description: 'Ya existe una materia con ese código' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya existe una materia con ese código',
+  })
   create(@Body() createSubjectDto: CreateSubjectDto) {
     return this.subjectService.create(createSubjectDto);
   }
@@ -61,7 +64,10 @@ export class SubjectController {
   @ApiOperation({ summary: 'Actualizar una materia' })
   @ApiResponse({ status: 200, description: 'Materia actualizada exitosamente' })
   @ApiResponse({ status: 404, description: 'Materia no encontrada' })
-  @ApiResponse({ status: 409, description: 'Ya existe otra materia con ese código' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya existe otra materia con ese código',
+  })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateSubjectDto: UpdateSubjectDto,
@@ -76,7 +82,8 @@ export class SubjectController {
   @ApiResponse({ status: 404, description: 'Materia no encontrada' })
   @ApiResponse({
     status: 400,
-    description: 'No se puede eliminar porque tiene profesores o documentos asociados',
+    description:
+      'No se puede eliminar porque tiene profesores o documentos asociados',
   })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.subjectService.remove(id);
@@ -87,7 +94,10 @@ export class SubjectController {
   @ApiOperation({ summary: 'Asignar un profesor a la materia' })
   @ApiResponse({ status: 201, description: 'Profesor asignado exitosamente' })
   @ApiResponse({ status: 404, description: 'Materia o usuario no encontrado' })
-  @ApiResponse({ status: 409, description: 'El profesor ya está asignado a esta materia' })
+  @ApiResponse({
+    status: 409,
+    description: 'El profesor ya está asignado a esta materia',
+  })
   assignTeacher(
     @Param('id', ParseIntPipe) id: number,
     @Body('userId') userId: string,
@@ -99,7 +109,10 @@ export class SubjectController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Remover un profesor de la materia' })
   @ApiResponse({ status: 200, description: 'Profesor removido exitosamente' })
-  @ApiResponse({ status: 404, description: 'El profesor no está asignado a esta materia' })
+  @ApiResponse({
+    status: 404,
+    description: 'El profesor no está asignado a esta materia',
+  })
   removeTeacher(
     @Param('id', ParseIntPipe) id: number,
     @Param('userId') userId: string,

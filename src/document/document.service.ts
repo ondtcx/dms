@@ -35,7 +35,7 @@ export class DocumentService {
     private settingsService: SettingsService,
     private thumbnailService: ThumbnailService,
     private numberingService: DocumentNumberingService,
-  ) { }
+  ) {}
 
   async upload(
     file: Express.Multer.File,
@@ -50,19 +50,32 @@ export class DocumentService {
       });
       if (category) {
         const allowed = category.allowedRoles as string[];
-        const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        });
         const isAdmin = user?.role === 'admin';
-        if (!isAdmin && allowed.length > 0 && user && !allowed.includes(user.role)) {
-          throw new ForbiddenException('Tu rol no tiene permiso para subir documentos a esta categoría');
+        if (
+          !isAdmin &&
+          allowed.length > 0 &&
+          user &&
+          !allowed.includes(user.role)
+        ) {
+          throw new ForbiddenException(
+            'Tu rol no tiene permiso para subir documentos a esta categoría',
+          );
         }
         if (category.requiresCourse && !uploadDocumentDto.courseId) {
-          throw new BadRequestException('Esta categoría requiere especificar un curso');
+          throw new BadRequestException(
+            'Esta categoría requiere especificar un curso',
+          );
         }
       }
     }
 
     // 1. Resolver año lectivo: usar el especificado o asignar el año isCurrent automáticamente
-    let resolvedAcademicYearId: number | null = uploadDocumentDto.academicYearId ?? null;
+    let resolvedAcademicYearId: number | null =
+      uploadDocumentDto.academicYearId ?? null;
     if (resolvedAcademicYearId === null) {
       const currentYear = await this.prisma.academicYear.findFirst({
         where: { isCurrent: true, isActive: true },
@@ -121,14 +134,20 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: { select: { id: true, name: true, color: true, icon: true } },
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
           },
         },
         documentType: {
           select: { id: true, name: true },
         },
         template: {
-          select: { id: true, name: true, documentType: { select: { id: true, name: true } } },
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
         },
       },
     });
@@ -149,10 +168,14 @@ export class DocumentService {
     });
 
     // 7. Regenerar thumbnail en background para garantizar que corresponde al archivo actual
-    this.thumbnailService.regenerateThumbnail(storageLocation.path, document.id, file.mimetype).catch(() => {});
+    this.thumbnailService
+      .regenerateThumbnail(storageLocation.path, document.id, file.mimetype)
+      .catch(() => {});
 
     // 8. Asignar número institucional en background (no bloquea la respuesta)
-    this.numberingService.assignNumber(document.id, uploadDocumentDto.categoryId).catch(() => {});
+    this.numberingService
+      .assignNumber(document.id, uploadDocumentDto.categoryId)
+      .catch(() => {});
 
     return document;
   }
@@ -170,7 +193,20 @@ export class DocumentService {
   }
 
   async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
-    const { search, categoryId, documentTypeId, sectionId, isPublic, includeDeleted, onlyMine, excludeBatched, batchId, page = 1, limit = 10, excludeComposites } = query;
+    const {
+      search,
+      categoryId,
+      documentTypeId,
+      sectionId,
+      isPublic,
+      includeDeleted,
+      onlyMine,
+      excludeBatched,
+      batchId,
+      page = 1,
+      limit = 10,
+      excludeComposites,
+    } = query;
 
     // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
@@ -179,7 +215,10 @@ export class DocumentService {
     });
 
     const accessFilter = user
-      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...user,
+          role: user.role as unknown as UserRole,
+        })
       : null;
 
     // Construir filtros
@@ -250,7 +289,9 @@ export class DocumentService {
     }
 
     // Filtro por año lectivo — omitido para roles PADRE y ESTUDIANTE
-    const skipYearFilter = ([UserRole.PADRE, UserRole.ESTUDIANTE] as string[]).includes(userRole as string);
+    const skipYearFilter = (
+      [UserRole.PADRE, UserRole.ESTUDIANTE] as string[]
+    ).includes(userRole as string);
     if (query.academicYearId && !skipYearFilter) {
       where.AND.push({
         OR: [
@@ -287,7 +328,9 @@ export class DocumentService {
               color: true,
               icon: true,
               bypassAcademicYear: true,
-              section: { select: { id: true, name: true, color: true, icon: true } },
+              section: {
+                select: { id: true, name: true, color: true, icon: true },
+              },
             },
           },
           documentType: {
@@ -339,7 +382,10 @@ export class DocumentService {
     });
 
     const accessFilter = user
-      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...user,
+          role: user.role as unknown as UserRole,
+        })
       : ({ id: -1 } as any);
 
     // Usar findFirst con el filtro de acceso embebido en el WHERE.
@@ -364,7 +410,9 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: { select: { id: true, name: true, color: true, icon: true } },
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
           },
         },
         documentType: {
@@ -424,7 +472,9 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: { select: { id: true, name: true, color: true, icon: true } },
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
           },
         },
         documentType: {
@@ -622,7 +672,9 @@ export class DocumentService {
         where: {
           workflow: {
             documentId: id,
-            status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
+            status: {
+              in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING],
+            },
           },
           userId,
           action: null,
@@ -694,7 +746,9 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: { select: { id: true, name: true, color: true, icon: true } },
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
           },
         },
         template: {
@@ -708,16 +762,21 @@ export class DocumentService {
     });
 
     // 7. Regenerar thumbnail con el nuevo archivo
-    await this.thumbnailService.regenerateThumbnail(newStorageLocation.path, id, file.mimetype);
+    await this.thumbnailService.regenerateThumbnail(
+      newStorageLocation.path,
+      id,
+      file.mimetype,
+    );
 
     // 8. Detectar workflow activo para tagging de origen (Fix 3)
-    const activeWorkflowForSource = await this.prisma.documentWorkflow.findFirst({
-      where: {
-        documentId: id,
-        status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
-      },
-      select: { id: true },
-    });
+    const activeWorkflowForSource =
+      await this.prisma.documentWorkflow.findFirst({
+        where: {
+          documentId: id,
+          status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
+        },
+        select: { id: true },
+      });
 
     // 8. Crear registro de nueva versión
     await this.prisma.documentVersion.create({
@@ -730,14 +789,18 @@ export class DocumentService {
         checksumSHA256: newChecksum,
         comment: comment || `Versión ${newVersion}`,
         createdById: userId,
-        source: activeWorkflowForSource ? 'CAMBIOS_SOLICITADOS' : 'REEMPLAZO_MANUAL',
+        source: activeWorkflowForSource
+          ? 'CAMBIOS_SOLICITADOS'
+          : 'REEMPLAZO_MANUAL',
         workflowId: activeWorkflowForSource?.id ?? null,
       },
     });
 
     // 8b. Rolling window: eliminar versiones más antiguas si se supera el límite
     const maxVersions = await this.settingsService.getMaxVersionsPerDocument();
-    const versionCount = await this.prisma.documentVersion.count({ where: { documentId: id } });
+    const versionCount = await this.prisma.documentVersion.count({
+      where: { documentId: id },
+    });
     if (versionCount > maxVersions) {
       const versionsToDelete = await this.prisma.documentVersion.findMany({
         where: { documentId: id },
@@ -746,8 +809,9 @@ export class DocumentService {
       });
       for (const old of versionsToDelete) {
         try {
-          if (this.storage.fileExists(old.path)) this.storage.deleteFile(old.path);
-        } catch (_) { }
+          if (this.storage.fileExists(old.path))
+            this.storage.deleteFile(old.path);
+        } catch (_) {}
         await this.prisma.documentVersion.delete({ where: { id: old.id } });
       }
     }
@@ -825,7 +889,7 @@ export class DocumentService {
     if (activeWorkflow) {
       throw new ConflictException(
         `No se puede restaurar una versión mientras el documento tiene un workflow activo` +
-        ` (etapa: "${activeWorkflow.currentState}"). Cancela el workflow primero.`,
+          ` (etapa: "${activeWorkflow.currentState}"). Cancela el workflow primero.`,
       );
     }
 
@@ -1003,30 +1067,43 @@ export class DocumentService {
     const documents = await this.prisma.document.findMany({
       where,
       include: {
-        uploadedBy: { select: { id: true, name: true, email: true, role: true } },
+        uploadedBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
         category: {
           select: {
             id: true,
             name: true,
             color: true,
             icon: true,
-            section: { select: { id: true, name: true, color: true, icon: true } },
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
           },
         },
-        template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     // Agrupar por fecha
-    const groupedByDate = documents.reduce((acc, doc) => {
-      const dateKey = new Date(doc.createdAt).toISOString().split('T')[0];
-      if (!acc[dateKey]) {
-        acc[dateKey] = [];
-      }
-      acc[dateKey].push(doc);
-      return acc;
-    }, {} as Record<string, any[]>);
+    const groupedByDate = documents.reduce(
+      (acc, doc) => {
+        const dateKey = new Date(doc.createdAt).toISOString().split('T')[0];
+        if (!acc[dateKey]) {
+          acc[dateKey] = [];
+        }
+        acc[dateKey].push(doc);
+        return acc;
+      },
+      {} as Record<string, any[]>,
+    );
 
     return {
       documents,
@@ -1041,7 +1118,12 @@ export class DocumentService {
    * Listar documentos archivados con paginación y filtros
    */
   async findArchived(
-    query: { search?: string; categoryId?: number; page?: number; limit?: number },
+    query: {
+      search?: string;
+      categoryId?: number;
+      page?: number;
+      limit?: number;
+    },
     userId: string,
     userRole: UserRole,
   ) {
@@ -1053,14 +1135,14 @@ export class DocumentService {
     });
 
     const accessFilter = user
-      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...user,
+          role: user.role as unknown as UserRole,
+        })
       : null;
 
     const where: any = {
-      AND: [
-        { deletedAt: null },
-        { path: { contains: '/archive/' } },
-      ],
+      AND: [{ deletedAt: null }, { path: { contains: '/archive/' } }],
     };
 
     if (accessFilter) {
@@ -1086,17 +1168,27 @@ export class DocumentService {
       this.prisma.document.findMany({
         where,
         include: {
-          uploadedBy: { select: { id: true, name: true, email: true, role: true } },
+          uploadedBy: {
+            select: { id: true, name: true, email: true, role: true },
+          },
           category: {
             select: {
               id: true,
               name: true,
               color: true,
               icon: true,
-              section: { select: { id: true, name: true, color: true, icon: true } },
+              section: {
+                select: { id: true, name: true, color: true, icon: true },
+              },
             },
           },
-          template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } },
+          template: {
+            select: {
+              id: true,
+              name: true,
+              documentType: { select: { id: true, name: true } },
+            },
+          },
         },
         orderBy: { archivedAt: 'desc' },
         skip,
@@ -1121,7 +1213,10 @@ export class DocumentService {
     });
 
     const accessFilter = user
-      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...user,
+          role: user.role as unknown as UserRole,
+        })
       : null;
 
     const baseWhere: any = {
@@ -1142,7 +1237,9 @@ export class DocumentService {
       }),
     ]);
 
-    const categoryIds = byCategory.map((b) => b.categoryId).filter(Boolean) as number[];
+    const categoryIds = byCategory
+      .map((b) => b.categoryId)
+      .filter(Boolean) as number[];
     const categories = await this.prisma.category.findMany({
       where: { id: { in: categoryIds } },
       select: { id: true, name: true, color: true },
@@ -1181,7 +1278,9 @@ export class DocumentService {
       document.uploadedById === userId;
 
     if (!canRestore) {
-      throw new ForbiddenException('No tienes permiso para restaurar este documento');
+      throw new ForbiddenException(
+        'No tienes permiso para restaurar este documento',
+      );
     }
 
     const storageLocation = this.storage.generateStructuredPath(
@@ -1217,5 +1316,4 @@ export class DocumentService {
       return null;
     }
   }
-
 }

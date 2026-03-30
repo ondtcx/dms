@@ -35,7 +35,9 @@ export class PdfMergeService {
     });
 
     if (components.length === 0) {
-      throw new BadRequestException('El documento compuesto no tiene componentes activos');
+      throw new BadRequestException(
+        'El documento compuesto no tiene componentes activos',
+      );
     }
 
     const mergedPdf = await PDFDocument.create();
@@ -50,11 +52,18 @@ export class PdfMergeService {
           // Documento generado desde plantilla: regenerar PDF con datos actuales
           const template = await this.prisma.documentTemplate.findUnique({
             where: { id: child.templateId },
-            select: { htmlTemplate: true, styles: true, pageSize: true, orientation: true },
+            select: {
+              htmlTemplate: true,
+              styles: true,
+              pageSize: true,
+              orientation: true,
+            },
           });
 
           if (!template) {
-            this.logger.warn(`Plantilla ${child.templateId} no encontrada para documento ${child.id}, saltando`);
+            this.logger.warn(
+              `Plantilla ${child.templateId} no encontrada para documento ${child.id}, saltando`,
+            );
             continue;
           }
 
@@ -63,7 +72,8 @@ export class PdfMergeService {
             styles: template.styles ?? undefined,
             data: child.formData as Record<string, any>,
             pageSize: (template.pageSize as 'A4' | 'Letter' | 'Legal') ?? 'A4',
-            orientation: (template.orientation as 'portrait' | 'landscape') ?? 'portrait',
+            orientation:
+              (template.orientation as 'portrait' | 'landscape') ?? 'portrait',
           });
         } else if (child.mimetype === 'application/pdf') {
           // PDF subido directamente: leer desde disco
@@ -75,16 +85,24 @@ export class PdfMergeService {
           pdfBytes = fs.readFileSync(child.path);
         } else {
           // DOCX/XLSX/otro: no incluir en el merge físico
-          this.logger.log(`Documento "${child.filename}" (${child.mimetype}) omitido del merge — solo referencia`);
+          this.logger.log(
+            `Documento "${child.filename}" (${child.mimetype}) omitido del merge — solo referencia`,
+          );
           continue;
         }
 
         const srcDoc = await PDFDocument.load(pdfBytes);
-        const pages = await mergedPdf.copyPages(srcDoc, srcDoc.getPageIndices());
+        const pages = await mergedPdf.copyPages(
+          srcDoc,
+          srcDoc.getPageIndices(),
+        );
         pages.forEach((page) => mergedPdf.addPage(page));
       } catch (err) {
         if (err instanceof BadRequestException) throw err;
-        this.logger.error(`Error procesando documento "${child.filename}" (ID: ${child.id}):`, err);
+        this.logger.error(
+          `Error procesando documento "${child.filename}" (ID: ${child.id}):`,
+          err,
+        );
         throw new BadRequestException(
           `Error al procesar el documento "${child.filename}": ${err.message}`,
         );

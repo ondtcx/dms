@@ -24,7 +24,8 @@ export class BatchRowDto {
   formData: Record<string, any>;
 
   @ApiProperty({
-    description: 'Nombre del archivo (opcional, se genera automáticamente si no se indica)',
+    description:
+      'Nombre del archivo (opcional, se genera automáticamente si no se indica)',
     example: 'constancia-juan-perez.pdf',
     required: false,
   })

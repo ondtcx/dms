@@ -54,8 +54,12 @@ export function buildDocumentAccessFilter(
           // Documentos de cursos en su departamento
           ...(user.departmentId
             ? [
-                { course: { departmentId: user.departmentId } } as Prisma.DocumentWhereInput,
-                { uploadedBy: { departmentId: user.departmentId } } as Prisma.DocumentWhereInput,
+                {
+                  course: { departmentId: user.departmentId },
+                } as Prisma.DocumentWhereInput,
+                {
+                  uploadedBy: { departmentId: user.departmentId },
+                } as Prisma.DocumentWhereInput,
               ]
             : []),
         ],
@@ -78,7 +82,11 @@ export function buildDocumentAccessFilter(
           ...baseAccess,
           // Documentos subidos por usuarios de su departamento
           ...(user.departmentId
-            ? [{ uploadedBy: { departmentId: user.departmentId } } as Prisma.DocumentWhereInput]
+            ? [
+                {
+                  uploadedBy: { departmentId: user.departmentId },
+                } as Prisma.DocumentWhereInput,
+              ]
             : []),
         ],
       };

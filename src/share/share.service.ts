@@ -24,7 +24,9 @@ export class ShareService {
     });
 
     if (!document) {
-      throw new NotFoundException(`Documento con ID ${createShareDto.documentId} no encontrado`);
+      throw new NotFoundException(
+        `Documento con ID ${createShareDto.documentId} no encontrado`,
+      );
     }
 
     // Verificar que el usuario tiene permisos para compartir
@@ -39,7 +41,9 @@ export class ShareService {
       });
 
       if (!hasPermission) {
-        throw new ForbiddenException('No tienes permiso para compartir este documento');
+        throw new ForbiddenException(
+          'No tienes permiso para compartir este documento',
+        );
       }
     }
 
@@ -51,7 +55,9 @@ export class ShareService {
         select: { id: true },
       });
       if (!targetUser) {
-        throw new NotFoundException(`Usuario con email ${resolvedUserId} no encontrado`);
+        throw new NotFoundException(
+          `Usuario con email ${resolvedUserId} no encontrado`,
+        );
       }
       resolvedUserId = targetUser.id;
     }
@@ -81,7 +87,9 @@ export class ShareService {
         shareToken,
         requiresPassword: createShareDto.requiresPassword ?? false,
         password: hashedPassword,
-        expiresAt: createShareDto.expiresAt ? new Date(createShareDto.expiresAt) : null,
+        expiresAt: createShareDto.expiresAt
+          ? new Date(createShareDto.expiresAt)
+          : null,
         maxViews: createShareDto.maxViews,
         sharedById,
       },
@@ -130,8 +138,8 @@ export class ShareService {
     if (!user) throw new NotFoundException('Usuario no encontrado');
 
     const orConditions: any[] = [
-      { userId },           // Share directo al usuario
-      { role: user.role },  // Share al rol del usuario
+      { userId }, // Share directo al usuario
+      { role: user.role }, // Share al rol del usuario
     ];
 
     if (user.departmentId) {
@@ -147,7 +155,9 @@ export class ShareService {
       where: {
         OR: orConditions,
         revokedAt: null,
-        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] }],
+        AND: [
+          { OR: [{ expiresAt: null }, { expiresAt: { gte: new Date() } }] },
+        ],
       },
       include: {
         document: {
@@ -216,7 +226,9 @@ export class ShareService {
     });
 
     if (!document) {
-      throw new NotFoundException(`Documento con ID ${documentId} no encontrado`);
+      throw new NotFoundException(
+        `Documento con ID ${documentId} no encontrado`,
+      );
     }
 
     if (document.uploadedById !== userId) {
@@ -230,7 +242,9 @@ export class ShareService {
       });
 
       if (!hasPermission) {
-        throw new ForbiddenException('No tienes permiso para ver los shares de este documento');
+        throw new ForbiddenException(
+          'No tienes permiso para ver los shares de este documento',
+        );
       }
     }
 
@@ -301,16 +315,23 @@ export class ShareService {
 
     // Verificar límite de vistas
     if (share.maxViews && share.viewCount >= share.maxViews) {
-      throw new ForbiddenException('Se alcanzó el límite de vistas para este share');
+      throw new ForbiddenException(
+        'Se alcanzó el límite de vistas para este share',
+      );
     }
 
     // Verificar contraseña si se requiere
     if (share.requiresPassword && share.password) {
       if (!accessDto.password) {
-        throw new BadRequestException('Se requiere contraseña para acceder a este share');
+        throw new BadRequestException(
+          'Se requiere contraseña para acceder a este share',
+        );
       }
 
-      const isPasswordValid = await bcrypt.compare(accessDto.password, share.password);
+      const isPasswordValid = await bcrypt.compare(
+        accessDto.password,
+        share.password,
+      );
       if (!isPasswordValid) {
         throw new ForbiddenException('Contraseña incorrecta');
       }
@@ -356,7 +377,9 @@ export class ShareService {
       });
 
       if (document?.uploadedById !== userId) {
-        throw new ForbiddenException('No tienes permiso para revocar este share');
+        throw new ForbiddenException(
+          'No tienes permiso para revocar este share',
+        );
       }
     }
 
@@ -386,7 +409,9 @@ export class ShareService {
 
     // Verificar que el usuario tiene permiso para eliminar
     if (share.sharedById !== userId) {
-      throw new ForbiddenException('No tienes permiso para eliminar este share');
+      throw new ForbiddenException(
+        'No tienes permiso para eliminar este share',
+      );
     }
 
     await this.prisma.documentShare.delete({
@@ -395,5 +420,4 @@ export class ShareService {
 
     return { message: 'Share eliminado correctamente' };
   }
-
 }

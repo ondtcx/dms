@@ -10,7 +10,8 @@ import {
 
 export class UpdateDocumentFromTemplateDto {
   @ApiProperty({
-    description: 'Datos del formulario actualizados según la definición de la plantilla',
+    description:
+      'Datos del formulario actualizados según la definición de la plantilla',
     example: {
       titulo: 'Reunión de planificación Q2 2024',
       fecha: '2024-04-15',

@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
@@ -18,7 +23,9 @@ export class AcademicYearService {
       by: ['academicYear'],
       _count: { id: true },
     });
-    const levelMap = new Map(courseCounts.map((c) => [c.academicYear, c._count.id]));
+    const levelMap = new Map(
+      courseCounts.map((c) => [c.academicYear, c._count.id]),
+    );
 
     const data = years.map((year) => ({
       ...year,
@@ -43,7 +50,8 @@ export class AcademicYearService {
       include: { _count: { select: { documents: true } } },
     });
 
-    if (!year) throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
+    if (!year)
+      throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
 
     const courseCount = await this.prisma.course.count({
       where: { academicYear: year.name },
@@ -80,18 +88,26 @@ export class AcademicYearService {
 
   async setCurrent(id: number) {
     const year = await this.prisma.academicYear.findUnique({ where: { id } });
-    if (!year) throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
-    if (!year.isActive) throw new BadRequestException('No se puede marcar como actual un año lectivo inactivo');
+    if (!year)
+      throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
+    if (!year.isActive)
+      throw new BadRequestException(
+        'No se puede marcar como actual un año lectivo inactivo',
+      );
 
     return this.prisma.$transaction(async (tx) => {
       await tx.academicYear.updateMany({ data: { isCurrent: false } });
-      return tx.academicYear.update({ where: { id }, data: { isCurrent: true } });
+      return tx.academicYear.update({
+        where: { id },
+        data: { isCurrent: true },
+      });
     });
   }
 
   async deactivate(id: number) {
     const year = await this.prisma.academicYear.findUnique({ where: { id } });
-    if (!year) throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
+    if (!year)
+      throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
 
     if (year.isCurrent) {
       throw new ConflictException(

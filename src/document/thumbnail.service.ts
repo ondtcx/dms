@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import sharp from 'sharp';
 import { join } from 'path';
 import { existsSync, mkdirSync, unlinkSync, readFileSync } from 'fs';
@@ -68,7 +65,10 @@ export class ThumbnailService {
         await this.generateImageThumbnail(filePath, thumbnailFullPath);
       } else if (mimetype === 'application/pdf') {
         // Para PDFs, renderizar primera página como imagen
-        const generated = await this.generatePdfThumbnail(filePath, thumbnailFullPath);
+        const generated = await this.generatePdfThumbnail(
+          filePath,
+          thumbnailFullPath,
+        );
         if (!generated) {
           await this.generateIconThumbnail(mimetype, thumbnailFullPath, 'PDF');
         }
@@ -275,7 +275,9 @@ export class ThumbnailService {
     htmlContent: string,
     documentId: number,
   ): Promise<string | null> {
-    let browser: Awaited<ReturnType<typeof import('puppeteer')['launch']>> | undefined;
+    let browser:
+      | Awaited<ReturnType<(typeof import('puppeteer'))['launch']>>
+      | undefined;
     try {
       const thumbnailFilename = `thumb_${documentId}.jpg`;
       const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
@@ -317,7 +319,8 @@ export class ThumbnailService {
 
       // Inyectar fondo blanco en el HTML antes de renderizar
       // (headless Chrome usa fondo transparente por defecto)
-      const bgStyle = '<style>html,body{background-color:#ffffff!important}</style>';
+      const bgStyle =
+        '<style>html,body{background-color:#ffffff!important}</style>';
       const htmlWithBg = htmlContent.includes('</head>')
         ? htmlContent.replace('</head>', `${bgStyle}</head>`)
         : bgStyle + htmlContent;

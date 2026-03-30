@@ -10,7 +10,12 @@ import {
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
@@ -28,14 +33,20 @@ export class DepartmentController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Crear nuevo departamento' })
   @ApiResponse({ status: 201, description: 'Departamento creado exitosamente' })
-  @ApiResponse({ status: 409, description: 'Ya existe un departamento con ese nombre o código' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya existe un departamento con ese nombre o código',
+  })
   create(@Body() createDepartmentDto: CreateDepartmentDto) {
     return this.departmentService.create(createDepartmentDto);
   }
 
   @Get()
   @ApiOperation({ summary: 'Listar todos los departamentos' })
-  @ApiResponse({ status: 200, description: 'Lista de departamentos con paginación' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de departamentos con paginación',
+  })
   findAll(@Query() query: QueryDepartmentDto) {
     return this.departmentService.findAll(query);
   }
@@ -58,9 +69,15 @@ export class DepartmentController {
   @Patch(':id')
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Actualizar un departamento' })
-  @ApiResponse({ status: 200, description: 'Departamento actualizado exitosamente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Departamento actualizado exitosamente',
+  })
   @ApiResponse({ status: 404, description: 'Departamento no encontrado' })
-  @ApiResponse({ status: 409, description: 'Ya existe otro departamento con ese nombre o código' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya existe otro departamento con ese nombre o código',
+  })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDepartmentDto: UpdateDepartmentDto,
@@ -71,16 +88,25 @@ export class DepartmentController {
   @Delete(':id')
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Eliminar un departamento' })
-  @ApiResponse({ status: 200, description: 'Departamento eliminado exitosamente' })
+  @ApiResponse({
+    status: 200,
+    description: 'Departamento eliminado exitosamente',
+  })
   @ApiResponse({ status: 404, description: 'Departamento no encontrado' })
-  @ApiResponse({ status: 400, description: 'No se puede eliminar porque tiene relaciones' })
+  @ApiResponse({
+    status: 400,
+    description: 'No se puede eliminar porque tiene relaciones',
+  })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.departmentService.remove(id);
   }
 
   @Get(':id/users')
   @ApiOperation({ summary: 'Obtener usuarios de un departamento' })
-  @ApiResponse({ status: 200, description: 'Lista de usuarios del departamento' })
+  @ApiResponse({
+    status: 200,
+    description: 'Lista de usuarios del departamento',
+  })
   @ApiResponse({ status: 404, description: 'Departamento no encontrado' })
   getUsers(@Param('id', ParseIntPipe) id: number) {
     return this.departmentService.getUsers(id);
@@ -90,7 +116,10 @@ export class DepartmentController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Asignar un usuario a un departamento' })
   @ApiResponse({ status: 200, description: 'Usuario asignado exitosamente' })
-  @ApiResponse({ status: 404, description: 'Departamento o usuario no encontrado' })
+  @ApiResponse({
+    status: 404,
+    description: 'Departamento o usuario no encontrado',
+  })
   assignUser(
     @Param('id', ParseIntPipe) id: number,
     @Body('userId') userId: string,
@@ -102,7 +131,10 @@ export class DepartmentController {
   @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
   @ApiOperation({ summary: 'Remover un usuario de un departamento' })
   @ApiResponse({ status: 200, description: 'Usuario removido exitosamente' })
-  @ApiResponse({ status: 404, description: 'Departamento o usuario no encontrado' })
+  @ApiResponse({
+    status: 404,
+    description: 'Departamento o usuario no encontrado',
+  })
   removeUser(
     @Param('id', ParseIntPipe) id: number,
     @Param('userId') userId: string,

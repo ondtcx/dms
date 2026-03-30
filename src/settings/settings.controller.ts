@@ -9,7 +9,14 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiBody,
+} from '@nestjs/swagger';
 import { extname } from 'path';
 import { SettingsService } from './settings.service';
 import { UpdateInstitutionDto } from './dto/update-institution.dto';
@@ -37,7 +44,10 @@ export class SettingsController {
   @Patch('institution')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Actualizar datos de la institución' })
-  @ApiResponse({ status: 200, description: 'Datos de institución actualizados' })
+  @ApiResponse({
+    status: 200,
+    description: 'Datos de institución actualizados',
+  })
   updateInstitution(@Body() dto: UpdateInstitutionDto) {
     return this.settingsService.updateInstitution(dto);
   }
@@ -62,7 +72,10 @@ export class SettingsController {
       }),
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/^image\/(jpeg|png|gif|webp|svg\+xml)$/)) {
-          return cb(new Error('Solo se permiten imágenes (JPEG, PNG, GIF, WEBP, SVG)'), false);
+          return cb(
+            new Error('Solo se permiten imágenes (JPEG, PNG, GIF, WEBP, SVG)'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -92,7 +105,10 @@ export class SettingsController {
   @Patch('documents')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Actualizar configuración de documentos' })
-  @ApiResponse({ status: 200, description: 'Configuración de documentos actualizada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Configuración de documentos actualizada',
+  })
   updateDocuments(@Body() dto: UpdateDocumentsDto) {
     return this.settingsService.updateDocuments(dto);
   }
@@ -100,7 +116,10 @@ export class SettingsController {
   @Patch('notifications')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Actualizar configuración de notificaciones' })
-  @ApiResponse({ status: 200, description: 'Configuración de notificaciones actualizada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Configuración de notificaciones actualizada',
+  })
   updateNotifications(@Body() dto: UpdateNotificationsDto) {
     return this.settingsService.updateNotifications(dto);
   }
@@ -108,7 +127,10 @@ export class SettingsController {
   @Patch('security')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Actualizar configuración de seguridad' })
-  @ApiResponse({ status: 200, description: 'Configuración de seguridad actualizada' })
+  @ApiResponse({
+    status: 200,
+    description: 'Configuración de seguridad actualizada',
+  })
   updateSecurity(@Body() dto: UpdateSecurityDto) {
     return this.settingsService.updateSecurity(dto);
   }

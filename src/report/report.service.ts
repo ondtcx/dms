@@ -151,7 +151,9 @@ export class ReportService {
     // Obtener nombres de categorías
     const categories = await this.prisma.category.findMany({
       where: {
-        id: { in: distribution.map((d) => d.categoryId).filter((id) => id !== null) },
+        id: {
+          in: distribution.map((d) => d.categoryId).filter((id) => id !== null),
+        },
       },
       select: { id: true, name: true, color: true },
     });
@@ -159,7 +161,9 @@ export class ReportService {
     const categoryMap = new Map(categories.map((c) => [c.id, c]));
 
     return distribution.map((item) => {
-      const category = item.categoryId ? categoryMap.get(item.categoryId) : null;
+      const category = item.categoryId
+        ? categoryMap.get(item.categoryId)
+        : null;
       return {
         categoryId: item.categoryId,
         categoryName: category?.name || 'Sin categoría',
@@ -275,7 +279,9 @@ export class ReportService {
       documentName: wf.document?.filename || 'Unknown',
       templateName: wf.template?.name || 'Unknown',
       currentState: wf.currentState,
-      daysPending: Math.floor((Date.now() - wf.createdAt.getTime()) / (1000 * 60 * 60 * 24)),
+      daysPending: Math.floor(
+        (Date.now() - wf.createdAt.getTime()) / (1000 * 60 * 60 * 24),
+      ),
       createdAt: wf.createdAt,
     }));
   }
@@ -298,7 +304,9 @@ export class ReportService {
     const categoryMap = new Map(categories.map((c) => [c.id, c.name]));
 
     return documentsByCategory.map((item) => ({
-      category: item.categoryId ? categoryMap.get(item.categoryId) : 'Sin categoría',
+      category: item.categoryId
+        ? categoryMap.get(item.categoryId)
+        : 'Sin categoría',
       documentCount: item._count.categoryId,
       complianceRate: 100, // Placeholder
     }));

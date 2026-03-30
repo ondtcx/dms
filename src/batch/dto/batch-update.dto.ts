@@ -2,7 +2,10 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsInt, IsOptional, IsString } from 'class-validator';
 
 export class BatchUpdateDto {
-  @ApiProperty({ description: 'IDs de los documentos a actualizar', type: [Number] })
+  @ApiProperty({
+    description: 'IDs de los documentos a actualizar',
+    type: [Number],
+  })
   @IsArray()
   @IsInt({ each: true })
   documentIds: number[];

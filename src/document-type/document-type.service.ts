@@ -23,14 +23,20 @@ export class DocumentTypeService {
 
   async create(dto: CreateDocumentTypeDto) {
     // Verificar que la categoría existe
-    const category = await this.prisma.category.findUnique({ where: { id: dto.categoryId } });
+    const category = await this.prisma.category.findUnique({
+      where: { id: dto.categoryId },
+    });
     if (!category) {
-      throw new NotFoundException(`Categoría con ID ${dto.categoryId} no encontrada`);
+      throw new NotFoundException(
+        `Categoría con ID ${dto.categoryId} no encontrada`,
+      );
     }
 
     // Verificar unicidad dentro de la categoría
     const existing = await this.prisma.documentType.findUnique({
-      where: { name_categoryId: { name: dto.name, categoryId: dto.categoryId } },
+      where: {
+        name_categoryId: { name: dto.name, categoryId: dto.categoryId },
+      },
     });
     if (existing) {
       throw new ConflictException(
@@ -66,7 +72,9 @@ export class DocumentTypeService {
       include: DOCUMENT_TYPE_INCLUDE,
     });
     if (!documentType) {
-      throw new NotFoundException(`Subtipo de documento con ID ${id} no encontrado`);
+      throw new NotFoundException(
+        `Subtipo de documento con ID ${id} no encontrado`,
+      );
     }
     return documentType;
   }
@@ -76,15 +84,21 @@ export class DocumentTypeService {
 
     // Si cambia nombre o categoría, verificar unicidad
     if (dto.name !== undefined || dto.categoryId !== undefined) {
-      const current = await this.prisma.documentType.findUnique({ where: { id } });
+      const current = await this.prisma.documentType.findUnique({
+        where: { id },
+      });
       const newName = dto.name ?? current!.name;
       const newCategoryId = dto.categoryId ?? current!.categoryId;
 
       const conflict = await this.prisma.documentType.findUnique({
-        where: { name_categoryId: { name: newName, categoryId: newCategoryId } },
+        where: {
+          name_categoryId: { name: newName, categoryId: newCategoryId },
+        },
       });
       if (conflict && conflict.id !== id) {
-        const category = await this.prisma.category.findUnique({ where: { id: newCategoryId } });
+        const category = await this.prisma.category.findUnique({
+          where: { id: newCategoryId },
+        });
         throw new ConflictException(
           `Ya existe un subtipo "${newName}" en la categoría "${category?.name}"`,
         );
@@ -103,10 +117,13 @@ export class DocumentTypeService {
 
     const counts = await this.prisma.documentType.findUnique({
       where: { id },
-      select: { _count: { select: { documents: true, documentTemplates: true } } },
+      select: {
+        _count: { select: { documents: true, documentTemplates: true } },
+      },
     });
 
-    const total = (counts?._count.documents ?? 0) + (counts?._count.documentTemplates ?? 0);
+    const total =
+      (counts?._count.documents ?? 0) + (counts?._count.documentTemplates ?? 0);
     if (total > 0) {
       throw new BadRequestException(
         `No se puede eliminar el subtipo porque tiene ${counts!._count.documents} documento(s) y ${counts!._count.documentTemplates} plantilla(s) asociadas`,

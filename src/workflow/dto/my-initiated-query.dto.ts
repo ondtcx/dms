@@ -20,7 +20,11 @@ export class MyInitiatedQueryDto {
   @Min(1)
   page?: number;
 
-  @ApiProperty({ description: 'Resultados por página', default: 20, required: false })
+  @ApiProperty({
+    description: 'Resultados por página',
+    default: 20,
+    required: false,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

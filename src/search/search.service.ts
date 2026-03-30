@@ -39,7 +39,10 @@ export class SearchService {
     });
 
     const accessFilter = user
-      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...user,
+          role: user.role as unknown as UserRole,
+        })
       : null;
 
     // Construir condiciones WHERE base
@@ -57,7 +60,9 @@ export class SearchService {
         .join(' & ');
 
       if (tsquery) {
-        const rows = await this.prisma.$queryRaw<{ id: number; rank: number }[]>`
+        const rows = await this.prisma.$queryRaw<
+          { id: number; rank: number }[]
+        >`
           SELECT id, ts_rank("searchVector", to_tsquery('simple', ${tsquery})) AS rank
           FROM "Document"
           WHERE "searchVector" @@ to_tsquery('simple', ${tsquery})
@@ -189,26 +194,40 @@ export class SearchService {
         ? { AND: [baseWithoutId, accessFilter] }
         : baseWithoutId;
 
-      const passingIds = ftsIds.length > 0
-        ? await this.prisma.document
-            .findMany({ where: { id: { in: ftsIds }, ...otherFilters }, select: { id: true } })
-            .then((rows) => new Set(rows.map((r) => r.id)))
-        : new Set<number>();
+      const passingIds =
+        ftsIds.length > 0
+          ? await this.prisma.document
+              .findMany({
+                where: { id: { in: ftsIds }, ...otherFilters },
+                select: { id: true },
+              })
+              .then((rows) => new Set(rows.map((r) => r.id)))
+          : new Set<number>();
 
       const orderedIds = ftsIds.filter((id) => passingIds.has(id));
       total = orderedIds.length;
 
       const pageIds = orderedIds.slice(skip, skip + take);
-      const rawDocs = pageIds.length > 0
-        ? await this.prisma.document.findMany({ where: { id: { in: pageIds } }, include: docInclude })
-        : [];
+      const rawDocs =
+        pageIds.length > 0
+          ? await this.prisma.document.findMany({
+              where: { id: { in: pageIds } },
+              include: docInclude,
+            })
+          : [];
 
       // Restaurar el orden de relevancia
       const docMap = new Map(rawDocs.map((d) => [d.id, d]));
       documents = pageIds.map((id) => docMap.get(id)).filter(Boolean);
     } else {
       [documents, total] = await Promise.all([
-        this.prisma.document.findMany({ where, orderBy, skip, take, include: docInclude }),
+        this.prisma.document.findMany({
+          where,
+          orderBy,
+          skip,
+          take,
+          include: docInclude,
+        }),
         this.prisma.document.count({ where }),
       ]);
     }
@@ -244,7 +263,10 @@ export class SearchService {
     });
 
     const accessFilter = user
-      ? buildDocumentAccessFilter({ ...user, role: user.role as unknown as UserRole })
+      ? buildDocumentAccessFilter({
+          ...user,
+          role: user.role as unknown as UserRole,
+        })
       : null;
 
     const suggestions = await this.prisma.document.findMany({
@@ -282,7 +304,8 @@ export class SearchService {
     const relevantFilters: any = {};
     if (filters.categoryIds) relevantFilters.categoryIds = filters.categoryIds;
     if (filters.sectionIds) relevantFilters.sectionIds = filters.sectionIds;
-    if (filters.departmentIds) relevantFilters.departmentIds = filters.departmentIds;
+    if (filters.departmentIds)
+      relevantFilters.departmentIds = filters.departmentIds;
     if (filters.courseIds) relevantFilters.courseIds = filters.courseIds;
     if (filters.subjectIds) relevantFilters.subjectIds = filters.subjectIds;
     if (filters.dateFrom) relevantFilters.dateFrom = filters.dateFrom;

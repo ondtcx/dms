@@ -11,7 +11,10 @@ import {
 import { UserRole } from '../../auth/role.enum';
 
 export class BatchShareDto {
-  @ApiProperty({ description: 'IDs de los documentos a compartir', type: [Number] })
+  @ApiProperty({
+    description: 'IDs de los documentos a compartir',
+    type: [Number],
+  })
   @IsArray()
   @IsInt({ each: true })
   documentIds: number[];
