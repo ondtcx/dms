@@ -33,7 +33,7 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { Response } from 'express';
-import { createReadStream, statSync } from 'fs';
+import { createReadStream, promises as fsPromises } from 'fs';
 import { DocumentService } from './document.service';
 import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
@@ -448,7 +448,8 @@ export class DocumentController {
 
     if (thumbnailPath) {
       // Verificar que el thumbnail no sea anterior al documento (puede quedar de un seed/reset anterior)
-      const thumbMtime = statSync(thumbnailPath).mtime;
+      const stats = await fsPromises.stat(thumbnailPath);
+      const thumbMtime = stats.mtime;
       const docCreatedAt = new Date(doc.createdAt);
       if (thumbMtime < docCreatedAt) {
         thumbnailPath = await this.thumbnailService.regenerateThumbnail(
@@ -568,7 +569,7 @@ export class DocumentController {
     return this.documentsService.remove(id, user.id, user.role);
   }
 
-  @Delete('bulk/delete')
+  @Post('bulk/delete')
   @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Eliminar múltiples documentos (Solo ADMIN)' })
   @ApiBody({

@@ -64,7 +64,7 @@ export class BatchController {
     return this.batchService.batchUpdate(batchUpdateDto, req.user.id);
   }
 
-  @Delete('delete')
+  @Post('delete')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Eliminación masiva de documentos',
