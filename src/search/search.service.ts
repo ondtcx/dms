@@ -361,7 +361,7 @@ export class SearchService {
     });
 
     const isPrivileged =
-      user?.role === UserRole.ADMIN || user?.role === UserRole.DIRECTOR;
+      user?.role === UserRole.ADMIN || user?.role === UserRole.RECTOR;
 
     // ADMIN y DIRECTOR ven búsquedas populares globales.
     // Otros roles solo ven las tendencias de sus propias búsquedas pasadas

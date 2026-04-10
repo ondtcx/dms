@@ -584,6 +584,189 @@ function getComunicadoRepresentantesData() {
   ];
 }
 
+// ── OFICIOS ───────────────────────────────────────────────────
+
+function getOficioData() {
+  return [
+    {
+      user: 'rector@colegio.edu',
+      formData: {
+        numero: 'OF-DIR-2026-001',
+        fecha: '2026-02-03',
+        lugar: 'Ciudad',
+        destinatario: 'Lcda. Patricia Herrera Mora',
+        cargo_destinatario: 'Directora Zonal de Educación',
+        institucion_destinataria: 'Zona Educativa Regional',
+        asunto: 'Solicitud de homologación de títulos docentes',
+        cuerpo:
+          'Me dirijo a usted en la oportunidad de saludarla cordialmente y, a la vez, solicitarle comedidamente gestione ante el Departamento de Recursos Humanos la homologación de los títulos universitarios de los docentes que se incorporaron al plantel en el presente año escolar 2025-2026.\n\nSe adjuntan los expedientes de los siguientes profesionales:\n\n1. Prof. Adrián Gustavo Pérez — Licenciado en Biología, UCV (2018)\n2. Prof. Jennifer Patricia Roberts — Licenciada en Idiomas Modernos, USB (2019)\n3. Prof. Sebastián Andrés Vega — Licenciado en Química, UCV (2020)\n\nAgradecemos su valiosa colaboración para la regularización de estos casos, los cuales son necesarios para la actualización del escalafón institucional.',
+        firmante: 'María Elena Rodríguez',
+        cargo_firmante: 'Directora General',
+      },
+      filename: 'oficio-solicitud-homologacion-titulos-2026-001.pdf',
+      description: 'Oficio dirigido a la Zona Educativa solicitando homologación de títulos docentes',
+    },
+    {
+      user: 'secretaria@colegio.edu',
+      formData: {
+        numero: 'OF-SEC-2026-002',
+        fecha: '2026-03-01',
+        lugar: 'Ciudad',
+        destinatario: 'Dr. Roberto Fuentes Blanco',
+        cargo_destinatario: 'Director del Centro de Salud Municipal',
+        institucion_destinataria: 'Centro de Salud Municipal "Simón Bolívar"',
+        asunto: 'Solicitud de jornada de vacunación escolar',
+        cuerpo:
+          'Reciba un cordial saludo de nuestra parte. A través del presente oficio, nos permitimos solicitar su colaboración para la organización de una jornada de vacunación dirigida a los estudiantes de nuestra institución, correspondiente al plan de inmunización del año escolar 2025-2026.\n\nContamos con una matrícula de 420 estudiantes distribuidos entre los niveles de Primaria (280 estudiantes) y Secundaria (140 estudiantes). La institución dispondrá del espacio físico necesario y del apoyo del personal para la logística del evento.\n\nLe solicitamos muy respetuosamente indicarnos la fecha disponible y los requerimientos técnicos necesarios para la jornada.',
+        firmante: 'Carlos Alberto Mendoza',
+        cargo_firmante: 'Secretario Académico',
+      },
+      filename: 'oficio-solicitud-jornada-vacunacion-2026-002.pdf',
+      description: 'Oficio al Centro de Salud Municipal solicitando jornada de vacunación escolar',
+    },
+    {
+      user: 'rector@colegio.edu',
+      formData: {
+        numero: 'OF-DIR-2026-003',
+        fecha: '2026-03-10',
+        lugar: 'Ciudad',
+        destinatario: 'Lcda. Patricia Herrera Mora',
+        cargo_destinatario: 'Directora Zonal de Educación',
+        institucion_destinataria: 'Zona Educativa Regional',
+        asunto: 'Notificación de resultados académicos del Primer Lapso — Nivel Secundaria',
+        cuerpo:
+          'Por medio del presente, me dirijo a usted para notificarle los resultados académicos consolidados del Primer Lapso del año escolar 2025-2026, correspondientes al nivel de Educación Secundaria de esta institución.\n\nMatrícula total Secundaria: 140 estudiantes (1° a 6° Año)\nPorcentaje de aprobación general: 81%\nPromedio institucional: 14.6 puntos\n\nMaterias con mayor índice de aplazados:\n• Matemática: 24% de aplazados\n• Química: 19% de aplazados\n• Física: 17% de aplazados\n\nEstudiantes con promedio ≥ 18 puntos (Alto Rendimiento): 22\nEstudiantes con bajo rendimiento en 3 o más materias: 11\n\nSe han implementado planes de refuerzo y tutorías para los estudiantes en situación de riesgo académico. Los informes detallados por sección están disponibles para consulta en la institución.',
+        firmante: 'María Elena Rodríguez',
+        cargo_firmante: 'Directora General',
+      },
+      filename: 'oficio-notificacion-resultados-primer-lapso-secundaria-2026.pdf',
+      description: 'Oficio notificando resultados académicos del primer lapso de Secundaria a la Zona Educativa',
+    },
+    {
+      user: 'vicerrector@colegio.edu',
+      formData: {
+        numero: 'OF-VICE-2026-004',
+        fecha: '2026-03-18',
+        lugar: 'Ciudad',
+        destinatario: 'Lic. Marcos Antonio Delgado',
+        cargo_destinatario: 'Coordinador de Cultura y Deportes',
+        institucion_destinataria: 'Alcaldía Municipal — Dirección de Cultura y Deportes',
+        asunto: 'Solicitud de apoyo logístico para actos de grado 2025-2026',
+        cuerpo:
+          'En nombre de nuestra institución educativa, me dirijo a usted para solicitarle muy respetuosamente su valioso apoyo logístico en la organización de los actos de grado del año escolar 2025-2026, correspondientes a los egresados de 6° Año de Educación Secundaria.\n\nEl evento está programado para el mes de julio de 2026 y contará con la participación de aproximadamente 25 bachilleres egresados, sus familiares y el personal docente de la institución.\n\nRequerimos especialmente:\n• Disponibilidad del auditorio municipal "Libertador" para la fecha acordada\n• Apoyo en la ambientación y sonido del espacio\n• Presencia de una banda o grupo musical institucional para la ceremonia\n\nAgradecemos de antemano su gestión y quedamos en espera de su respuesta.',
+        firmante: 'Lucía Fernanda Castillo',
+        cargo_firmante: 'Vicerrectora',
+      },
+      filename: 'oficio-solicitud-apoyo-actos-grado-2026-004.pdf',
+      description: 'Oficio a la Alcaldía solicitando apoyo logístico para actos de grado de 6° Año',
+    },
+    {
+      user: 'coord.secundaria@colegio.edu',
+      formData: {
+        numero: 'OF-CSEC-2026-005',
+        fecha: '2026-03-25',
+        lugar: 'Ciudad',
+        destinatario: 'Prof. Eduardo José Villareal Montes',
+        cargo_destinatario: 'Profesor de Matemática — Nivel Secundaria',
+        institucion_destinataria: '',
+        asunto: 'Autorización para aplicación de evaluación de recuperación — Primer Lapso',
+        cuerpo:
+          'Por medio del presente oficio se le autoriza a aplicar las evaluaciones de recuperación del Primer Lapso 2025-2026 en la materia de Matemática, correspondientes a los estudiantes de 2°, 3° y 4° Año de Secundaria que se detallan a continuación:\n\n• 2° Año "A": 5 estudiantes\n• 3° Año "B": 4 estudiantes\n• 4° Año "A": 3 estudiantes\n\nLas evaluaciones deberán realizarse durante la semana del 31 de marzo al 4 de abril de 2026, en los horarios acordados con cada sección. Las calificaciones obtenidas deben ser reportadas a esta Coordinación a más tardar el 8 de abril de 2026.\n\nSe le recuerda que los instrumentos de evaluación deben ser aprobados por la coordinación con 48 horas de anticipación.',
+        firmante: 'Roberto Alejandro Méndez',
+        cargo_firmante: 'Coordinador de Secundaria',
+      },
+      filename: 'oficio-autorizacion-evaluacion-recuperacion-matematica-2026-005.pdf',
+      description: 'Oficio autorizando evaluaciones de recuperación de Matemática en Secundaria',
+    },
+  ];
+}
+
+function getOficioDesignacionData() {
+  return [
+    {
+      user: 'rector@colegio.edu',
+      formData: {
+        numero: 'OF-DES-2026-001',
+        fecha: '2026-02-10',
+        lugar: 'Ciudad',
+        nombre_docente: 'Valentina Isabel Reyes Morales',
+        cargo_docente: 'Profesora de Lengua y Literatura — Secundaria',
+        funcion: 'Coordinadora de la Comisión Evaluadora del Primer Lapso — Secundaria',
+        periodo: 'Febrero — Marzo 2026',
+        actividades:
+          'La docente designada tendrá las siguientes responsabilidades:\n\n1. Coordinar la recopilación y revisión de las planificaciones de evaluación de todos los profesores de Secundaria.\n2. Verificar que los instrumentos de evaluación cumplan con los criterios pedagógicos institucionales.\n3. Elaborar el informe consolidado de resultados del Primer Lapso de Secundaria.\n4. Presentar el informe ante la Dirección y la Coordinación de Secundaria antes del 28 de marzo de 2026.\n5. Actuar como enlace entre la Coordinación de Secundaria y el personal docente durante el proceso evaluativo.',
+        firmante: 'María Elena Rodríguez',
+        cargo_firmante: 'Directora General',
+      },
+      filename: 'oficio-designacion-comision-evaluadora-secundaria-2026-001.pdf',
+      description: 'Oficio de designación de la Prof. Reyes como Coordinadora de la Comisión Evaluadora de Secundaria',
+    },
+    {
+      user: 'rector@colegio.edu',
+      formData: {
+        numero: 'OF-DES-2026-002',
+        fecha: '2026-03-05',
+        lugar: 'Ciudad',
+        nombre_docente: 'Ricardo Andrés Torres Vásquez',
+        cargo_docente: 'Profesor de Matemática — Secundaria',
+        funcion: 'Representante Institucional ante las Olimpiadas de Matemática Regionales 2026',
+        periodo: 'Marzo — Mayo 2026',
+        actividades:
+          '1. Seleccionar y preparar a los estudiantes de 3°, 4° y 5° Año que participarán en las olimpiadas.\n2. Coordinar los entrenamientos y sesiones de práctica en el horario acordado con la Dirección.\n3. Acompañar a la delegación institucional en las jornadas regionales de competencia.\n4. Elaborar informe final de la participación institucional y presentarlo a la Dirección.\n5. Gestionar ante la Coordinación de Secundaria los permisos necesarios para los estudiantes seleccionados.',
+        firmante: 'María Elena Rodríguez',
+        cargo_firmante: 'Directora General',
+      },
+      filename: 'oficio-designacion-representante-olimpiadas-matematica-2026-002.pdf',
+      description: 'Oficio de designación del Prof. Torres como representante para las Olimpiadas de Matemática',
+    },
+  ];
+}
+
+function getOficioRemisionData() {
+  return [
+    {
+      user: 'secretaria@colegio.edu',
+      formData: {
+        numero: 'OF-REM-2026-001',
+        fecha: '2026-02-20',
+        lugar: 'Ciudad',
+        destinatario: 'Lcda. Carmen Rosa Villanueva',
+        cargo_destinatario: 'Jefa de Control de Estudios',
+        institucion_destinataria: 'Unidad Educativa "José Martí"',
+        motivo_remision: 'Traslado de expediente académico de estudiante',
+        documentos_remitidos:
+          '1. Partida de nacimiento (original)\n2. Cédula de identidad estudiantil (copia)\n3. Boletín de calificaciones — Año Escolar 2024-2025 (original)\n4. Boletín de calificaciones — Primer Lapso 2025-2026 (copia certificada)\n5. Constancia de buena conducta (original)\n6. Constancia de estudios actualizada (original)\n7. Planilla de inscripción del año escolar anterior (copia)',
+        observaciones:
+          'El traslado fue solicitado por el representante legal del estudiante Tomás Eduardo Fuentes Díaz (V-33.901.234), cursante de 3° Año de Secundaria, por motivos de cambio de domicilio familiar. Se adjunta carta de solicitud del representante.',
+        firmante: 'Carlos Alberto Mendoza',
+        cargo_firmante: 'Secretario Académico',
+      },
+      filename: 'oficio-remision-expediente-tomas-fuentes-traslado-2026-001.pdf',
+      description: 'Oficio de remisión de expediente académico por traslado estudiantil — Tomás Fuentes',
+    },
+    {
+      user: 'secretaria@colegio.edu',
+      formData: {
+        numero: 'OF-REM-2026-002',
+        fecha: '2026-03-15',
+        lugar: 'Ciudad',
+        destinatario: 'Lcda. Patricia Herrera Mora',
+        cargo_destinatario: 'Directora Zonal de Educación',
+        institucion_destinataria: 'Zona Educativa Regional',
+        motivo_remision: 'Remisión de nómina y estadísticas de matrícula — Primer Lapso 2025-2026',
+        documentos_remitidos:
+          '1. Nómina general de estudiantes activos — Secundaria (140 estudiantes)\n2. Estadísticas de asistencia del Primer Lapso por sección\n3. Reporte de movimiento de matrícula (ingresos, egresos y traslados)\n4. Listado de estudiantes con necesidades educativas especiales (NEE)\n5. Cuadro resumen de resultados académicos por año y sección\n6. Actas de Consejo de Grado del Primer Lapso (copias certificadas)',
+        observaciones:
+          'Se remiten los documentos conforme a lo solicitado mediante comunicación ZE-2026-0142 de fecha 01 de marzo de 2026. La documentación corresponde exclusivamente al nivel de Educación Secundaria.',
+        firmante: 'Carlos Alberto Mendoza',
+        cargo_firmante: 'Secretario Académico',
+      },
+      filename: 'oficio-remision-nomina-estadisticas-secundaria-primer-lapso-2026-002.pdf',
+      description: 'Oficio de remisión de nómina y estadísticas de Secundaria a la Zona Educativa',
+    },
+  ];
+}
+
 // ── LEGALES ───────────────────────────────────────────────────
 
 function getContratoInscripcionData() {
@@ -691,7 +874,7 @@ async function main() {
   const sessions: Record<string, { token: string; name: string }> = {};
   const users = [
     'admin@colegio.edu',
-    'director@colegio.edu',
+    'rector@colegio.edu',
     'vicerrector@colegio.edu',
     'coord.primaria@colegio.edu',
     'coord.secundaria@colegio.edu',
@@ -758,7 +941,7 @@ async function main() {
   } else {
     for (const acta of getActaReunionPersonalData()) {
       try {
-        const doc = await createFromTemplate(sessions['director@colegio.edu'].token, {
+        const doc = await createFromTemplate(sessions['rector@colegio.edu'].token, {
           templateId: actaId,
           formData: acta.formData,
           filename: acta.filename,
@@ -830,7 +1013,7 @@ async function main() {
   } else {
     for (const memo of getMemorandumInternoData()) {
       try {
-        await createFromTemplate(sessions['director@colegio.edu'].token, {
+        await createFromTemplate(sessions['rector@colegio.edu'].token, {
           templateId: memoId,
           formData: memo.formData,
           filename: memo.filename,
@@ -886,10 +1069,13 @@ async function main() {
         hora_inicio: '09:00',
         hora_fin: '11:30',
         lugar: 'Sala de Conferencias — Vicerrectoría',
+        titulo: 'Reunión de Coordinación Pedagógica — Segundo Lapso 2026',
         tipo_reunion: 'Reunión de Coordinación Pedagógica',
         presidente: 'Lucía Fernanda Castillo - Vicerrectora',
         secretario: 'Carlos Alberto Mendoza - Secretario Académico',
+        participantes: 'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
         asistentes: 'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
+        agenda: '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
         orden_del_dia: '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
         desarrollo: 'La Vicerrectora dio inicio a la reunión señalando los avances registrados en el segundo lapso. La Coord. de Primaria presentó los indicadores de rendimiento actualizados, destacando una mejora del 8% en lectura comprensiva. La Coord. de Secundaria informó sobre el plan de tutorías implementado en Matemática y Lengua. Se acordó reforzar el seguimiento individualizado de los 14 estudiantes identificados con bajo rendimiento.',
         acuerdos: '1. Entregar informe de rendimiento consolidado del segundo lapso antes del 20 de marzo.\n2. Implementar tutorías grupales los miércoles de 2:00 PM a 3:30 PM.\n3. Convocar reunión con representantes de estudiantes en riesgo para el 25 de marzo.\n4. Actualizar el registro de seguimiento en el sistema documental.',
@@ -1191,7 +1377,7 @@ async function main() {
   } else {
     for (const doc of getCircularInformativaData()) {
       try {
-        await createFromTemplate(sessions['director@colegio.edu'].token, {
+        await createFromTemplate(sessions['rector@colegio.edu'].token, {
           templateId: circularId,
           formData: doc.formData,
           filename: doc.filename,
@@ -1230,6 +1416,77 @@ async function main() {
     }
   }
 
+  // ── OFICIOS ───────────────────────────────────────────────────
+
+  // --- Oficio genérico ---
+  const oficioId = docTemplateByName['Oficio'];
+  if (!oficioId) {
+    console.error('  ❌ Plantilla "Oficio" no encontrada');
+  } else {
+    for (const doc of getOficioData()) {
+      try {
+        await createFromTemplate(sessions[doc.user].token, {
+          templateId: oficioId,
+          formData: doc.formData,
+          filename: doc.filename,
+          description: doc.description,
+          sectionId: secByName['Gestión Administrativa'],
+        });
+        console.log(`  ✅ ${doc.filename}`);
+        created++;
+      } catch (e: any) {
+        console.error(`  ❌ ${doc.filename}: ${e.message}`);
+      }
+      await delay(500);
+    }
+  }
+
+  // --- Oficio de Designación Docente ---
+  const oficioDesignacionId = docTemplateByName['Oficio de Designación Docente'];
+  if (!oficioDesignacionId) {
+    console.error('  ❌ Plantilla "Oficio de Designación Docente" no encontrada');
+  } else {
+    for (const doc of getOficioDesignacionData()) {
+      try {
+        await createFromTemplate(sessions[doc.user].token, {
+          templateId: oficioDesignacionId,
+          formData: doc.formData,
+          filename: doc.filename,
+          description: doc.description,
+          sectionId: secByName['Gestión Administrativa'],
+        });
+        console.log(`  ✅ ${doc.filename}`);
+        created++;
+      } catch (e: any) {
+        console.error(`  ❌ ${doc.filename}: ${e.message}`);
+      }
+      await delay(500);
+    }
+  }
+
+  // --- Oficio de Remisión de Documentos ---
+  const oficioRemisionId = docTemplateByName['Oficio de Remisión de Documentos'];
+  if (!oficioRemisionId) {
+    console.error('  ❌ Plantilla "Oficio de Remisión de Documentos" no encontrada');
+  } else {
+    for (const doc of getOficioRemisionData()) {
+      try {
+        await createFromTemplate(sessions[doc.user].token, {
+          templateId: oficioRemisionId,
+          formData: doc.formData,
+          filename: doc.filename,
+          description: doc.description,
+          sectionId: secByName['Gestión Administrativa'],
+        });
+        console.log(`  ✅ ${doc.filename}`);
+        created++;
+      } catch (e: any) {
+        console.error(`  ❌ ${doc.filename}: ${e.message}`);
+      }
+      await delay(500);
+    }
+  }
+
   // ── LEGALES ───────────────────────────────────────────────────
 
   // --- Contrato de Inscripción Estudiantil (Directora) ---
@@ -1239,7 +1496,7 @@ async function main() {
   } else {
     for (const doc of getContratoInscripcionData()) {
       try {
-        await createFromTemplate(sessions['director@colegio.edu'].token, {
+        await createFromTemplate(sessions['rector@colegio.edu'].token, {
           templateId: contratoId,
           formData: doc.formData,
           filename: doc.filename,
@@ -1424,7 +1681,7 @@ async function main() {
   // Constancia Santiago — director aprueba → APROBADO
   if (wfConstanciaSantiago) {
     try {
-      await approveWorkflow(sessions['director@colegio.edu'].token, wfConstanciaSantiago.id, 'APPROVED');
+      await approveWorkflow(sessions['rector@colegio.edu'].token, wfConstanciaSantiago.id, 'APPROVED');
       console.log('  ✅ Director aprobó Constancia de Santiago → APROBADA');
     } catch (e: any) {
       console.error(`  ❌ Aprobación Constancia Santiago: ${e.message}`);
@@ -1436,7 +1693,7 @@ async function main() {
   if (wfActaCompromiso) {
     try {
       await approveWorkflow(
-        sessions['director@colegio.edu'].token,
+        sessions['rector@colegio.edu'].token,
         wfActaCompromiso.id,
         'REJECTED',
         'El acta no incluye las firmas originales de los representantes ni del docente. Favor adjuntar la documentación completa escaneada antes de reenviar.',
@@ -1481,7 +1738,7 @@ async function main() {
   if (docsCreated.actaReunionConsejo) {
     try {
       await addComment(
-        sessions['director@colegio.edu'].token,
+        sessions['rector@colegio.edu'].token,
         docsCreated.actaReunionConsejo,
         'Confirmar asistencia del representante de 3°C antes de la firma definitiva del acta. Pendiente también el cierre de los acuerdos del punto 4.',
       );

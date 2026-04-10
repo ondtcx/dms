@@ -446,7 +446,7 @@ export class DocumentService {
     // El dueño, admin, director y vicerrector pueden actualizar cualquier documento
     const canEdit =
       userRole === UserRole.ADMIN ||
-      userRole === UserRole.DIRECTOR ||
+      userRole === UserRole.RECTOR ||
       userRole === UserRole.VICERRECTOR ||
       document.uploadedById === userId;
     if (!canEdit) {
@@ -1273,7 +1273,7 @@ export class DocumentService {
 
     const canRestore =
       userRole === UserRole.ADMIN ||
-      userRole === UserRole.DIRECTOR ||
+      userRole === UserRole.RECTOR ||
       userRole === UserRole.VICERRECTOR ||
       document.uploadedById === userId;
 

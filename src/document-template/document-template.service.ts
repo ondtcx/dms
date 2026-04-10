@@ -946,7 +946,7 @@ export class DocumentTemplateService {
     // 2. Verificar ownership: el dueño, admin y director pueden editar
     const canEdit =
       userRole === UserRole.ADMIN ||
-      userRole === UserRole.DIRECTOR ||
+      userRole === UserRole.RECTOR ||
       document.uploadedById === userId;
     if (!canEdit) {
       throw new ForbiddenException(

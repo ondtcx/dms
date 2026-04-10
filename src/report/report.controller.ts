@@ -21,7 +21,7 @@ export class ReportController {
   @Get('dashboard')
   @Roles(
     UserRole.ADMIN,
-    UserRole.DIRECTOR,
+    UserRole.RECTOR,
     UserRole.VICERRECTOR,
     UserRole.COORDINADOR,
   )
@@ -62,7 +62,7 @@ export class ReportController {
   @Get('workflow-bottlenecks')
   @Roles(
     UserRole.ADMIN,
-    UserRole.DIRECTOR,
+    UserRole.RECTOR,
     UserRole.VICERRECTOR,
     UserRole.COORDINADOR,
   )
@@ -94,7 +94,7 @@ export class ReportController {
   @Get('document-compliance')
   @Roles(
     UserRole.ADMIN,
-    UserRole.DIRECTOR,
+    UserRole.RECTOR,
     UserRole.VICERRECTOR,
     UserRole.COORDINADOR,
   )

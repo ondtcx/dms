@@ -30,7 +30,7 @@ export class DepartmentController {
   constructor(private readonly departmentService: DepartmentService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Crear nuevo departamento' })
   @ApiResponse({ status: 201, description: 'Departamento creado exitosamente' })
   @ApiResponse({
@@ -67,7 +67,7 @@ export class DepartmentController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Actualizar un departamento' })
   @ApiResponse({
     status: 200,
@@ -86,7 +86,7 @@ export class DepartmentController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Eliminar un departamento' })
   @ApiResponse({
     status: 200,
@@ -113,7 +113,7 @@ export class DepartmentController {
   }
 
   @Post(':id/users')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Asignar un usuario a un departamento' })
   @ApiResponse({ status: 200, description: 'Usuario asignado exitosamente' })
   @ApiResponse({
@@ -128,7 +128,7 @@ export class DepartmentController {
   }
 
   @Delete(':id/users/:userId')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Remover un usuario de un departamento' })
   @ApiResponse({ status: 200, description: 'Usuario removido exitosamente' })
   @ApiResponse({

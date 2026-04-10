@@ -96,9 +96,9 @@ async function main() {
   });
 
   await prisma.user.upsert({
-    where: { email: 'director@colegio.edu' },
+    where: { email: 'rector@colegio.edu' },
     update: {},
-    create: { email: 'director@colegio.edu', password, name: 'María Elena Rodríguez', role: UserRole.DIRECTOR, position: 'Directora General', departmentId: deptDireccion.id, phoneNumber: '0412-5551234' },
+    create: { email: 'rector@colegio.edu', password, name: 'María Elena Rodríguez', role: UserRole.RECTOR, position: 'Rectora General', departmentId: deptDireccion.id, phoneNumber: '0412-5551234' },
   });
 
   await prisma.user.upsert({
@@ -288,7 +288,7 @@ async function main() {
       icon: 'Users',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['coordinador', 'secretario', 'director', 'vicerrector', 'admin'],
+      allowedRoles: ['coordinador', 'secretario', 'rector', 'vicerrector', 'admin'],
       prefix: 'ACT',
     },
     {
@@ -298,7 +298,7 @@ async function main() {
       icon: 'Award',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['secretario', 'director', 'vicerrector', 'admin'],
+      allowedRoles: ['secretario', 'rector', 'vicerrector', 'admin'],
       prefix: 'CST',
     },
     {
@@ -308,7 +308,7 @@ async function main() {
       icon: 'BarChart3',
       sectionId: sectionAcademica.id,
       requiresCourse: false,
-      allowedRoles: ['profesor', 'coordinador', 'director', 'vicerrector'],
+      allowedRoles: ['profesor', 'coordinador', 'rector', 'vicerrector'],
       prefix: 'INF',
     },
     {
@@ -318,7 +318,7 @@ async function main() {
       icon: 'FolderKanban',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector', 'admin'],
+      allowedRoles: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector', 'admin'],
       prefix: 'ADMD',
     },
     {
@@ -328,7 +328,7 @@ async function main() {
       icon: 'Scale',
       sectionId: sectionInstitucional.id,
       requiresCourse: false,
-      allowedRoles: ['director', 'admin'],
+      allowedRoles: ['rector', 'admin'],
       prefix: 'LEG',
     },
     {
@@ -338,7 +338,7 @@ async function main() {
       icon: 'DollarSign',
       sectionId: sectionInstitucional.id,
       requiresCourse: false,
-      allowedRoles: ['secretario', 'director', 'admin'],
+      allowedRoles: ['secretario', 'rector', 'admin'],
       prefix: 'FIN',
     },
   ];
@@ -574,7 +574,7 @@ async function main() {
     dtActaReunion, dtActaConsejo, dtActaCompromiso,
     dtConstanciaEstudios, dtConstanciaConducta, dtCertificado,
     dtInformeRendimiento, dtInformeGrupo, dtBoletin,
-    dtMemorando, dtCircular, dtComunicado, dtSolicitudPermiso, dtReporteIncidencia,
+    dtMemorando, dtCircular, dtComunicado, dtSolicitudPermiso, dtReporteIncidencia, dtOficio,
     dtContratoInscripcion,
     dtReciboPago, dtPresupuesto,
   ] = await Promise.all([
@@ -600,6 +600,7 @@ async function main() {
     upsertDocType('Comunicado',               catAdministrativos.id, 'Comunicado general'),
     upsertDocType('Solicitud de Permiso',     catAdministrativos.id, 'Solicitud de permiso o ausencia'),
     upsertDocType('Reporte de Incidencia',    catAdministrativos.id, 'Reporte de incidencia disciplinaria'),
+    upsertDocType('Oficio',                   catAdministrativos.id, 'Comunicación oficial externa o entre instituciones'),
     // Legales
     upsertDocType('Contrato de Inscripción',  catLegales.id, 'Contrato de inscripción y compromiso'),
     // Financieros
@@ -1300,6 +1301,122 @@ tr:nth-child(even){background:#f8fafc}
 <div class="footer"><p>Generado el {{_metadata.generatedDate}} a las {{_metadata.generatedTime}}</p></div>
 </body></html>`;
 
+  const oficioHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Oficio</title>
+<style>body{font-family:'Times New Roman',serif;margin:50px 70px;color:#333;line-height:1.8}
+.header{text-align:center;border-bottom:2px solid #1d4ed8;padding-bottom:15px;margin-bottom:30px}
+.header h1{color:#1d4ed8;font-size:20px;letter-spacing:1px;margin:0}
+.meta{margin-bottom:20px;font-size:13px}
+.meta-row{display:flex;justify-content:space-between;margin-bottom:4px}
+.meta strong{color:#1e40af}
+.destinatario{margin-bottom:20px;font-size:14px}
+.destinatario .nombre{font-weight:bold;text-transform:uppercase}
+.destinatario .cargo{font-style:italic;color:#555}
+.asunto{margin-bottom:20px;font-size:14px}
+.asunto strong{color:#1e40af}
+.cuerpo{font-size:14px;text-align:justify;white-space:pre-line;margin-bottom:30px}
+.cierre{font-size:14px;margin-bottom:60px}
+.signature{text-align:left}
+.sign-line{border-top:1px solid #333;width:250px;padding-top:5px;font-size:13px}
+.sign-name{font-weight:bold}
+.sign-cargo{font-style:italic;color:#555;font-size:12px}
+.footer{margin-top:30px;border-top:1px solid #ddd;padding-top:10px;text-align:center;font-size:10px;color:#999}</style></head>
+<body>{{> institutionHeader}}
+<div class="header"><h1>OFICIO</h1></div>
+<div class="meta">
+<div class="meta-row"><span><strong>N°:</strong> {{numero}}</span><span><strong>Fecha:</strong> {{fecha}}</span></div>
+<div class="meta-row"><span><strong>Lugar:</strong> {{lugar}}</span></div>
+</div>
+<div class="destinatario">
+<p>Ciudadano/a:</p>
+<p class="nombre">{{destinatario}}</p>
+<p class="cargo">{{cargo_destinatario}}</p>
+{{#if institucion_destinataria}}<p>{{institucion_destinataria}}</p>{{/if}}
+<p>Presente.-</p>
+</div>
+<div class="asunto"><p><strong>Asunto:</strong> {{asunto}}</p></div>
+<div class="cuerpo"><p>{{cuerpo}}</p></div>
+<div class="cierre"><p>Sin otro particular, quedo de usted.</p><p>Atentamente,</p></div>
+<div class="signature">
+<div class="sign-line">
+<p class="sign-name">{{firmante}}</p>
+<p class="sign-cargo">{{cargo_firmante}}</p>
+</div>
+</div>
+<div class="footer"><p>Generado el {{_metadata.generatedDate}} a las {{_metadata.generatedTime}}</p></div>
+</body></html>`;
+
+  const oficioDesignacionHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Oficio de Designación</title>
+<style>body{font-family:'Times New Roman',serif;margin:50px 70px;color:#333;line-height:1.8}
+.header{text-align:center;border-bottom:2px solid #1d4ed8;padding-bottom:15px;margin-bottom:30px}
+.header h1{color:#1d4ed8;font-size:20px;letter-spacing:1px;margin:0}
+.meta{margin-bottom:20px;font-size:13px;display:flex;justify-content:space-between}
+.meta strong{color:#1e40af}
+.intro{font-size:14px;margin-bottom:15px;text-align:justify}
+.designado{background:#eff6ff;border-left:4px solid #1d4ed8;padding:12px 16px;margin-bottom:20px;font-size:14px}
+.designado .nombre{font-weight:bold;font-size:15px;color:#1e40af}
+.section{margin-bottom:15px;font-size:14px}
+.section strong{color:#1e40af}
+.section p{white-space:pre-line;text-align:justify}
+.cierre{font-size:14px;margin:25px 0 60px}
+.sign-line{border-top:1px solid #333;width:250px;padding-top:5px;font-size:13px}
+.sign-name{font-weight:bold}.sign-cargo{font-style:italic;color:#555;font-size:12px}
+.footer{margin-top:30px;border-top:1px solid #ddd;padding-top:10px;text-align:center;font-size:10px;color:#999}</style></head>
+<body>{{> institutionHeader}}
+<div class="header"><h1>OFICIO DE DESIGNACIÓN DOCENTE</h1></div>
+<div class="meta"><span><strong>N°:</strong> {{numero}}</span><span><strong>Fecha:</strong> {{fecha}}</span><span><strong>Lugar:</strong> {{lugar}}</span></div>
+<div class="intro"><p>Por medio del presente oficio, la Dirección General de esta institución educativa designa formalmente al siguiente docente:</p></div>
+<div class="designado">
+<p class="nombre">{{nombre_docente}}</p>
+<p>Cargo: <strong>{{cargo_docente}}</strong></p>
+<p>Función / Comisión: <strong>{{funcion}}</strong></p>
+<p>Período: <strong>{{periodo}}</strong></p>
+</div>
+<div class="section"><strong>Actividades y Responsabilidades:</strong><p>{{actividades}}</p></div>
+<div class="cierre"><p>Se emite el presente oficio a solicitud de la parte interesada, para los fines consiguientes.</p><p>Atentamente,</p></div>
+<div class="sign-line"><p class="sign-name">{{firmante}}</p><p class="sign-cargo">{{cargo_firmante}}</p></div>
+<div class="footer"><p>Generado el {{_metadata.generatedDate}} a las {{_metadata.generatedTime}}</p></div>
+</body></html>`;
+
+  const oficioRemisionHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Oficio de Remisión</title>
+<style>body{font-family:'Times New Roman',serif;margin:50px 70px;color:#333;line-height:1.8}
+.header{text-align:center;border-bottom:2px solid #0891b2;padding-bottom:15px;margin-bottom:30px}
+.header h1{color:#0891b2;font-size:20px;letter-spacing:1px;margin:0}
+.meta{margin-bottom:20px;font-size:13px;display:flex;justify-content:space-between}
+.meta strong{color:#0e7490}
+.destinatario{margin-bottom:20px;font-size:14px}
+.destinatario .nombre{font-weight:bold;text-transform:uppercase}
+.destinatario .cargo{font-style:italic;color:#555}
+.asunto{margin-bottom:20px;font-size:14px}
+.asunto strong{color:#0e7490}
+.intro{font-size:14px;margin-bottom:15px;text-align:justify}
+.docs-table{width:100%;border-collapse:collapse;margin:15px 0;font-size:13px}
+.docs-table th{background:#e0f2fe;color:#0e7490;padding:8px;text-align:left;border:1px solid #bae6fd}
+.docs-table td{padding:7px 8px;border:1px solid #bae6fd;white-space:pre-line}
+.section{margin-bottom:15px;font-size:14px}
+.section strong{color:#0e7490}
+.cierre{font-size:14px;margin:25px 0 60px}
+.sign-line{border-top:1px solid #333;width:250px;padding-top:5px;font-size:13px}
+.sign-name{font-weight:bold}.sign-cargo{font-style:italic;color:#555;font-size:12px}
+.footer{margin-top:30px;border-top:1px solid #ddd;padding-top:10px;text-align:center;font-size:10px;color:#999}</style></head>
+<body>{{> institutionHeader}}
+<div class="header"><h1>OFICIO DE REMISIÓN DE DOCUMENTOS</h1></div>
+<div class="meta"><span><strong>N°:</strong> {{numero}}</span><span><strong>Fecha:</strong> {{fecha}}</span><span><strong>Lugar:</strong> {{lugar}}</span></div>
+<div class="destinatario">
+<p>Ciudadano/a: <span class="nombre">{{destinatario}}</span></p>
+<p class="cargo">{{cargo_destinatario}}</p>
+<p>{{institucion_destinataria}}</p>
+<p>Presente.-</p>
+</div>
+<div class="asunto"><p><strong>Asunto:</strong> {{motivo_remision}}</p></div>
+<div class="intro"><p>Por medio del presente oficio, nos permitimos remitir a usted los documentos que se detallan a continuación:</p></div>
+<table class="docs-table"><thead><tr><th>#</th><th>Documento Remitido</th></tr></thead>
+<tbody><tr><td colspan="2" style="padding:8px;white-space:pre-line">{{documentos_remitidos}}</td></tr></tbody></table>
+{{#if observaciones}}<div class="section"><strong>Observaciones:</strong><p>{{observaciones}}</p></div>{{/if}}
+<div class="cierre"><p>Agradecemos su atención y quedamos a su disposición para cualquier información adicional.</p><p>Atentamente,</p></div>
+<div class="sign-line"><p class="sign-name">{{firmante}}</p><p class="sign-cargo">{{cargo_firmante}}</p></div>
+<div class="footer"><p>Generado el {{_metadata.generatedDate}} a las {{_metadata.generatedTime}}</p></div>
+</body></html>`;
+
   const contratoInscripcionHtml = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Contrato de Inscripción</title>
 <style>body{font-family:'Times New Roman',serif;margin:50px 70px;color:#333;line-height:1.7}
 .header{text-align:center;border-bottom:2px solid #0891b2;padding-bottom:15px;margin-bottom:30px}
@@ -1722,6 +1839,68 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
       createdById: admin.id, isActive: true,
     },
 
+    {
+      name: 'Oficio',
+      documentTypeId: dtOficio.id,
+      description: 'Comunicación oficial externa o entre instituciones educativas y organismos',
+      htmlTemplate: oficioHtml,
+      categoryId: catAdministrativos.id,
+      fields: { fields: [
+        { name: 'numero',                 label: 'Número de oficio',          type: 'text',     required: true },
+        { name: 'fecha',                  label: 'Fecha',                     type: 'date',     required: true },
+        { name: 'lugar',                  label: 'Lugar',                     type: 'text',     required: true },
+        { name: 'destinatario',           label: 'Nombre del destinatario',   type: 'text',     required: true },
+        { name: 'cargo_destinatario',     label: 'Cargo del destinatario',    type: 'text',     required: true },
+        { name: 'institucion_destinataria', label: 'Institución destinataria (opcional)', type: 'text', required: false },
+        { name: 'asunto',                 label: 'Asunto',                    type: 'text',     required: true },
+        { name: 'cuerpo',                 label: 'Cuerpo del oficio',         type: 'textarea', required: true },
+        { name: 'firmante',               label: 'Nombre del firmante',       type: 'text',     required: true },
+        { name: 'cargo_firmante',         label: 'Cargo del firmante',        type: 'text',     required: true },
+      ]},
+      createdById: admin.id, isActive: true,
+    },
+    {
+      name: 'Oficio de Designación Docente',
+      documentTypeId: dtOficio.id,
+      description: 'Oficio para designar a un docente en una función, comisión o representación institucional',
+      htmlTemplate: oficioDesignacionHtml,
+      categoryId: catAdministrativos.id,
+      fields: { fields: [
+        { name: 'numero',           label: 'Número de oficio',              type: 'text',     required: true },
+        { name: 'fecha',            label: 'Fecha',                         type: 'date',     required: true },
+        { name: 'lugar',            label: 'Lugar',                         type: 'text',     required: true },
+        { name: 'nombre_docente',   label: 'Nombre del docente designado',  type: 'text',     required: true },
+        { name: 'cargo_docente',    label: 'Cargo del docente',             type: 'text',     required: true },
+        { name: 'funcion',          label: 'Función / Comisión asignada',   type: 'text',     required: true },
+        { name: 'periodo',          label: 'Período de la designación',     type: 'text',     required: true },
+        { name: 'actividades',      label: 'Actividades o responsabilidades', type: 'textarea', required: true },
+        { name: 'firmante',         label: 'Nombre del firmante',           type: 'text',     required: true },
+        { name: 'cargo_firmante',   label: 'Cargo del firmante',            type: 'text',     required: true },
+      ]},
+      createdById: admin.id, isActive: true,
+    },
+    {
+      name: 'Oficio de Remisión de Documentos',
+      documentTypeId: dtOficio.id,
+      description: 'Oficio para remitir expedientes, informes u otros documentos a instituciones externas',
+      htmlTemplate: oficioRemisionHtml,
+      categoryId: catAdministrativos.id,
+      fields: { fields: [
+        { name: 'numero',                   label: 'Número de oficio',             type: 'text',     required: true },
+        { name: 'fecha',                    label: 'Fecha',                        type: 'date',     required: true },
+        { name: 'lugar',                    label: 'Lugar',                        type: 'text',     required: true },
+        { name: 'destinatario',             label: 'Nombre del destinatario',      type: 'text',     required: true },
+        { name: 'cargo_destinatario',       label: 'Cargo del destinatario',       type: 'text',     required: true },
+        { name: 'institucion_destinataria', label: 'Institución destinataria',     type: 'text',     required: true },
+        { name: 'motivo_remision',          label: 'Motivo de la remisión',        type: 'text',     required: true },
+        { name: 'documentos_remitidos',     label: 'Documentos remitidos',         type: 'textarea', required: true },
+        { name: 'observaciones',            label: 'Observaciones (opcional)',     type: 'textarea', required: false },
+        { name: 'firmante',                 label: 'Nombre del firmante',          type: 'text',     required: true },
+        { name: 'cargo_firmante',           label: 'Cargo del firmante',           type: 'text',     required: true },
+      ]},
+      createdById: admin.id, isActive: true,
+    },
+
     // ── LEGALES (roles: director, admin)
     {
       name: 'Reporte de Incidencia Escolar',
@@ -1859,12 +2038,12 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     create: {
       name: 'Aprobación Académica',
-      description: 'Flujo de aprobación para documentos académicos: Coordinador → Director',
+      description: 'Flujo de aprobación para documentos académicos: Coordinador → Rector',
       sections: { connect: [{ id: sectionAcademica.id }] },
       allowedInitiatorRoles: ['profesor', 'coordinador', 'vicerrector'],
       stateDefinitions: [
         { state: 'Revisión del Coordinador', role: 'coordinador', order: 1 },
-        { state: 'Aprobación del Director',  role: 'director',    order: 2 },
+        { state: 'Aprobación del Rector',    role: 'rector',      order: 2 },
       ],
       autoAssign: true,
       requiresComment: false,
@@ -1901,15 +2080,15 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionAdministrativa.id }] },
       categoryId: null,
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector'],
+      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector'],
     },
     create: {
       name: 'Aprobación Administrativa',
-      description: 'Flujo de aprobación para documentos administrativos: Director aprueba',
+      description: 'Flujo de aprobación para documentos administrativos: Rector aprueba',
       sections: { connect: [{ id: sectionAdministrativa.id }] },
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'director', 'vicerrector'],
+      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector'],
       stateDefinitions: [
-        { state: 'Aprobación del Director', role: 'director', order: 1 },
+        { state: 'Aprobación del Rector', role: 'rector', order: 1 },
       ],
       autoAssign: true,
       requiresComment: true,
@@ -1927,12 +2106,12 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     create: {
       name: 'Revisión de Acta',
-      description: 'Flujo específico para actas de reuniones: Coordinador/Secretario inicia, Director aprueba',
+      description: 'Flujo específico para actas de reuniones: Coordinador/Secretario inicia, Rector aprueba',
       sections: { connect: [{ id: sectionAdministrativa.id }] },
       categoryId: catActas?.id ?? null,
       allowedInitiatorRoles: ['coordinador', 'secretario', 'vicerrector'],
       stateDefinitions: [
-        { state: 'Aprobación del Director', role: 'director', order: 1 },
+        { state: 'Aprobación del Rector', role: 'rector', order: 1 },
       ],
       autoAssign: true,
       requiresComment: true,
@@ -1950,12 +2129,12 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     },
     create: {
       name: 'Emisión de Constancia',
-      description: 'Flujo para constancias y certificados: Secretaria inicia, Director firma',
+      description: 'Flujo para constancias y certificados: Secretaria inicia, Rector firma',
       sections: { connect: [{ id: sectionAdministrativa.id }] },
       categoryId: catConstancias?.id ?? null,
       allowedInitiatorRoles: ['secretario'],
       stateDefinitions: [
-        { state: 'Firma del Director', role: 'director', order: 1 },
+        { state: 'Firma del Rector', role: 'rector', order: 1 },
       ],
       autoAssign: true,
       requiresComment: false,
@@ -1969,15 +2148,15 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionInstitucional.id }] },
       categoryId: null,
-      allowedInitiatorRoles: ['director', 'vicerrector'],
+      allowedInitiatorRoles: ['rector', 'vicerrector'],
     },
     create: {
       name: 'Aprobación Institucional',
-      description: 'Flujo para documentos legales e institucionales: Director revisa y aprueba',
+      description: 'Flujo para documentos legales e institucionales: Rector revisa y aprueba',
       sections: { connect: [{ id: sectionInstitucional.id }] },
-      allowedInitiatorRoles: ['director', 'vicerrector'],
+      allowedInitiatorRoles: ['rector', 'vicerrector'],
       stateDefinitions: [
-        { state: 'Revisión del Director', role: 'director', order: 1 },
+        { state: 'Revisión del Rector', role: 'rector', order: 1 },
       ],
       autoAssign: true,
       requiresComment: true,
@@ -1991,16 +2170,16 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
     update: {
       sections: { set: [{ id: sectionInstitucional.id }] },
       categoryId: catFinancieros?.id ?? null,
-      allowedInitiatorRoles: ['secretario', 'director'],
+      allowedInitiatorRoles: ['secretario', 'rector'],
     },
     create: {
       name: 'Revisión Financiera',
-      description: 'Flujo para documentos financieros: Secretaria/Director inicia, Director aprueba',
+      description: 'Flujo para documentos financieros: Secretaria/Rector inicia, Rector aprueba',
       sections: { connect: [{ id: sectionInstitucional.id }] },
       categoryId: catFinancieros?.id ?? null,
-      allowedInitiatorRoles: ['secretario', 'director'],
+      allowedInitiatorRoles: ['secretario', 'rector'],
       stateDefinitions: [
-        { state: 'Revisión del Director', role: 'director', order: 1 },
+        { state: 'Revisión del Rector', role: 'rector', order: 1 },
       ],
       autoAssign: true,
       requiresComment: true,

@@ -51,7 +51,7 @@ export class AcademicYearController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Crear nuevo año lectivo' })
   @ApiResponse({ status: 201, description: 'Año lectivo creado exitosamente' })
   create(@Body() dto: CreateAcademicYearDto) {
@@ -59,7 +59,7 @@ export class AcademicYearController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Actualizar un año lectivo' })
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -69,7 +69,7 @@ export class AcademicYearController {
   }
 
   @Patch(':id/set-current')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Marcar un año lectivo como el actual' })
   setCurrent(@Param('id', ParseIntPipe) id: number) {

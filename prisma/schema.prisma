@@ -13,17 +13,22 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+generator erd {
+  provider = "prisma-erd-generator"
+  output   = "./ERD.svg" // también puede ser .png o .pdf
+}
+
 enum UserRole {
-  director      // Acceso total a la institución
-  vicerrector   // Segundo en mando — acceso director sin legales/financieros
-  coordinador   // Gestión a nivel de departamento
-  profesor      // Gestión de cursos y materias
-  secretario    // Tareas administrativas
-  padre         // Acceso a documentos de hijos
-  estudiante    // Acceso a propios documentos
-  moderador     // Moderación de contenido
-  admin         // Administrador del sistema (mantener compatibilidad)
-  user          // Usuario básico (mantener compatibilidad)
+  rector // Acceso total a la institución
+  vicerrector // Segundo en mando — acceso rector sin legales/financieros
+  coordinador // Gestión a nivel de departamento
+  profesor // Gestión de cursos y materias
+  secretario // Tareas administrativas
+  padre // Acceso a documentos de hijos
+  estudiante // Acceso a propios documentos
+  moderador // Moderación de contenido
+  admin // Administrador del sistema (mantener compatibilidad)
+  user // Usuario básico (mantener compatibilidad)
 }
 
 enum EducationalLevel {
@@ -35,78 +40,77 @@ enum EducationalLevel {
 }
 
 enum WorkflowStatus {
-  DRAFT              // Borrador, no iniciado
-  PENDING            // Pendiente de aprobación
-  IN_PROGRESS        // En proceso de aprobación
-  CHANGES_REQUESTED  // Aprobador solicitó cambios al iniciador
-  APPROVED           // Aprobado completamente
-  REJECTED           // Rechazado
-  CANCELLED          // Cancelado
+  DRAFT // Borrador, no iniciado
+  PENDING // Pendiente de aprobación
+  IN_PROGRESS // En proceso de aprobación
+  CHANGES_REQUESTED // Aprobador solicitó cambios al iniciador
+  APPROVED // Aprobado completamente
+  REJECTED // Rechazado
+  CANCELLED // Cancelado
 }
 
 enum ApprovalAction {
-  APPROVED          // Aprobado
-  REJECTED          // Rechazado
+  APPROVED // Aprobado
+  REJECTED // Rechazado
   REQUESTED_CHANGES // Solicita cambios
-  COMMENTED         // Solo comentó
+  COMMENTED // Solo comentó
 }
 
 enum DocumentVersionSource {
-  UPLOAD_INICIAL      // Subida original del documento
-  REEMPLAZO_MANUAL    // Reemplazo manual sin workflow activo
-  RESTAURACION        // Restauración a una versión anterior
+  UPLOAD_INICIAL // Subida original del documento
+  REEMPLAZO_MANUAL // Reemplazo manual sin workflow activo
+  RESTAURACION // Restauración a una versión anterior
   CAMBIOS_SOLICITADOS // Reemplazo en respuesta a un workflow activo
 }
 
-
 enum NotificationType {
-  DOCUMENT_SHARED           // Documento compartido
-  DOCUMENT_UPLOADED         // Documento subido
-  APPROVAL_REQUESTED        // Aprobación solicitada
-  APPROVAL_APPROVED         // Aprobación aprobada
-  APPROVAL_REJECTED         // Aprobación rechazada
-  CHANGES_REQUESTED         // Aprobador solicitó cambios al iniciador
-  WORKFLOW_COMPLETED        // Workflow completado
-  PERMISSION_GRANTED        // Permiso otorgado
-  COMMENT_ADDED             // Comentario agregado
-  MENTION                   // Mención en comentario
-  DOCUMENT_UPDATED          // Documento actualizado
-  DOCUMENT_DELETED          // Documento eliminado
-  DOCUMENT_TRANSFERRED      // Documento transferido
+  DOCUMENT_SHARED // Documento compartido
+  DOCUMENT_UPLOADED // Documento subido
+  APPROVAL_REQUESTED // Aprobación solicitada
+  APPROVAL_APPROVED // Aprobación aprobada
+  APPROVAL_REJECTED // Aprobación rechazada
+  CHANGES_REQUESTED // Aprobador solicitó cambios al iniciador
+  WORKFLOW_COMPLETED // Workflow completado
+  PERMISSION_GRANTED // Permiso otorgado
+  COMMENT_ADDED // Comentario agregado
+  MENTION // Mención en comentario
+  DOCUMENT_UPDATED // Documento actualizado
+  DOCUMENT_DELETED // Documento eliminado
+  DOCUMENT_TRANSFERRED // Documento transferido
 }
 
 enum NotificationStatus {
-  UNREAD    // No leída
-  READ      // Leída
-  ARCHIVED  // Archivada
+  UNREAD // No leída
+  READ // Leída
+  ARCHIVED // Archivada
 }
 
 // ============ SISTEMA DE PERMISOS ============
 
 model DocumentPermission {
-  id           Int       @id @default(autoincrement())
-  documentId   Int // Documento al que aplica el permiso
-  document     Document  @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  documentId Int // Documento al que aplica el permiso
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   // Destinatario del permiso (al menos uno debe estar presente)
   userId       String? // Usuario específico
-  user         User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   role         UserRole? // Rol
   departmentId Int? // Departamento completo
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
   // Permisos específicos
-  canView      Boolean   @default(true)
-  canEdit      Boolean   @default(false)
-  canDelete    Boolean   @default(false)
-  canShare     Boolean   @default(false)
+  canView   Boolean @default(true)
+  canEdit   Boolean @default(false)
+  canDelete Boolean @default(false)
+  canShare  Boolean @default(false)
 
   // Auditoría
-  grantedBy    User      @relation("GrantedPermissions", fields: [grantedById], references: [id], onDelete: Cascade)
-  grantedById  String
-  expiresAt    DateTime? // Fecha de expiración opcional
+  grantedBy   User      @relation("GrantedPermissions", fields: [grantedById], references: [id], onDelete: Cascade)
+  grantedById String
+  expiresAt   DateTime? // Fecha de expiración opcional
 
-  createdAt    DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([documentId])
   @@index([userId])
@@ -118,48 +122,48 @@ model DocumentPermission {
 // ============ SISTEMA DE WORKFLOWS Y APROBACIONES ============
 
 model WorkflowTemplate {
-  id                 Int                @id @default(autoincrement())
-  name               String             @unique // Nombre de la plantilla (ej: "Aprobación de Documentos Administrativos")
-  description        String? // Descripción del workflow
-  categoryId         Int? // Categoría de documentos a la que aplica
-  category           Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sections           Section[]          // Secciones a las que aplica (M2M)
-  stateDefinitions   Json // Definición de estados y transiciones [{state: "pending_coord", role: "coordinador", order: 1}]
-  autoAssign            Boolean            @default(true) // Auto-asignar aprobadores según rol
-  requiresComment       Boolean            @default(false) // Requiere comentario al aprobar/rechazar
-  allowedInitiatorRoles Json               @default("[]") // UserRole[] vacío = sin restricción; ADMIN bypasea siempre
-  isActive              Boolean            @default(true)
+  id                    Int       @id @default(autoincrement())
+  name                  String    @unique // Nombre de la plantilla (ej: "Aprobación de Documentos Administrativos")
+  description           String? // Descripción del workflow
+  categoryId            Int? // Categoría de documentos a la que aplica
+  category              Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sections              Section[] // Secciones a las que aplica (M2M)
+  stateDefinitions      Json // Definición de estados y transiciones [{state: "pending_coord", role: "coordinador", order: 1}]
+  autoAssign            Boolean   @default(true) // Auto-asignar aprobadores según rol
+  requiresComment       Boolean   @default(false) // Requiere comentario al aprobar/rechazar
+  allowedInitiatorRoles Json      @default("[]") // UserRole[] vacío = sin restricción; ADMIN bypasea siempre
+  isActive              Boolean   @default(true)
 
   // Relaciones
-  workflows          DocumentWorkflow[]
+  workflows DocumentWorkflow[]
 
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([categoryId])
   @@index([isActive])
 }
 
 model DocumentWorkflow {
-  id                 Int                 @id @default(autoincrement())
-  documentId         Int                 @unique // Un documento solo puede tener un workflow activo
-  document           Document            @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  templateId         Int // Plantilla de workflow utilizada
-  template           WorkflowTemplate    @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  status             WorkflowStatus      @default(PENDING)
-  currentState       String // Estado actual (ej: "pending_coord", "pending_director")
-  currentStateOrder  Int                 @default(0) // Orden del estado actual
-  initiatedById      String // Usuario que inició el workflow
-  initiatedBy        User                @relation(fields: [initiatedById], references: [id], onDelete: Cascade)
-  completedAt        DateTime? // Fecha de completado (aprobado o rechazado)
+  id                Int              @id @default(autoincrement())
+  documentId        Int              @unique // Un documento solo puede tener un workflow activo
+  document          Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  templateId        Int // Plantilla de workflow utilizada
+  template          WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  status            WorkflowStatus   @default(PENDING)
+  currentState      String // Estado actual (ej: "pending_coord", "pending_director")
+  currentStateOrder Int              @default(0) // Orden del estado actual
+  initiatedById     String // Usuario que inició el workflow
+  initiatedBy       User             @relation(fields: [initiatedById], references: [id], onDelete: Cascade)
+  completedAt       DateTime? // Fecha de completado (aprobado o rechazado)
 
   // Relaciones
-  approvals          WorkflowApproval[]
-  notifications      Notification[]
-  documentVersions   DocumentVersion[]   // Versiones subidas durante este workflow (Fix 3)
+  approvals        WorkflowApproval[]
+  notifications    Notification[]
+  documentVersions DocumentVersion[] // Versiones subidas durante este workflow (Fix 3)
 
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([documentId])
   @@index([templateId])
@@ -169,22 +173,22 @@ model DocumentWorkflow {
 }
 
 model WorkflowApproval {
-  id                Int              @id @default(autoincrement())
-  workflowId        Int // Workflow al que pertenece
-  workflow          DocumentWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
-  state             String // Estado en el que se realizó la aprobación
-  stateOrder        Int // Orden del estado
-  action            ApprovalAction? // Acción realizada (null = pendiente de aprobación)
-  userId            String // Usuario que realizó la acción
-  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  comment           String?          @db.Text // Comentario opcional
+  id         Int              @id @default(autoincrement())
+  workflowId Int // Workflow al que pertenece
+  workflow   DocumentWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  state      String // Estado en el que se realizó la aprobación
+  stateOrder Int // Orden del estado
+  action     ApprovalAction? // Acción realizada (null = pendiente de aprobación)
+  userId     String // Usuario que realizó la acción
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  comment    String?          @db.Text // Comentario opcional
 
   // Versión del documento que fue aprobada/revisada (Fix 2)
   documentVersionId Int?
   documentVersion   DocumentVersion? @relation(fields: [documentVersionId], references: [id], onDelete: SetNull)
 
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([workflowId])
   @@index([userId])
@@ -196,27 +200,27 @@ model WorkflowApproval {
 // ============ SISTEMA DE NOTIFICACIONES ============
 
 model Notification {
-  id              Int                @id @default(autoincrement())
-  userId          String // Usuario destinatario
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type            NotificationType // Tipo de notificación
-  status          NotificationStatus @default(UNREAD) // Estado de lectura
-  title           String // Título de la notificación
-  message         String             @db.Text // Mensaje de la notificación
+  id      Int                @id @default(autoincrement())
+  userId  String // Usuario destinatario
+  user    User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType // Tipo de notificación
+  status  NotificationStatus @default(UNREAD) // Estado de lectura
+  title   String // Título de la notificación
+  message String             @db.Text // Mensaje de la notificación
 
   // Referencias opcionales a recursos
-  documentId      Int? // Documento relacionado
-  document        Document?          @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  workflowId      Int? // Workflow relacionado
-  workflow        DocumentWorkflow?  @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  documentId Int? // Documento relacionado
+  document   Document?         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  workflowId Int? // Workflow relacionado
+  workflow   DocumentWorkflow? @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 
   // Información adicional
-  actionUrl       String? // URL para realizar acción
-  emailSent       Boolean            @default(false) // Si se envió por email
-  emailSentAt     DateTime? // Fecha de envío de email
-  readAt          DateTime? // Fecha de lectura
+  actionUrl   String? // URL para realizar acción
+  emailSent   Boolean   @default(false) // Si se envió por email
+  emailSentAt DateTime? // Fecha de envío de email
+  readAt      DateTime? // Fecha de lectura
 
-  createdAt       DateTime           @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([type])
@@ -227,22 +231,22 @@ model Notification {
 }
 
 model NotificationPreference {
-  id                Int      @id @default(autoincrement())
-  userId            String   @unique // Usuario
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     Int    @id @default(autoincrement())
+  userId String @unique // Usuario
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Preferencias de notificación in-app
-  inAppEnabled      Boolean  @default(true)
+  inAppEnabled Boolean @default(true)
 
   // Preferencias de email por tipo
-  emailSettings     Json     @default("{}") // { "DOCUMENT_SHARED": true, "APPROVAL_REQUESTED": true, ... }
+  emailSettings Json @default("{}") // { "DOCUMENT_SHARED": true, "APPROVAL_REQUESTED": true, ... }
 
   // Configuración de digest
-  enableDigest      Boolean  @default(false) // Agrupar notificaciones en un email
-  digestFrequency   String   @default("daily") // daily, weekly
+  enableDigest    Boolean @default(false) // Agrupar notificaciones en un email
+  digestFrequency String  @default("daily") // daily, weekly
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
@@ -250,14 +254,14 @@ model NotificationPreference {
 // ============ SISTEMA DE BÚSQUEDA ============
 
 model SearchHistory {
-  id          Int      @id @default(autoincrement())
+  id          Int    @id @default(autoincrement())
   userId      String // Usuario que realizó la búsqueda
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   query       String // Consulta de búsqueda
-  filters     Json     @default("{}") // Filtros aplicados (JSON)
-  resultCount Int      @default(0) // Cantidad de resultados
+  filters     Json   @default("{}") // Filtros aplicados (JSON)
+  resultCount Int    @default(0) // Cantidad de resultados
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId])
   @@index([createdAt])
@@ -266,34 +270,34 @@ model SearchHistory {
 // ============ SISTEMA DE COMENTARIOS ============
 
 model DocumentComment {
-  id              Int                @id @default(autoincrement())
-  documentId      Int // Documento al que pertenece el comentario
-  document        Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  userId          String // Usuario que creó el comentario
-  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  content         String             @db.Text // Contenido del comentario
+  id         Int      @id @default(autoincrement())
+  documentId Int // Documento al que pertenece el comentario
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId     String // Usuario que creó el comentario
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content    String   @db.Text // Contenido del comentario
 
   // Sistema de respuestas threaded
-  parentId        Int? // Comentario padre (para respuestas)
-  parent          DocumentComment?   @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies         DocumentComment[]  @relation("CommentReplies")
+  parentId Int? // Comentario padre (para respuestas)
+  parent   DocumentComment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  DocumentComment[] @relation("CommentReplies")
 
   // Menciones y anotaciones
-  mentions        Json               @default("[]") // Array de userIds mencionados ["userId1", "userId2"]
-  annotationData  Json? // Datos de anotación en PDF {x, y, width, height, page, type}
+  mentions       Json  @default("[]") // Array de userIds mencionados ["userId1", "userId2"]
+  annotationData Json? // Datos de anotación en PDF {x, y, width, height, page, type}
 
   // Auditoría
-  isEdited        Boolean            @default(false)
-  editedAt        DateTime?
-  deletedAt       DateTime? // Soft delete
-  deletedById     String?
-  deletedBy       User?              @relation("DeletedComments", fields: [deletedById], references: [id], onDelete: SetNull)
+  isEdited    Boolean   @default(false)
+  editedAt    DateTime?
+  deletedAt   DateTime? // Soft delete
+  deletedById String?
+  deletedBy   User?     @relation("DeletedComments", fields: [deletedById], references: [id], onDelete: SetNull)
 
   // Relaciones
-  reactions       CommentReaction[]
+  reactions CommentReaction[]
 
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([documentId])
   @@index([userId])
@@ -303,14 +307,14 @@ model DocumentComment {
 }
 
 model CommentReaction {
-  id          Int              @id @default(autoincrement())
-  commentId   Int // Comentario al que pertenece
-  comment     DocumentComment  @relation(fields: [commentId], references: [id], onDelete: Cascade)
-  userId      String // Usuario que reaccionó
-  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
-  emoji       String // Emoji de reacción (ej: "👍", "❤️", "😄")
+  id        Int             @id @default(autoincrement())
+  commentId Int // Comentario al que pertenece
+  comment   DocumentComment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  userId    String // Usuario que reaccionó
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emoji     String // Emoji de reacción (ej: "👍", "❤️", "😄")
 
-  createdAt   DateTime         @default(now())
+  createdAt DateTime @default(now())
 
   @@unique([commentId, userId, emoji]) // Un usuario solo puede reaccionar una vez con el mismo emoji
   @@index([commentId])
@@ -320,13 +324,13 @@ model CommentReaction {
 // ============ ESTRUCTURA ORGANIZACIONAL ============
 
 model Department {
-  id                  Int                  @id @default(autoincrement())
-  name                String               @unique
-  code                String               @unique
-  description         String?
-  color               String?              @default("#3b82f6")
-  icon                String?              @default("Building")
-  isActive            Boolean              @default(true)
+  id          Int     @id @default(autoincrement())
+  name        String  @unique
+  code        String  @unique
+  description String?
+  color       String? @default("#3b82f6")
+  icon        String? @default("Building")
+  isActive    Boolean @default(true)
 
   // Relaciones
   users               User[]
@@ -335,8 +339,8 @@ model Department {
   documentShares      DocumentShare[]
   transfersReceived   TransferHistory[]    @relation("toDepartment")
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([code])
   @@index([name])
@@ -369,13 +373,13 @@ model Course {
   isActive     Boolean          @default(true)
 
   // Relaciones
-  subjects     Subject[]
-  teachers     UserCourse[]
-  documents    Document[]
-  shares       DocumentShare[]
+  subjects  Subject[]
+  teachers  UserCourse[]
+  documents Document[]
+  shares    DocumentShare[]
 
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([code, academicYear])
   @@index([level])
@@ -385,20 +389,20 @@ model Course {
 }
 
 model Subject {
-  id          Int          @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   name        String
-  code        String       @unique
+  code        String  @unique
   description String?
   courseId    Int?
-  course      Course?      @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  isActive    Boolean      @default(true)
+  course      Course? @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  isActive    Boolean @default(true)
 
   // Relaciones
-  documents   Document[]
-  teachers    UserSubject[]
+  documents Document[]
+  teachers  UserSubject[]
 
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([courseId])
   @@index([code])
@@ -406,12 +410,12 @@ model Subject {
 }
 
 model UserCourse {
-  id        Int      @id @default(autoincrement())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  courseId  Int
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  role      String   @default("TEACHER")
+  id       Int    @id @default(autoincrement())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId Int
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  role     String @default("TEACHER")
 
   createdAt DateTime @default(now())
 
@@ -421,11 +425,11 @@ model UserCourse {
 }
 
 model UserSubject {
-  id        Int      @id @default(autoincrement())
+  id        Int     @id @default(autoincrement())
   userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   subjectId Int
-  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
 
@@ -437,92 +441,92 @@ model UserSubject {
 // ============ MODELOS PRINCIPALES ============
 
 model User {
-  id                  String               @id @default(cuid())
-  email               String               @unique
-  name                String?
-  password            String
-  role                UserRole             @default(user)
+  id       String   @id @default(cuid())
+  email    String   @unique
+  name     String?
+  password String
+  role     UserRole @default(user)
 
   // Campos organizacionales
-  departmentId        Int?
-  department          Department?          @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  phoneNumber         String?
-  position            String?
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  phoneNumber  String?
+  position     String?
 
   // Relaciones organizacionales
-  courses             UserCourse[]
-  subjects            UserSubject[]
+  courses  UserCourse[]
+  subjects UserSubject[]
 
   // Relaciones de documentos
-  documents           Document[]
-  documentTemplates   DocumentTemplate[]
-  documentVersions    DocumentVersion[]
-  documentAccesses    DocumentAccess[]
-  deletedDocuments    Document[]           @relation("DeletedByUser")
+  documents         Document[]
+  documentTemplates DocumentTemplate[]
+  documentVersions  DocumentVersion[]
+  documentAccesses  DocumentAccess[]
+  deletedDocuments  Document[]         @relation("DeletedByUser")
 
   // Relaciones de permisos
   documentPermissions DocumentPermission[]
   grantedPermissions  DocumentPermission[] @relation("GrantedPermissions")
 
   // Relaciones de workflows
-  initiatedWorkflows  DocumentWorkflow[]
-  workflowApprovals   WorkflowApproval[]
+  initiatedWorkflows DocumentWorkflow[]
+  workflowApprovals  WorkflowApproval[]
 
   // Relaciones de notificaciones
-  notifications       Notification[]
+  notifications          Notification[]
   notificationPreference NotificationPreference?
 
   // Relaciones de comentarios
-  comments            DocumentComment[]
-  deletedComments     DocumentComment[]  @relation("DeletedComments")
-  commentReactions    CommentReaction[]
+  comments         DocumentComment[]
+  deletedComments  DocumentComment[] @relation("DeletedComments")
+  commentReactions CommentReaction[]
 
   // Relaciones de búsqueda
-  searchHistory       SearchHistory[]
+  searchHistory SearchHistory[]
 
   // Relaciones de reportes
-  createdReports      Report[]            @relation("createdReports")
-  executedReports     ReportExecution[]   @relation("executedReports")
+  createdReports  Report[]          @relation("createdReports")
+  executedReports ReportExecution[] @relation("executedReports")
 
   // Relaciones de compartir documentos
-  documentShares      DocumentShare[]     // Shares recibidos por el usuario
-  sharedByMe          DocumentShare[]     @relation("SharedByUser") // Shares creados por el usuario
-  revokedByMe         DocumentShare[]     @relation("RevokedByUser") // Shares revocados por el usuario
-  shareAccesses       ShareAccess[]       // Accesos del usuario a shares
+  documentShares DocumentShare[] // Shares recibidos por el usuario
+  sharedByMe     DocumentShare[] @relation("SharedByUser") // Shares creados por el usuario
+  revokedByMe    DocumentShare[] @relation("RevokedByUser") // Shares revocados por el usuario
+  shareAccesses  ShareAccess[] // Accesos del usuario a shares
 
   // Relaciones de transferencias
-  transfersFrom       TransferHistory[]   @relation("TransferFromUser") // Transferencias iniciadas por el usuario
-  transfersTo         TransferHistory[]   @relation("TransferToUser") // Transferencias recibidas por el usuario
+  transfersFrom TransferHistory[] @relation("TransferFromUser") // Transferencias iniciadas por el usuario
+  transfersTo   TransferHistory[] @relation("TransferToUser") // Transferencias recibidas por el usuario
 
   // Relaciones de lotes de documentos
-  createdBatches      DocumentBatch[]     @relation("CreatedBatches")
+  createdBatches DocumentBatch[] @relation("CreatedBatches")
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([departmentId])
 }
 
 model Category {
-  id                Int                @id @default(autoincrement())
-  name              String             @unique // Nombre de la categoría (ej: "Legales")
-  description       String? // Descripción de la categoría
-  color             String?            @default("#3b82f6") // Color hexadecimal para el badge
-  icon              String?            @default("Folder") // Nombre del icono de lucide-react
-  isActive          Boolean            @default(true) // Si la categoría está activa
+  id          Int     @id @default(autoincrement())
+  name        String  @unique // Nombre de la categoría (ej: "Legales")
+  description String? // Descripción de la categoría
+  color       String? @default("#3b82f6") // Color hexadecimal para el badge
+  icon        String? @default("Folder") // Nombre del icono de lucide-react
+  isActive    Boolean @default(true) // Si la categoría está activa
 
   // Numeración de documentos
-  prefix            String? // Prefijo para numeración (ej: "PLN", "ACT") — se deriva del nombre si es null
+  prefix String? // Prefijo para numeración (ej: "PLN", "ACT") — se deriva del nombre si es null
 
   // Sección a la que pertenece esta categoría (jerarquía Section → Category)
   // El contexto institucional se hereda de section.context
-  sectionId         Int?
-  section           Section?           @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  sectionId Int?
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
 
   // Control de acceso
-  requiresCourse    Boolean            @default(false) // Si requiere asignar curso al subir
-  allowedRoles      Json               @default("[]") // UserRole[] vacío = sin restricción
-  bypassAcademicYear Boolean           @default(false) // Si true, docs de esta categoría ignoran el filtro de año lectivo (ej: Legales, Financieros)
+  requiresCourse     Boolean @default(false) // Si requiere asignar curso al subir
+  allowedRoles       Json    @default("[]") // UserRole[] vacío = sin restricción
+  bypassAcademicYear Boolean @default(false) // Si true, docs de esta categoría ignoran el filtro de año lectivo (ej: Legales, Financieros)
 
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
@@ -555,106 +559,106 @@ model DocumentType {
 }
 
 model Section {
-  id          Int              @id @default(autoincrement())
-  name        String           @unique // Nombre de la sección (ej: "Gestión Académica")
+  id          Int     @id @default(autoincrement())
+  name        String  @unique // Nombre de la sección (ej: "Gestión Académica")
   description String? // Descripción de la sección
-  color       String?          @default("#10b981") // Color hexadecimal para identificación visual
-  icon        String?          @default("FolderOpen") // Nombre del icono de lucide-react
-  isActive    Boolean          @default(true) // Si la sección está activa
-  prefix      String?          @unique // Prefijo para numeración de documentos (ej: "GA", "ADM") — se deriva del nombre si es null
+  color       String? @default("#10b981") // Color hexadecimal para identificación visual
+  icon        String? @default("FolderOpen") // Nombre del icono de lucide-react
+  isActive    Boolean @default(true) // Si la sección está activa
+  prefix      String? @unique // Prefijo para numeración de documentos (ej: "GA", "ADM") — se deriva del nombre si es null
 
   workflowTemplates WorkflowTemplate[] // Templates de workflow que aplican a esta sección (M2M)
-  categories  Category[] // Categorías que pertenecen a esta sección
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  categories        Category[] // Categorías que pertenecen a esta sección
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([name])
 }
 
 model Document {
-  id              Int                @id @default(autoincrement())
-  filename        String // Nombre original del archivo
-  storedName      String             @unique // Nombre almacenado en el servidor
-  mimetype        String // Tipo MIME del archivo
-  size            Int // Tamaño en bytes
-  path            String // Ruta donde está almacenado
-  description     String? // Descripción del documento
-  categoryId      Int? // Relación con categoría (la sección se deriva de category.section)
-  category        Category?          @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  id          Int       @id @default(autoincrement())
+  filename    String // Nombre original del archivo
+  storedName  String    @unique // Nombre almacenado en el servidor
+  mimetype    String // Tipo MIME del archivo
+  size        Int // Tamaño en bytes
+  path        String // Ruta donde está almacenado
+  description String? // Descripción del documento
+  categoryId  Int? // Relación con categoría (la sección se deriva de category.section)
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   // Relaciones organizacionales
-  courseId        Int? // Relación con curso
-  course          Course?            @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  subjectId       Int? // Relación con materia
-  subject         Subject?           @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  courseId  Int? // Relación con curso
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  subjectId Int? // Relación con materia
+  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
 
   // Año lectivo al que pertenece (null = documento permanente/institucional sin ciclo específico)
-  academicYearId  Int?
-  academicYear    AcademicYear?      @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  academicYearId Int?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
 
   // Subtipo de documento (jerarquía: Section → Category → DocumentType)
-  documentTypeId  Int? // Subtipo del documento dentro de su categoría
-  documentType    DocumentType?      @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  documentTypeId Int? // Subtipo del documento dentro de su categoría
+  documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
 
-  isPublic        Boolean            @default(false) // Si es público o privado
-  uploadedBy      User               @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  uploadedById    String
-  templateId      Int? // Relación con plantilla si fue creado desde una
-  template        DocumentTemplate?  @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  formData        Json? // Datos del formulario si fue creado desde template
+  isPublic     Boolean           @default(false) // Si es público o privado
+  uploadedBy   User              @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedById String
+  templateId   Int? // Relación con plantilla si fue creado desde una
+  template     DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  formData     Json? // Datos del formulario si fue creado desde template
 
   // Lote de generación
-  batchId         String? // FK al lote del que forma parte (null si es documento individual)
-  batch           DocumentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+  batchId String? // FK al lote del que forma parte (null si es documento individual)
+  batch   DocumentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   // Versionado
-  currentVersion  Int                @default(1) // Versión actual del documento
-  versions        DocumentVersion[] // Historial de versiones
+  currentVersion Int               @default(1) // Versión actual del documento
+  versions       DocumentVersion[] // Historial de versiones
 
   // Integridad
-  checksumSHA256  String? // Hash SHA256 del archivo para verificar integridad
+  checksumSHA256 String? // Hash SHA256 del archivo para verificar integridad
 
   // Soft Delete
-  deletedAt       DateTime? // Fecha de eliminación (null si no está eliminado)
-  deletedBy       User?              @relation("DeletedByUser", fields: [deletedById], references: [id], onDelete: SetNull)
-  deletedById     String? // Usuario que eliminó el documento
+  deletedAt   DateTime? // Fecha de eliminación (null si no está eliminado)
+  deletedBy   User?     @relation("DeletedByUser", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedById String? // Usuario que eliminó el documento
 
   // Archivo histórico
-  archivedAt      DateTime? // Fecha de archivado automático (null si está activo)
+  archivedAt DateTime? // Fecha de archivado automático (null si está activo)
 
   // Auditoría
-  accesses        DocumentAccess[]     // Registro de accesos al documento
-  permissions     DocumentPermission[] // Permisos específicos del documento
+  accesses    DocumentAccess[] // Registro de accesos al documento
+  permissions DocumentPermission[] // Permisos específicos del documento
 
   // Workflow
-  workflow        DocumentWorkflow? // Workflow de aprobación del documento
+  workflow DocumentWorkflow? // Workflow de aprobación del documento
 
   // Notificaciones
-  notifications   Notification[] // Notificaciones relacionadas con este documento
+  notifications Notification[] // Notificaciones relacionadas con este documento
 
   // Comentarios
-  comments        DocumentComment[] // Comentarios del documento
+  comments DocumentComment[] // Comentarios del documento
 
   // Compartir
-  shares          DocumentShare[] // Shares de este documento
+  shares DocumentShare[] // Shares de este documento
 
   // Transferencias
   transferHistory TransferHistory[] // Historial de transferencias del documento
 
   // Numeración institucional
-  documentNumber  String?              @unique // Código oficial asignado (ej: "GA-PLN-2026-0042") — null mientras es borrador sin workflow
+  documentNumber String? @unique // Código oficial asignado (ej: "GA-PLN-2026-0042") — null mientras es borrador sin workflow
 
   // Búsqueda full-text
-  searchVector    Unsupported("tsvector")? // Vector de búsqueda full-text de PostgreSQL
-  extractedText   String?                  @db.Text // Texto extraído del PDF para búsqueda
+  searchVector  Unsupported("tsvector")? // Vector de búsqueda full-text de PostgreSQL
+  extractedText String?                  @db.Text // Texto extraído del PDF para búsqueda
 
   // Composición de documentos
-  isComposite Boolean @default(false) // true = este documento agrupa otros
+  isComposite Boolean                   @default(false) // true = este documento agrupa otros
   components  DocumentCompositionItem[] @relation("ComposedDocument")
   partOf      DocumentCompositionItem[] @relation("ComponentDocument")
 
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([uploadedById])
   @@index([templateId])
@@ -673,13 +677,13 @@ model Document {
 
 model DocumentCompositionItem {
   id              Int      @id @default(autoincrement())
-  parentId        Int      // El informe contenedor
+  parentId        Int // El informe contenedor
   parent          Document @relation("ComposedDocument", fields: [parentId], references: [id], onDelete: Cascade)
-  childId         Int      // El acta/anexo incluido
+  childId         Int // El acta/anexo incluido
   child           Document @relation("ComponentDocument", fields: [childId], references: [id], onDelete: Restrict)
-  order           Int      // Orden de aparición (0-indexed)
-  label           String?  // Etiqueta opcional ("Acta Reunión 15/03")
-  insertAfterPage Int?     // null = al final del bloque anterior; número = insertar después de esa página
+  order           Int // Orden de aparición (0-indexed)
+  label           String? // Etiqueta opcional ("Acta Reunión 15/03")
+  insertAfterPage Int? // null = al final del bloque anterior; número = insertar después de esa página
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -721,30 +725,30 @@ model TransferHistory {
 }
 
 model DocumentTemplate {
-  id              Int           @id @default(autoincrement())
-  name            String        @unique // Nombre de la plantilla (ej: "Acta de Reunión")
+  id              Int             @id @default(autoincrement())
+  name            String          @unique // Nombre de la plantilla (ej: "Acta de Reunión")
   categoryId      Int? // Categoría a la que pertenece esta plantilla
-  category        Category?     @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   documentTypeId  Int? // Subtipo de documento al que pertenece esta plantilla
-  documentType    DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  documentType    DocumentType?   @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
   description     String? // Descripción de la plantilla
   fields          Json // Definición de campos del formulario en formato JSON
-  htmlTemplate    String     @db.Text // Plantilla HTML con Handlebars para generar el documento
-  styles          String?    @db.Text // CSS personalizado para el documento
-  outputFormat    String     @default("pdf") // Formato de salida: pdf, docx, html
-  pageSize        String     @default("A4") // Tamaño de página: A4, Letter, Legal
-  orientation     String     @default("portrait") // Orientación: portrait, landscape
-  isActive        Boolean    @default(true) // Si la plantilla está activa
-  isPredefined    Boolean    @default(false) // Si es una plantilla predefinida del sistema
+  htmlTemplate    String          @db.Text // Plantilla HTML con Handlebars para generar el documento
+  styles          String?         @db.Text // CSS personalizado para el documento
+  outputFormat    String          @default("pdf") // Formato de salida: pdf, docx, html
+  pageSize        String          @default("A4") // Tamaño de página: A4, Letter, Legal
+  orientation     String          @default("portrait") // Orientación: portrait, landscape
+  isActive        Boolean         @default(true) // Si la plantilla está activa
+  isPredefined    Boolean         @default(false) // Si es una plantilla predefinida del sistema
   previewImageUrl String? // URL de imagen de preview de la plantilla
-  usageCount      Int        @default(0) // Contador de uso de la plantilla
+  usageCount      Int             @default(0) // Contador de uso de la plantilla
   variableSchema  Json? // JSON Schema para validación de variables
   documents       Document[] // Documentos creados con esta plantilla
   batches         DocumentBatch[] // Lotes generados con esta plantilla
-  createdBy       User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdById     String
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@index([documentTypeId])
   @@index([categoryId])
@@ -772,26 +776,26 @@ model DocumentBatch {
 }
 
 model DocumentVersion {
-  id             Int                    @id @default(autoincrement())
+  id             Int      @id @default(autoincrement())
   documentId     Int // Documento al que pertenece esta versión
-  document       Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   version        Int // Número de versión (1, 2, 3, ...)
   storedName     String // Nombre del archivo de esta versión
   path           String // Ruta donde está almacenada esta versión
   size           Int // Tamaño en bytes
   checksumSHA256 String? // Hash SHA256 de esta versión
   comment        String? // Comentario sobre los cambios en esta versión
-  createdBy      User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdById    String // Usuario que creó esta versión
-  createdAt      DateTime               @default(now())
+  createdAt      DateTime @default(now())
 
   // Origen estructurado de la versión (Fix 3)
-  source         DocumentVersionSource  @default(REEMPLAZO_MANUAL)
-  workflowId     Int? // Workflow activo cuando se subió (solo para CAMBIOS_SOLICITADOS)
-  workflow       DocumentWorkflow?      @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  source     DocumentVersionSource @default(REEMPLAZO_MANUAL)
+  workflowId Int? // Workflow activo cuando se subió (solo para CAMBIOS_SOLICITADOS)
+  workflow   DocumentWorkflow?     @relation(fields: [workflowId], references: [id], onDelete: SetNull)
 
   // Aprobaciones que apuntaron a esta versión (Fix 2)
-  approvals      WorkflowApproval[]
+  approvals WorkflowApproval[]
 
   @@unique([documentId, version]) // Una versión única por documento
   @@index([documentId])
@@ -840,17 +844,17 @@ model Report {
 }
 
 model ReportExecution {
-  id           Int      @id @default(autoincrement())
-  reportId     Int // Reporte que se ejecutó
-  report       Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
-  resultData   Json // Datos del resultado del reporte en formato JSON
-  filePath     String? // Ruta del archivo exportado (PDF/Excel) si existe
-  executedBy   User     @relation("executedReports", fields: [executedById], references: [id], onDelete: Cascade)
-  executedById String // Usuario que ejecutó el reporte
-  executionTime Int     @default(0) // Tiempo de ejecución en milisegundos
-  status       String   @default("success") // Estado: "success", "error", "running"
-  errorMessage String?  @db.Text // Mensaje de error si falló
-  createdAt    DateTime @default(now())
+  id            Int      @id @default(autoincrement())
+  reportId      Int // Reporte que se ejecutó
+  report        Report   @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  resultData    Json // Datos del resultado del reporte en formato JSON
+  filePath      String? // Ruta del archivo exportado (PDF/Excel) si existe
+  executedBy    User     @relation("executedReports", fields: [executedById], references: [id], onDelete: Cascade)
+  executedById  String // Usuario que ejecutó el reporte
+  executionTime Int      @default(0) // Tiempo de ejecución en milisegundos
+  status        String   @default("success") // Estado: "success", "error", "running"
+  errorMessage  String?  @db.Text // Mensaje de error si falló
+  createdAt     DateTime @default(now())
 
   @@index([reportId])
   @@index([executedById])
@@ -866,7 +870,7 @@ model DocumentCounter {
   id             Int    @id @default(autoincrement())
   sectionPrefix  String // Prefijo de la sección (ej: "GA")
   categoryPrefix String // Prefijo de la categoría (ej: "PLN")
-  year           Int    // Año del ciclo (ej: 2026)
+  year           Int // Año del ciclo (ej: 2026)
   lastNumber     Int    @default(0) // Último correlativo asignado
 
   @@unique([sectionPrefix, categoryPrefix, year])
@@ -876,81 +880,81 @@ model DocumentCounter {
 // ===== CONFIGURACIÓN DEL SISTEMA =====
 
 model SystemSettings {
-  id            Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
   // Grupo 1 – Institución
   // { name, logoPath, address, phone, email, website }
-  institution   Json     @default("{}")
+  institution Json @default("{}")
 
   // Grupo 2 – Ciclo Escolar
   // { name, startDate, endDate, isActive }
-  schoolYear    Json     @default("{}")
+  schoolYear Json @default("{}")
 
   // Grupo 3 – Apariencia
   // { primaryColor, secondaryColor, theme }
-  appearance    Json     @default("{}")
+  appearance Json @default("{}")
 
   // Grupo 4 – Documentos
   // { maxFileSizeMb, allowedMimeTypes, trashRetentionDays, maxVersionsPerDocument }
-  documents     Json     @default("{}")
+  documents Json @default("{}")
 
   // Grupo 5 – Notificaciones
   // { emailEnabled, senderEmail, senderName }
-  notifications Json     @default("{}")
+  notifications Json @default("{}")
 
   // Grupo 6 – Seguridad
   // { sessionTimeoutMinutes, maxLoginAttempts, require2FA }
-  security      Json     @default("{}")
+  security Json @default("{}")
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 // ===== COMPARTIR DOCUMENTOS =====
 
 model DocumentShare {
-  id              Int           @id @default(autoincrement())
-  documentId      Int // Documento que se comparte
-  document        Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  documentId Int // Documento que se comparte
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   // Compartir con usuario, rol, departamento o curso específico
-  userId          String? // Usuario específico (opcional)
-  user            User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role            UserRole? // Rol específico (opcional)
-  departmentId    Int? // Departamento específico (opcional)
-  department      Department?   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
-  courseId        Int? // Curso específico (opcional)
-  course          Course?       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId       String? // Usuario específico (opcional)
+  user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         UserRole? // Rol específico (opcional)
+  departmentId Int? // Departamento específico (opcional)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  courseId     Int? // Curso específico (opcional)
+  course       Course?     @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   // Permisos del share
-  canView         Boolean       @default(true)
-  canDownload     Boolean       @default(true)
-  canEdit         Boolean       @default(false)
-  canShare        Boolean       @default(false) // Permitir re-compartir
+  canView     Boolean @default(true)
+  canDownload Boolean @default(true)
+  canEdit     Boolean @default(false)
+  canShare    Boolean @default(false) // Permitir re-compartir
 
   // Link público
-  isPublicLink    Boolean       @default(false) // Si es un link público
-  shareToken      String        @unique // Token único para el link (UUID)
-  requiresPassword Boolean      @default(false)
-  password        String? // Hash de contraseña si requiere
+  isPublicLink     Boolean @default(false) // Si es un link público
+  shareToken       String  @unique // Token único para el link (UUID)
+  requiresPassword Boolean @default(false)
+  password         String? // Hash de contraseña si requiere
 
   // Límites y expiración
-  expiresAt       DateTime? // Fecha de expiración (null = sin expiración)
-  maxViews        Int? // Máximo de vistas permitidas (null = ilimitado)
-  viewCount       Int           @default(0) // Contador de vistas
+  expiresAt DateTime? // Fecha de expiración (null = sin expiración)
+  maxViews  Int? // Máximo de vistas permitidas (null = ilimitado)
+  viewCount Int       @default(0) // Contador de vistas
 
   // Auditoría
-  sharedBy        User          @relation("SharedByUser", fields: [sharedById], references: [id], onDelete: Cascade)
-  sharedById      String
-  revokedAt       DateTime? // Fecha de revocación (null = activo)
-  revokedBy       User?         @relation("RevokedByUser", fields: [revokedById], references: [id], onDelete: SetNull)
-  revokedById     String?
+  sharedBy    User      @relation("SharedByUser", fields: [sharedById], references: [id], onDelete: Cascade)
+  sharedById  String
+  revokedAt   DateTime? // Fecha de revocación (null = activo)
+  revokedBy   User?     @relation("RevokedByUser", fields: [revokedById], references: [id], onDelete: SetNull)
+  revokedById String?
 
   // Tracking
-  accesses        ShareAccess[] // Registro de accesos a este share
+  accesses ShareAccess[] // Registro de accesos a este share
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([documentId])
   @@index([userId])
@@ -965,16 +969,16 @@ model DocumentShare {
 }
 
 model ShareAccess {
-  id          Int           @id @default(autoincrement())
-  shareId     Int // Share al que se accedió
-  share       DocumentShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
-  userId      String? // Usuario que accedió (null si es anónimo)
-  user        User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action      String // Acción: VIEW, DOWNLOAD, EDIT
-  ipAddress   String? // IP del usuario
-  userAgent   String?       @db.Text // User agent
+  id        Int           @id @default(autoincrement())
+  shareId   Int // Share al que se accedió
+  share     DocumentShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+  userId    String? // Usuario que accedió (null si es anónimo)
+  user      User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String // Acción: VIEW, DOWNLOAD, EDIT
+  ipAddress String? // IP del usuario
+  userAgent String?       @db.Text // User agent
 
-  createdAt   DateTime      @default(now())
+  createdAt DateTime @default(now())
 
   @@index([shareId])
   @@index([userId])

@@ -18,7 +18,7 @@ export function buildDocumentAccessFilter(
   user: AccessUser,
 ): Prisma.DocumentWhereInput | null {
   // ADMIN y DIRECTOR ven todo sin restricción
-  if (user.role === UserRole.ADMIN || user.role === UserRole.DIRECTOR) {
+  if (user.role === UserRole.ADMIN || user.role === UserRole.RECTOR) {
     return null;
   }
 

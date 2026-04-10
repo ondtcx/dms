@@ -30,7 +30,7 @@ export class DocumentTypeController {
   constructor(private readonly documentTypeService: DocumentTypeService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Crear un nuevo subtipo de documento' })
   @ApiResponse({ status: 201, description: 'Subtipo creado correctamente' })
   @ApiResponse({
@@ -81,7 +81,7 @@ export class DocumentTypeController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Actualizar un subtipo de documento' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({

@@ -33,7 +33,7 @@ export class SubjectController {
   constructor(private readonly subjectService: SubjectService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Crear una nueva materia' })
   @ApiResponse({ status: 201, description: 'Materia creada exitosamente' })
   @ApiResponse({
@@ -60,7 +60,7 @@ export class SubjectController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Actualizar una materia' })
   @ApiResponse({ status: 200, description: 'Materia actualizada exitosamente' })
   @ApiResponse({ status: 404, description: 'Materia no encontrada' })
@@ -76,7 +76,7 @@ export class SubjectController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Eliminar una materia' })
   @ApiResponse({ status: 200, description: 'Materia eliminada exitosamente' })
   @ApiResponse({ status: 404, description: 'Materia no encontrada' })
@@ -90,7 +90,7 @@ export class SubjectController {
   }
 
   @Post(':id/assign-teacher')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Asignar un profesor a la materia' })
   @ApiResponse({ status: 201, description: 'Profesor asignado exitosamente' })
   @ApiResponse({ status: 404, description: 'Materia o usuario no encontrado' })
@@ -106,7 +106,7 @@ export class SubjectController {
   }
 
   @Delete(':id/teachers/:userId')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR, UserRole.COORDINADOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
   @ApiOperation({ summary: 'Remover un profesor de la materia' })
   @ApiResponse({ status: 200, description: 'Profesor removido exitosamente' })
   @ApiResponse({

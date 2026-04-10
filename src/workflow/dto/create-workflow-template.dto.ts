@@ -72,7 +72,7 @@ export class CreateWorkflowTemplateDto {
     type: [StateDefinition],
     example: [
       { state: 'pending_coord', role: 'coordinador', order: 1 },
-      { state: 'pending_director', role: 'director', order: 2 },
+      { state: 'pending_rector', role: 'rector', order: 2 },
     ],
   })
   @IsArray()

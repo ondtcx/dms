@@ -427,7 +427,7 @@ export class WorkflowService {
     }
 
     // ADMIN y DIRECTOR ven todo
-    if (user?.role === UserRole.ADMIN || user?.role === UserRole.DIRECTOR) {
+    if (user?.role === UserRole.ADMIN || user?.role === UserRole.RECTOR) {
       return workflow;
     }
 
@@ -652,7 +652,7 @@ export class WorkflowService {
     if (
       workflow.initiatedById !== userId &&
       user?.role !== UserRole.ADMIN &&
-      user?.role !== UserRole.DIRECTOR
+      user?.role !== UserRole.RECTOR
     ) {
       throw new ForbiddenException(
         'Solo el iniciador o un administrador pueden cancelar el workflow',
@@ -937,7 +937,7 @@ export class WorkflowService {
     role: string,
     documentDepartmentId: number | null,
   ): Promise<{ id: string }[]> {
-    const GLOBAL_ROLES = [UserRole.ADMIN, UserRole.DIRECTOR];
+    const GLOBAL_ROLES = [UserRole.ADMIN, UserRole.RECTOR];
 
     if (GLOBAL_ROLES.includes(role as UserRole) || !documentDepartmentId) {
       return this.prisma.user.findMany({

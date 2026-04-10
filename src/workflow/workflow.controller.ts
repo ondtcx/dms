@@ -38,7 +38,7 @@ export class WorkflowController {
   // ============ Gestión de Templates ============
 
   @Post('templates')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Crear una plantilla de workflow' })
   @ApiResponse({ status: 201, description: 'Plantilla creada exitosamente' })
   @ApiResponse({
@@ -65,7 +65,7 @@ export class WorkflowController {
   }
 
   @Patch('templates/:id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Actualizar una plantilla de workflow' })
   @ApiResponse({ status: 200, description: 'Plantilla actualizada' })
   @ApiResponse({ status: 404, description: 'Plantilla no encontrada' })
@@ -77,7 +77,7 @@ export class WorkflowController {
   }
 
   @Delete('templates/:id')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Eliminar una plantilla de workflow' })
   @ApiResponse({ status: 200, description: 'Plantilla eliminada' })
   @ApiResponse({
@@ -93,7 +93,7 @@ export class WorkflowController {
   @Post('documents/:documentId/initiate')
   @Roles(
     UserRole.ADMIN,
-    UserRole.DIRECTOR,
+    UserRole.RECTOR,
     UserRole.COORDINADOR,
     UserRole.PROFESOR,
     UserRole.SECRETARIO,

@@ -87,7 +87,7 @@ export class SettingsController {
   }
 
   @Patch('school-year')
-  @Roles(UserRole.ADMIN, UserRole.DIRECTOR)
+  @Roles(UserRole.ADMIN, UserRole.RECTOR)
   @ApiOperation({ summary: 'Actualizar ciclo escolar' })
   @ApiResponse({ status: 200, description: 'Ciclo escolar actualizado' })
   updateSchoolYear(@Body() dto: UpdateSchoolYearDto) {

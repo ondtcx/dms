@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { GrantDocumentPermissionDto } from './dto/grant-document-permission.dto';
+import { ExplainPermissionDto } from './dto/explain-permission.dto';
+import { UserRole } from '../auth/role.enum';
 
 @Injectable()
 export class PermissionService {
@@ -108,5 +110,147 @@ export class PermissionService {
         grantedBy: { select: { id: true, name: true, email: true } },
       },
     });
+  }
+
+  async explainPermission(dto: ExplainPermissionDto) {
+    const { documentId, userId } = dto;
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException(`Usuario con ID ${userId} no encontrado`);
+    }
+
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      include: {
+        permissions: {
+          where: {
+            OR: [
+              { userId: user.id },
+              { role: user.role },
+              ...(user.departmentId ? [{ departmentId: user.departmentId }] : []),
+            ],
+          },
+        },
+        uploadedBy: true,
+        course: {
+          include: { teachers: true },
+        },
+        subject: {
+          include: { teachers: true },
+        },
+      },
+    });
+
+    if (!document) {
+      throw new NotFoundException(`Documento con ID ${documentId} no encontrado`);
+    }
+
+    let hasAccess = false;
+    const reasons: string[] = [];
+
+    if (user.role === UserRole.ADMIN || user.role === UserRole.RECTOR) {
+      return {
+        hasAccess: true,
+        role: user.role,
+        reasons: [`Acceso total concedido por tener rol privilegiado: ${user.role}`]
+      };
+    }
+
+    if (document.uploadedById === user.id) {
+      hasAccess = true;
+      reasons.push('El usuario es el creador (uploader) del documento');
+    }
+
+    const now = new Date();
+    const validPermissions = document.permissions.filter(
+      (p) => p.canView && (!p.expiresAt || p.expiresAt >= now),
+    );
+
+    if (validPermissions.length > 0) {
+      hasAccess = true;
+      reasons.push('El usuario cuenta con un permiso de visualización explícito activo sobre este documento');
+    }
+
+    switch (user.role as UserRole) {
+      case UserRole.COORDINADOR:
+        if (document.isPublic) {
+          hasAccess = true;
+          reasons.push('El documento es público');
+        }
+        if (user.departmentId) {
+          if (document.course?.departmentId === user.departmentId) {
+            hasAccess = true;
+            reasons.push('El documento pertenece a un curso gestionado por el departamento del coordinador');
+          }
+          if (document.uploadedBy?.departmentId === user.departmentId) {
+            hasAccess = true;
+            reasons.push('El documento fue subido por otro miembro de su mismo departamento');
+          }
+        }
+        break;
+
+      case UserRole.PROFESOR:
+        if (document.isPublic) {
+          hasAccess = true;
+          reasons.push('El documento es público');
+        }
+        const isTeacherInCourse = document.course?.teachers?.some((t) => t.userId === user.id);
+        const isTeacherInSubject = document.subject?.teachers?.some((t) => t.userId === user.id);
+        
+        if (isTeacherInCourse) {
+          hasAccess = true;
+          reasons.push('El profesor está asignado formalmente al curso al que pertenece el documento');
+        }
+        if (isTeacherInSubject) {
+          hasAccess = true;
+          reasons.push('El profesor está asignado formalmente a la materia a la que pertenece el documento');
+        }
+        break;
+
+      case UserRole.SECRETARIO:
+        if (document.isPublic) {
+          hasAccess = true;
+          reasons.push('El documento es público');
+        }
+        if (user.departmentId && document.uploadedBy?.departmentId === user.departmentId) {
+          hasAccess = true;
+          reasons.push('El documento fue subido por un usuario de su mismo departamento administrativo');
+        }
+        break;
+
+      case UserRole.ESTUDIANTE:
+        if (document.isPublic) {
+          const isStudentInCourse = document.course?.teachers?.some((t) => t.userId === user.id);
+          const isStudentInSubject = document.subject?.teachers?.some((t) => t.userId === user.id);
+          
+          if (isStudentInCourse || isStudentInSubject) {
+            hasAccess = true;
+            reasons.push('El documento es público y pertenece a un curso/materia en la que el estudiante participa');
+          }
+        }
+        break;
+
+      case UserRole.PADRE:
+      default:
+        if (document.isPublic) {
+          hasAccess = true;
+          reasons.push('El documento es público');
+        }
+        break;
+    }
+
+    if (!hasAccess) {
+      reasons.push('El usuario no cumple con ningún criterio para acceder al documento');
+    }
+
+    return {
+      hasAccess,
+      role: user.role,
+      reasons: [...new Set(reasons)],
+    };
   }
 }

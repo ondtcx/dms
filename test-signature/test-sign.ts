@@ -89,8 +89,8 @@ async function main() {
     pdflibAddPlaceholder({
       pdfDoc,
       reason: 'Firma electrónica institucional',
-      contactInfo: 'director@colegio.edu',
-      name: 'Director Prueba',
+      contactInfo: 'rector@colegio.edu',
+      name: 'Rector Prueba',
       location: 'Ecuador',
       signatureLength: 16384, // espacio para certificados reales más grandes
     });
