@@ -60,9 +60,9 @@ export class OnlyofficeController {
       user.sub,
       user.role,
     );
-    const fileType = extname(document.filename).replace('.', '');
+    const fileType = extname(document.versions?.[0]?.filename || '').replace('.', '');
     return this.onlyofficeService.generateEditorConfig(
-      { id: document.id, title: document.filename, fileType, callbackHost: '' },
+      { id: document.id, title: document.versions?.[0]?.filename, fileType, callbackHost: '' },
       { id: user.sub, name: user.name },
     );
   }
@@ -91,14 +91,15 @@ export class OnlyofficeController {
 
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
+      include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
     });
 
     if (!document) throw new NotFoundException('Documento no encontrado');
 
-    const file = createReadStream(document.path);
+    const file = createReadStream(document.versions[0].path);
     res.set({
-      'Content-Type': document.mimetype,
-      'Content-Disposition': `inline; filename="${document.filename}"`,
+      'Content-Type': document.versions[0].mimetype,
+      'Content-Disposition': `inline; filename="${document.versions[0].filename}"`,
     });
 
     return new StreamableFile(file);
@@ -116,6 +117,7 @@ export class OnlyofficeController {
       if (body.status === 2) {
         const document = await this.prisma.document.findUnique({
           where: { id: documentId },
+          include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
         });
 
         if (!document) return res.json({ error: 1 });
@@ -124,18 +126,16 @@ export class OnlyofficeController {
         const buffer = Buffer.from(await fileResponse.arrayBuffer());
 
         const fs = await import('fs');
-        fs.writeFileSync(document.path, buffer);
+        fs.writeFileSync(document.versions[0].path, buffer);
 
         const newChecksum = await this.storageService.calculateFileHash(
-          document.path,
+          document.versions[0].path,
         );
         const newVersion = document.currentVersion + 1;
 
         await this.prisma.document.update({
           where: { id: documentId },
           data: {
-            size: buffer.length,
-            checksumSHA256: newChecksum,
             currentVersion: newVersion,
           },
         });
@@ -144,12 +144,15 @@ export class OnlyofficeController {
           data: {
             documentId,
             version: newVersion,
-            storedName: document.storedName,
-            path: document.path,
+            filename: document.versions[0].filename,
+            mimetype: document.versions[0].mimetype,
+            storedName: document.versions[0].storedName,
+            path: document.versions[0].path,
             size: buffer.length,
             checksumSHA256: newChecksum,
             comment: 'Editado con OnlyOffice',
             createdById: document.uploadedById,
+            source: 'REEMPLAZO_MANUAL',
           },
         });
       }

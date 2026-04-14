@@ -197,7 +197,7 @@ export class DocumentTemplateService {
             select: { id: true, name: true, email: true, role: true },
           },
           ...TEMPLATE_INCLUDE,
-          _count: { select: { documents: true } },
+          _count: { select: { documentTemplateData: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -225,7 +225,7 @@ export class DocumentTemplateService {
           select: { id: true, name: true, email: true, role: true },
         },
         ...TEMPLATE_INCLUDE,
-        _count: { select: { documents: true } },
+        _count: { select: { documentTemplateData: true } },
       },
     });
 
@@ -406,30 +406,45 @@ export class DocumentTemplateService {
 
     const document = await this.prisma.document.create({
       data: {
-        filename: generatedFilename,
-        storedName,
-        mimetype,
-        size: fileStats.size,
-        path: filePath,
         description:
           description || `${template.name} - Generado desde formulario`,
         isPublic: isPublic || false,
         uploadedById: userId,
-        templateId: template.id,
-        formData,
         categoryId: categoryId || null,
-        batchId: batchId || null,
-        academicYearId: currentYear?.id ?? null,
+        versions: {
+          create: {
+            version: 1,
+            filename: generatedFilename,
+            storedName,
+            mimetype,
+            size: fileStats.size,
+            path: filePath,
+            createdById: userId,
+            source: 'UPLOAD_INICIAL',
+          }
+        },
+        templateData: {
+          create: {
+            templateId: template.id,
+            formData,
+            batchId: batchId || null,
+          }
+        },
+        ...(currentYear ? { academic: { create: { academicYearId: currentYear.id } } } : {}),
       },
       include: {
         uploadedBy: {
           select: { id: true, name: true, email: true, role: true },
         },
-        template: {
+        templateData: {
           select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
           },
         },
         category: {
@@ -937,6 +952,7 @@ export class DocumentTemplateService {
     // 1. Verificar que el documento existe y no está eliminado
     const document = await this.prisma.document.findUnique({
       where: { id, deletedAt: null },
+      include: { templateData: true, versions: { orderBy: { version: 'desc' }, take: 1 } },
     });
 
     if (!document) {
@@ -955,7 +971,7 @@ export class DocumentTemplateService {
     }
 
     // 3. Verificar que el documento fue creado desde una plantilla
-    if (!document.templateId) {
+    if (!document.templateData?.templateId) {
       throw new BadRequestException(
         'El documento no fue creado desde una plantilla',
       );
@@ -963,7 +979,7 @@ export class DocumentTemplateService {
 
     // 4. Obtener la plantilla
     const template = await this.prisma.documentTemplate.findUnique({
-      where: { id: document.templateId },
+      where: { id: document.templateData.templateId },
       include: { documentType: { select: { id: true, name: true } } },
     });
 
@@ -1004,7 +1020,7 @@ export class DocumentTemplateService {
       .replace(/[^a-z0-9-]/g, '');
     const baseFilename =
       dto.filename ||
-      document.filename ||
+      document.versions[0].filename ||
       `${typeSlug}-${new Date().toISOString().split('T')[0]}.${fileExtension}`;
 
     const templateData = {
@@ -1062,12 +1078,13 @@ export class DocumentTemplateService {
     await this.prisma.documentVersion.create({
       data: {
         documentId: id,
-        version: document.currentVersion,
-        storedName: document.storedName,
-        path: document.path,
-        size: document.size,
-        checksumSHA256: document.checksumSHA256,
-        comment: `Versión ${document.currentVersion} (antes de edición por formulario)`,
+        version: newVersion,
+        filename: dto.filename || document.versions[0].filename,
+        storedName: newStoredName,
+        mimetype,
+        size: fileStats.size,
+        path: newFilePath,
+        comment: `Versión ${newVersion} (edición por formulario)`,
         createdById: userId,
         source: 'REEMPLAZO_MANUAL',
       },
@@ -1077,13 +1094,12 @@ export class DocumentTemplateService {
     const updatedDocument = await this.prisma.document.update({
       where: { id },
       data: {
-        filename: dto.filename || document.filename,
-        storedName: newStoredName,
-        mimetype,
-        size: fileStats.size,
-        path: newFilePath,
-        formData: dto.formData,
         currentVersion: newVersion,
+        templateData: {
+          update: {
+            formData: dto.formData,
+          }
+        },
         ...(dto.description !== undefined && { description: dto.description }),
         ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
         ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
@@ -1092,11 +1108,15 @@ export class DocumentTemplateService {
         uploadedBy: {
           select: { id: true, name: true, email: true, role: true },
         },
-        template: {
+        templateData: {
           select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
           },
         },
         category: {

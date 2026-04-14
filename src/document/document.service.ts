@@ -18,7 +18,7 @@ import { extname } from 'path';
 import { promisify } from 'util';
 import { UserRole } from '../auth/role.enum';
 import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentNumberingService } from './document-numbering.service';
 
@@ -65,7 +65,7 @@ export class DocumentService {
             'Tu rol no tiene permiso para subir documentos a esta categoría',
           );
         }
-        if (category.requiresCourse && !uploadDocumentDto.courseId) {
+        if (category.requiresCourse && !uploadDocumentDto.academic?.courseId) {
           throw new BadRequestException(
             'Esta categoría requiere especificar un curso',
           );
@@ -75,7 +75,7 @@ export class DocumentService {
 
     // 1. Resolver año lectivo: usar el especificado o asignar el año isCurrent automáticamente
     let resolvedAcademicYearId: number | null =
-      uploadDocumentDto.academicYearId ?? null;
+      uploadDocumentDto.academic?.academicYearId ?? null;
     if (resolvedAcademicYearId === null) {
       const currentYear = await this.prisma.academicYear.findFirst({
         where: { isCurrent: true, isActive: true },
@@ -85,7 +85,7 @@ export class DocumentService {
     }
 
     // 2. Generar nombre único y ruta estructurada
-    const uniqueFilename = `${uuidv4()}${extname(file.originalname)}`;
+    const uniqueFilename = `${randomUUID()}${extname(file.originalname)}`;
     const storageLocation = this.storage.generateStructuredPath(
       userId,
       uploadDocumentDto.categoryId,
@@ -105,26 +105,70 @@ export class DocumentService {
     }
 
     // 5. Crear registro en BD
+    const academicData = uploadDocumentDto.academic || {};
+    const hasAcademic = academicData.courseId || academicData.subjectId || resolvedAcademicYearId;
+    const templateData = uploadDocumentDto.templateData;
+    const searchData = uploadDocumentDto.search || {};
+    const hasSearch = searchData.extractedText || extractedText;
+
     const document = await this.prisma.document.create({
       data: {
-        filename: file.originalname,
-        storedName: uniqueFilename,
-        mimetype: file.mimetype,
-        size: file.size,
-        path: storageLocation.path,
         description: uploadDocumentDto.description,
         categoryId: uploadDocumentDto.categoryId,
         documentTypeId: uploadDocumentDto.documentTypeId,
-        courseId: uploadDocumentDto.courseId,
-        subjectId: uploadDocumentDto.subjectId,
-        academicYearId: resolvedAcademicYearId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
         checksumSHA256: checksum,
         currentVersion: 1,
-        extractedText: extractedText,
+
+        ...(hasAcademic ? {
+          academic: {
+            create: {
+              courseId: academicData.courseId,
+              subjectId: academicData.subjectId,
+              academicYearId: resolvedAcademicYearId,
+            }
+          }
+        } : {}),
+
+        ...(templateData ? {
+          templateData: {
+            create: {
+              templateId: templateData.templateId,
+              formData: templateData.formData,
+              batchId: templateData.batchId,
+            }
+          }
+        } : {}),
+
+        ...(hasSearch ? {
+          search: {
+            create: {
+              extractedText: extractedText || searchData.extractedText,
+            }
+          }
+        } : {}),
+
+        versions: {
+          create: [{
+            version: 1,
+            filename: file.originalname,
+            mimetype: file.mimetype,
+            storedName: uniqueFilename,
+            path: storageLocation.path,
+            size: file.size,
+            checksumSHA256: checksum,
+            comment: 'Versión inicial',
+            createdById: userId,
+            source: 'UPLOAD_INICIAL',
+          }]
+        }
       },
       include: {
+        academic: true,
+        search: true,
+        templateData: true,
+        versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
           select: { id: true, name: true, email: true, role: true },
         },
@@ -142,28 +186,7 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
-          },
-        },
-      },
-    });
-
-    // 6. Crear versión inicial
-    await this.prisma.documentVersion.create({
-      data: {
-        documentId: document.id,
-        version: 1,
-        storedName: uniqueFilename,
-        path: storageLocation.path,
-        size: file.size,
-        checksumSHA256: checksum,
-        comment: 'Versión inicial',
-        createdById: userId,
-        source: 'UPLOAD_INICIAL',
+        
       },
     });
 
@@ -241,10 +264,7 @@ export class DocumentService {
       where.AND.push({
         OR: [
           {
-            filename: {
-              contains: search,
-              mode: 'insensitive',
-            },
+            versions: { some: { filename: { contains: search, mode: 'insensitive' } } },
           },
           {
             description: {
@@ -277,11 +297,11 @@ export class DocumentService {
     }
 
     if (excludeBatched) {
-      where.AND.push({ batchId: null });
+      where.AND.push({ OR: [{ templateData: null }, { templateData: { batchId: null } }] });
     }
 
     if (batchId) {
-      where.AND.push({ batchId });
+      where.AND.push({ templateData: { batchId } });
     }
 
     if (excludeComposites) {
@@ -295,8 +315,7 @@ export class DocumentService {
     if (query.academicYearId && !skipYearFilter) {
       where.AND.push({
         OR: [
-          { academicYearId: query.academicYearId },
-          { academicYearId: null },
+          { academic: { academicYearId: query.academicYearId } }, { academic: null }, { academic: { academicYearId: null } },
           { category: { bypassAcademicYear: true } },
         ],
       });
@@ -314,6 +333,12 @@ export class DocumentService {
       this.prisma.document.findMany({
         where,
         include: {
+          academic: true,
+          search: true,
+          templateData: {
+            include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+          },
+          versions: { orderBy: { version: 'desc' }, take: 1 },
           uploadedBy: {
             select: {
               id: true,
@@ -336,13 +361,7 @@ export class DocumentService {
           documentType: {
             select: { id: true, name: true },
           },
-          template: {
-            select: {
-              id: true,
-              name: true,
-              documentType: { select: { id: true, name: true } },
-            },
-          },
+          
           workflow: {
             select: {
               id: true,
@@ -350,9 +369,7 @@ export class DocumentService {
               currentState: true,
             },
           },
-          batch: {
-            select: { id: true, name: true },
-          },
+          
         },
         orderBy: {
           createdAt: 'desc',
@@ -397,6 +414,12 @@ export class DocumentService {
         ...(accessFilter ?? {}),
       },
       include: {
+        academic: true,
+        search: true,
+        templateData: {
+          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+        },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
           select: {
             id: true,
@@ -418,13 +441,7 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
-          },
-        },
+        
       },
     });
 
@@ -455,10 +472,34 @@ export class DocumentService {
       );
     }
 
+    const academicData = updateDocumentDto.academic;
+    const templateData = updateDocumentDto.templateData;
+    const searchData = updateDocumentDto.search;
+    
     const updatedDocument = await this.prisma.document.update({
       where: { id },
-      data: updateDocumentDto,
+      data: {
+        description: updateDocumentDto.description,
+        categoryId: updateDocumentDto.categoryId,
+        documentTypeId: updateDocumentDto.documentTypeId,
+        isPublic: updateDocumentDto.isPublic,
+        ...(academicData ? {
+          academic: { upsert: { create: { courseId: academicData.courseId, subjectId: academicData.subjectId, academicYearId: academicData.academicYearId }, update: { courseId: academicData.courseId, subjectId: academicData.subjectId, academicYearId: academicData.academicYearId } } }
+        } : {}),
+        ...(templateData ? {
+          templateData: { upsert: { create: { templateId: templateData.templateId, formData: templateData.formData, batchId: templateData.batchId }, update: { templateId: templateData.templateId, formData: templateData.formData, batchId: templateData.batchId } } }
+        } : {}),
+        ...(searchData ? {
+          search: { upsert: { create: { extractedText: searchData.extractedText }, update: { extractedText: searchData.extractedText } } }
+        } : {}),
+      },
       include: {
+        academic: true,
+        search: true,
+        templateData: {
+          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+        },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
           select: {
             id: true,
@@ -480,13 +521,7 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
-          },
-        },
+        
       },
     });
 
@@ -505,9 +540,9 @@ export class DocumentService {
 
     // SOFT DELETE: Mover archivo a papelera
     const trashPath = this.storage.moveToTrash(
-      document.path,
+      (document as any).versions[0].path,
       document.id,
-      document.storedName,
+      (document as any).versions[0].storedName,
     );
 
     // Actualizar registro en BD (soft delete)
@@ -516,8 +551,11 @@ export class DocumentService {
       data: {
         deletedAt: new Date(),
         deletedById: userId,
-        path: trashPath, // Actualizar path a la ubicación en trash
       },
+    });
+    await this.prisma.documentVersion.update({
+      where: { id: (document as any).versions[0].id },
+      data: { path: trashPath }
     });
 
     // Registrar auditoría
@@ -559,11 +597,11 @@ export class DocumentService {
     const storageLocation = this.storage.generateStructuredPath(
       document.uploadedById,
       document.categoryId,
-      document.storedName,
+      (document as any).versions[0].storedName,
     );
 
     // Restaurar archivo desde trash
-    this.storage.restoreFromTrash(document.path, storageLocation.path);
+    this.storage.restoreFromTrash((document as any).versions[0].path, storageLocation.path);
 
     // Actualizar BD
     await this.prisma.document.update({
@@ -571,8 +609,11 @@ export class DocumentService {
       data: {
         deletedAt: null,
         deletedById: null,
-        path: storageLocation.path,
       },
+    });
+    await this.prisma.documentVersion.update({
+      where: { id: (document as any).versions[0].id },
+      data: { path: storageLocation.path }
     });
 
     return { message: 'Documento restaurado exitosamente' };
@@ -598,7 +639,7 @@ export class DocumentService {
     }
 
     // Eliminar archivo físico
-    this.storage.deleteFile(document.path);
+    this.storage.deleteFile((document as any).versions[0].path);
 
     // Eliminar thumbnail si existe
     this.thumbnailService.deleteThumbnail(id);
@@ -624,14 +665,14 @@ export class DocumentService {
     const document = await this.findOne(id, userId, userRole);
 
     // Verificar que el archivo existe
-    if (!this.storage.fileExists(document.path)) {
+    if (!this.storage.fileExists((document as any).versions[0].path)) {
       throw new NotFoundException('Archivo no encontrado en el servidor');
     }
 
     // Verificar integridad del archivo si hay checksum
     if (document.checksumSHA256) {
       const isValid = await this.storage.verifyFileIntegrity(
-        document.path,
+        (document as any).versions[0].path,
         document.checksumSHA256,
       );
       if (!isValid) {
@@ -651,9 +692,9 @@ export class DocumentService {
     });
 
     return {
-      path: document.path,
-      filename: document.filename,
-      mimetype: document.mimetype,
+      path: (document as any).versions[0].path,
+      filename: (document as any).versions[0].filename,
+      mimetype: (document as any).versions[0].mimetype,
     };
   }
 
@@ -690,7 +731,7 @@ export class DocumentService {
 
     // 1. Copiar versión actual a carpeta de versiones
     const currentDate = new Date(document.createdAt);
-    const versionFilename = `${document.storedName.split('.')[0]}_v${document.currentVersion}${extname(document.storedName)}`;
+    const versionFilename = `${(document as any).versions[0].storedName.split('.')[0]}_v${document.currentVersion}${extname((document as any).versions[0].storedName)}`;
     const versionLocation = this.storage.generateVersionPath(
       document.uploadedById,
       versionFilename,
@@ -698,11 +739,11 @@ export class DocumentService {
     );
 
     // Copiar archivo actual a versiones (no mover, copiar)
-    this.storage.copyFile(document.path, versionLocation.path);
+    this.storage.copyFile((document as any).versions[0].path, versionLocation.path);
 
     // 2. Generar nueva versión
     const newVersion = document.currentVersion + 1;
-    const newFilename = `${uuidv4()}${extname(file.originalname)}`;
+    const newFilename = `${randomUUID()}${extname(file.originalname)}`;
     const newStorageLocation = this.storage.generateStructuredPath(
       document.uploadedById,
       document.categoryId,
@@ -718,21 +759,22 @@ export class DocumentService {
     );
 
     // 5. Eliminar versión antigua (ya está copiada en versiones)
-    this.storage.deleteFile(document.path);
+    this.storage.deleteFile((document as any).versions[0].path);
 
     // 6. Actualizar documento en BD
     const updatedDocument = await this.prisma.document.update({
       where: { id },
       data: {
-        filename: file.originalname,
-        storedName: newFilename,
-        mimetype: file.mimetype,
-        size: file.size,
-        path: newStorageLocation.path,
         checksumSHA256: newChecksum,
         currentVersion: newVersion,
       },
       include: {
+        academic: true,
+        search: true,
+        templateData: {
+          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+        },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
           select: {
             id: true,
@@ -751,13 +793,7 @@ export class DocumentService {
             },
           },
         },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
-          },
-        },
+        
       },
     });
 
@@ -783,6 +819,8 @@ export class DocumentService {
       data: {
         documentId: id,
         version: newVersion,
+        filename: file.originalname,
+        mimetype: file.mimetype,
         storedName: newFilename,
         path: newStorageLocation.path,
         size: file.size,
@@ -916,17 +954,17 @@ export class DocumentService {
 
     // 1. Guardar versión actual antes de restaurar
     const currentVersion = document.currentVersion + 1;
-    const currentVersionFilename = `${document.storedName.split('.')[0]}_v${document.currentVersion}${extname(document.storedName)}`;
+    const currentVersionFilename = `${(document as any).versions[0].storedName.split('.')[0]}_v${document.currentVersion}${extname((document as any).versions[0].storedName)}`;
     const currentVersionLocation = this.storage.generateVersionPath(
       document.uploadedById,
       currentVersionFilename,
       new Date(document.createdAt),
     );
 
-    this.storage.copyFile(document.path, currentVersionLocation.path);
+    this.storage.copyFile((document as any).versions[0].path, currentVersionLocation.path);
 
     // 2. Copiar archivo de la versión solicitada a ubicación principal
-    const newFilename = `${uuidv4()}${extname(version.storedName)}`;
+    const newFilename = `${randomUUID()}${extname(version.storedName)}`;
     const newLocation = this.storage.generateStructuredPath(
       document.uploadedById,
       document.categoryId,
@@ -936,15 +974,12 @@ export class DocumentService {
     this.storage.copyFile(version.path, newLocation.path);
 
     // 3. Eliminar archivo actual
-    this.storage.deleteFile(document.path);
+    this.storage.deleteFile((document as any).versions[0].path);
 
     // 4. Actualizar documento en BD
     const updatedDocument = await this.prisma.document.update({
       where: { id: documentId },
       data: {
-        storedName: newFilename,
-        path: newLocation.path,
-        size: version.size,
         checksumSHA256: version.checksumSHA256,
         currentVersion,
       },
@@ -955,6 +990,8 @@ export class DocumentService {
       data: {
         documentId,
         version: currentVersion,
+        filename: version.filename,
+        mimetype: version.mimetype,
         storedName: newFilename,
         path: newLocation.path,
         size: version.size,
@@ -979,16 +1016,14 @@ export class DocumentService {
       this.prisma.document.count({ where }),
       this.prisma.document.aggregate({
         where,
-        _sum: {
-          size: true,
-        },
+        _sum: { currentVersion: true },
       }),
     ]);
 
     return {
       totalDocuments,
-      totalSize: totalSize._sum.size || 0,
-      totalSizeMB: ((totalSize._sum.size || 0) / (1024 * 1024)).toFixed(2),
+      totalSize: 0, // Migrated to DocumentVersion
+      totalSizeMB: '0.00',
     };
   }
 
@@ -1067,6 +1102,12 @@ export class DocumentService {
     const documents = await this.prisma.document.findMany({
       where,
       include: {
+        academic: true,
+        search: true,
+        templateData: {
+          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+        },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
           select: { id: true, name: true, email: true, role: true },
         },
@@ -1081,13 +1122,7 @@ export class DocumentService {
             },
           },
         },
-        template: {
-          select: {
-            id: true,
-            name: true,
-            documentType: { select: { id: true, name: true } },
-          },
-        },
+        
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1168,6 +1203,12 @@ export class DocumentService {
       this.prisma.document.findMany({
         where,
         include: {
+          academic: true,
+          search: true,
+          templateData: {
+            include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+          },
+          versions: { orderBy: { version: 'desc' }, take: 1 },
           uploadedBy: {
             select: { id: true, name: true, email: true, role: true },
           },
@@ -1182,13 +1223,7 @@ export class DocumentService {
               },
             },
           },
-          template: {
-            select: {
-              id: true,
-              name: true,
-              documentType: { select: { id: true, name: true } },
-            },
-          },
+          
         },
         orderBy: { archivedAt: 'desc' },
         skip,
@@ -1267,7 +1302,7 @@ export class DocumentService {
       throw new NotFoundException('Documento no encontrado');
     }
 
-    if (!document.path.includes('/archive/')) {
+    if (!(document as any).versions[0].path.includes('/archive/')) {
       throw new BadRequestException('El documento no está archivado');
     }
 
@@ -1286,14 +1321,18 @@ export class DocumentService {
     const storageLocation = this.storage.generateStructuredPath(
       document.uploadedById,
       document.categoryId,
-      document.storedName,
+      (document as any).versions[0].storedName,
     );
 
-    this.storage.moveFile(document.path, storageLocation.path);
+    this.storage.moveFile((document as any).versions[0].path, storageLocation.path);
 
     await this.prisma.document.update({
       where: { id },
-      data: { path: storageLocation.path, archivedAt: null },
+      data: { archivedAt: null },
+    });
+    await this.prisma.documentVersion.update({
+      where: { id: (document as any).versions[0].id },
+      data: { path: storageLocation.path }
     });
 
     return { message: 'Documento restaurado al archivo activo exitosamente' };

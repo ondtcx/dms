@@ -126,7 +126,7 @@ export class PermissionService {
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
       include: {
-        permissions: {
+        shares: {
           where: {
             OR: [
               { userId: user.id },
@@ -136,11 +136,11 @@ export class PermissionService {
           },
         },
         uploadedBy: true,
-        course: {
-          include: { teachers: true },
-        },
-        subject: {
-          include: { teachers: true },
+        academic: {
+          include: {
+            course: { include: { teachers: true } },
+            subject: { include: { teachers: true } },
+          },
         },
       },
     });
@@ -166,7 +166,7 @@ export class PermissionService {
     }
 
     const now = new Date();
-    const validPermissions = document.permissions.filter(
+    const validPermissions = document.shares.filter(
       (p) => p.canView && (!p.expiresAt || p.expiresAt >= now),
     );
 
@@ -182,7 +182,7 @@ export class PermissionService {
           reasons.push('El documento es público');
         }
         if (user.departmentId) {
-          if (document.course?.departmentId === user.departmentId) {
+          if (document.academic?.course?.departmentId === user.departmentId) {
             hasAccess = true;
             reasons.push('El documento pertenece a un curso gestionado por el departamento del coordinador');
           }
@@ -198,8 +198,8 @@ export class PermissionService {
           hasAccess = true;
           reasons.push('El documento es público');
         }
-        const isTeacherInCourse = document.course?.teachers?.some((t) => t.userId === user.id);
-        const isTeacherInSubject = document.subject?.teachers?.some((t) => t.userId === user.id);
+        const isTeacherInCourse = document.academic?.course?.teachers?.some((t) => t.userId === user.id);
+        const isTeacherInSubject = document.academic?.subject?.teachers?.some((t) => t.userId === user.id);
         
         if (isTeacherInCourse) {
           hasAccess = true;
@@ -224,8 +224,8 @@ export class PermissionService {
 
       case UserRole.ESTUDIANTE:
         if (document.isPublic) {
-          const isStudentInCourse = document.course?.teachers?.some((t) => t.userId === user.id);
-          const isStudentInSubject = document.subject?.teachers?.some((t) => t.userId === user.id);
+          const isStudentInCourse = document.academic?.course?.teachers?.some((t) => t.userId === user.id);
+          const isStudentInSubject = document.academic?.subject?.teachers?.some((t) => t.userId === user.id);
           
           if (isStudentInCourse || isStudentInSubject) {
             hasAccess = true;

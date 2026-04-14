@@ -34,9 +34,8 @@ export class DocumentCompositionService {
             child: {
               select: {
                 id: true,
-                filename: true,
-                mimetype: true,
-                templateId: true,
+                versions: { select: { filename: true, mimetype: true }, take: 1 },
+                templateData: { select: { templateId: true } },
                 documentNumber: true,
                 category: { select: { id: true, name: true, color: true } },
               },
@@ -48,7 +47,7 @@ export class DocumentCompositionService {
           select: {
             id: true,
             parent: {
-              select: { id: true, filename: true, documentNumber: true },
+              select: { id: true, versions: { select: { filename: true }, take: 1 }, documentNumber: true },
             },
           },
         },
@@ -114,9 +113,8 @@ export class DocumentCompositionService {
             child: {
               select: {
                 id: true,
-                filename: true,
-                mimetype: true,
-                templateId: true,
+                versions: { select: { filename: true, mimetype: true }, take: 1 },
+                templateData: { select: { templateId: true } },
                 documentNumber: true,
                 category: { select: { id: true, name: true, color: true } },
               },
@@ -192,9 +190,8 @@ export class DocumentCompositionService {
         child: {
           select: {
             id: true,
-            filename: true,
-            mimetype: true,
-            templateId: true,
+            versions: { select: { filename: true, mimetype: true }, take: 1 },
+            templateData: { select: { templateId: true } },
             documentNumber: true,
             category: { select: { id: true, name: true, color: true } },
           },

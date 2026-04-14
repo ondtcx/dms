@@ -93,11 +93,7 @@ export class CleanupService implements OnModuleInit {
 
       for (const doc of documentsToDelete) {
         try {
-          // Eliminar archivo físico
-          if (this.storage.fileExists(doc.path)) {
-            this.storage.deleteFile(doc.path);
-            deletedFiles++;
-          }
+
 
           // Eliminar thumbnail si existe
           const paths = this.storage.getPaths();
@@ -114,6 +110,7 @@ export class CleanupService implements OnModuleInit {
           for (const version of versions) {
             if (this.storage.fileExists(version.path)) {
               this.storage.deleteFile(version.path);
+              deletedFiles++;
             }
           }
 
@@ -158,26 +155,37 @@ export class CleanupService implements OnModuleInit {
             lt: ninetyDaysAgo,
           },
           deletedAt: null,
-          path: {
-            contains: '/active/',
-          },
+          versions: {
+            some: {
+              path: {
+                contains: '/active/',
+              },
+            }
+          }
         },
+        include: { versions: { where: { path: { contains: '/active/' } } } },
       });
 
       let archived = 0;
 
       for (const doc of documentsToArchive) {
         try {
-          // Generar nueva ruta en /archive
-          const newPath = doc.path.replace('/active/', '/archive/');
+          for (const version of doc.versions) {
+            // Generar nueva ruta en /archive
+            const newPath = version.path.replace('/active/', '/archive/');
 
-          // Mover archivo
-          this.storage.moveFile(doc.path, newPath);
+            // Mover archivo
+            this.storage.moveFile(version.path, newPath);
 
-          // Actualizar registro en BD
+            // Actualizar registro en BD
+            await this.prisma.documentVersion.update({
+              where: { id: version.id },
+              data: { path: newPath },
+            });
+          }
           await this.prisma.document.update({
             where: { id: doc.id },
-            data: { path: newPath, archivedAt: new Date() },
+            data: { archivedAt: new Date() },
           });
 
           archived++;
@@ -236,16 +244,16 @@ export class CleanupService implements OnModuleInit {
 
     try {
       // Seleccionar 100 documentos aleatorios con checksum
-      const documents = await this.prisma.document.findMany({
+      const documents = await this.prisma.documentVersion.findMany({
         where: {
           checksumSHA256: {
             not: null,
           },
-          deletedAt: null,
+          document: { deletedAt: null },
         },
         take: 100,
         orderBy: {
-          updatedAt: 'asc', // Los menos verificados recientemente
+          createdAt: 'asc', // Los menos verificados recientemente
         },
       });
 

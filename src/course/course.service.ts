@@ -52,7 +52,7 @@ export class CourseService {
           select: {
             subjects: true,
             teachers: true,
-            documents: true,
+            documentAcademics: true,
           },
         },
       },
@@ -115,7 +115,7 @@ export class CourseService {
             select: {
               subjects: true,
               teachers: true,
-              documents: true,
+              documentAcademics: true,
             },
           },
         },
@@ -157,7 +157,7 @@ export class CourseService {
           select: {
             subjects: true,
             teachers: true,
-            documents: true,
+            documentAcademics: true,
           },
         },
       },
@@ -232,7 +232,7 @@ export class CourseService {
           select: {
             subjects: true,
             teachers: true,
-            documents: true,
+            documentAcademics: true,
           },
         },
       },
@@ -254,9 +254,9 @@ export class CourseService {
       );
     }
 
-    if (course._count.documents > 0) {
+    if (course._count.documentAcademics > 0) {
       throw new BadRequestException(
-        `No se puede eliminar el curso porque tiene ${course._count.documents} documento(s) asociado(s)`,
+        `No se puede eliminar el curso porque tiene ${course._count.documentAcademics} documento(s) asociado(s)`,
       );
     }
 

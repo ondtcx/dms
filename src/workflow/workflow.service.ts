@@ -225,9 +225,9 @@ export class WorkflowService {
       where: { id: documentId, deletedAt: null, ...(accessFilter ?? {}) },
       select: {
         id: true,
-        filename: true,
+        versions: { select: { filename: true }, take: 1 },
         uploadedBy: { select: { departmentId: true } },
-        course: { select: { departmentId: true } },
+        academic: { select: { course: { select: { departmentId: true } } } },
       },
     });
 
@@ -238,8 +238,8 @@ export class WorkflowService {
     }
 
     const documentDeptId =
-      (document.course as any)?.departmentId ??
-      (document.uploadedBy as any)?.departmentId ??
+      (document.academic?.course as any)?.departmentId ??
+      document.uploadedBy?.departmentId ??
       null;
 
     // Verificar que no haya un workflow activo para este documento
@@ -336,7 +336,7 @@ export class WorkflowService {
         document: {
           select: {
             id: true,
-            filename: true,
+            versions: { select: { filename: true }, take: 1 },
           },
         },
         initiatedBy: {
@@ -372,7 +372,7 @@ export class WorkflowService {
       firstState.role,
       workflow.id,
       documentId,
-      document.filename,
+      document.versions?.[0]?.filename,
       userId,
       documentDeptId,
     );
@@ -393,7 +393,7 @@ export class WorkflowService {
         document: {
           select: {
             id: true,
-            filename: true,
+            versions: { select: { filename: true }, take: 1 },
             description: true,
           },
         },
@@ -432,8 +432,8 @@ export class WorkflowService {
     }
 
     const isInitiator = workflow.initiatedById === userId;
-    const hasApproved = workflow.approvals.some((a) => a.userId === userId);
-    const states = workflow.template
+    const hasApproved = (workflow.approvals || []).some((a) => a.userId === userId);
+    const states = (workflow.template as any)
       .stateDefinitions as unknown as StateDefinition[];
     const hasRoleInTemplate = states.some((s) => s.role === user?.role);
 
@@ -464,7 +464,7 @@ export class WorkflowService {
       },
       include: {
         template: true,
-        document: { select: { id: true, filename: true, description: true } },
+        document: { select: { id: true, versions: { select: { filename: true }, take: 1 }, description: true } },
         initiatedBy: { select: { id: true, name: true, email: true } },
         approvals: {
           include: { user: { select: { id: true, name: true, email: true } } },
@@ -484,7 +484,7 @@ export class WorkflowService {
       where: { id: workflowId },
       include: {
         template: true,
-        document: true,
+        document: { include: { versions: { select: { filename: true }, take: 1 } } },
       },
     });
 
@@ -511,7 +511,7 @@ export class WorkflowService {
     }
 
     // Obtener definición del estado actual (necesaria para requiresComment + advanceWorkflow)
-    const stateDefinitions = workflow.template
+    const stateDefinitions = (workflow.template as any)
       .stateDefinitions as unknown as StateDefinition[];
     const currentState = stateDefinitions.find(
       (s) => s.state === workflow.currentState,
@@ -549,7 +549,7 @@ export class WorkflowService {
 
     // Verificar si se requiere comentario
     const requiresComment =
-      workflow.template.requiresComment || currentState.requiresComment;
+      (workflow.template as any).requiresComment || currentState.requiresComment;
     if (
       requiresComment &&
       !approveDto.comment &&
@@ -591,9 +591,9 @@ export class WorkflowService {
       // Notificar al iniciador que el workflow fue rechazado
       await this.notificationService.notifyWorkflowCompleted(
         workflowId,
-        workflow.document.id,
+        workflow.document?.id,
         workflow.initiatedById,
-        workflow.document.filename,
+        workflow.document?.versions?.[0]?.filename,
         'REJECTED',
       );
 
@@ -613,9 +613,9 @@ export class WorkflowService {
 
       await this.notificationService.notifyChangesRequested(
         workflowId,
-        workflow.document.id,
+        workflow.document?.id,
         workflow.initiatedById,
-        workflow.document.filename,
+        workflow.document?.versions?.[0]?.filename,
         user.name ?? user.email,
         approveDto.comment,
       );
@@ -636,6 +636,7 @@ export class WorkflowService {
   async cancelWorkflow(workflowId: number, userId: string) {
     const workflow = await this.prisma.documentWorkflow.findUnique({
       where: { id: workflowId },
+      include: { document: { include: { versions: { select: { filename: true }, take: 1 } } } },
     });
 
     if (!workflow) {
@@ -676,7 +677,7 @@ export class WorkflowService {
     const workflow = await this.prisma.documentWorkflow.findUnique({
       where: { id: workflowId },
       include: {
-        document: { select: { id: true, filename: true } },
+        document: { select: { id: true, versions: { select: { filename: true }, take: 1 } } },
         template: { select: { requiresComment: true } },
         approvals: { where: { state: undefined } },
       },
@@ -726,9 +727,9 @@ export class WorkflowService {
       approversToNotify.map((a) =>
         this.notificationService.notifyApprovalRequested(
           workflowId,
-          workflow.document.id,
+          workflow.document?.id,
           a.userId,
-          workflow.document.filename,
+          workflow.document?.versions?.[0]?.filename,
         ),
       ),
     );
@@ -764,7 +765,7 @@ export class WorkflowService {
       this.prisma.documentWorkflow.findMany({
         where,
         include: {
-          document: { select: { id: true, filename: true, description: true } },
+          document: { select: { id: true, versions: { select: { filename: true }, take: 1 }, description: true } },
           template: {
             select: { id: true, name: true, stateDefinitions: true },
           },
@@ -832,9 +833,9 @@ export class WorkflowService {
         document: {
           select: {
             id: true,
-            filename: true,
+            versions: { select: { filename: true }, take: 1 },
             uploadedBy: { select: { departmentId: true } },
-            course: { select: { departmentId: true } },
+            academic: { select: { course: { select: { departmentId: true } } } },
           },
         },
       },
@@ -862,9 +863,9 @@ export class WorkflowService {
       // Notificar al iniciador que el workflow fue aprobado
       await this.notificationService.notifyWorkflowCompleted(
         workflowId,
-        workflow.document.id,
+        workflow.document?.id,
         workflow.initiatedById,
-        workflow.document.filename,
+        workflow.document?.versions?.[0]?.filename,
         'APPROVED',
       );
 
@@ -886,8 +887,8 @@ export class WorkflowService {
       });
 
       const deptId =
-        (workflow.document as any).course?.departmentId ??
-        (workflow.document as any).uploadedBy?.departmentId ??
+        (workflow.document).academic?.course?.departmentId ??
+        (workflow.document).uploadedBy?.departmentId ??
         null;
 
       const usersForNext = await this.findUsersForState(nextState.role, deptId);
@@ -919,8 +920,8 @@ export class WorkflowService {
       await this.notifyUsersForState(
         nextState.role,
         workflowId,
-        workflow.document.id,
-        workflow.document.filename,
+        workflow.document?.id,
+        workflow.document?.versions?.[0]?.filename,
         workflow.initiatedById,
         deptId,
       );

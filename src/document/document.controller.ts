@@ -453,17 +453,17 @@ export class DocumentController {
       const docCreatedAt = new Date(doc.createdAt);
       if (thumbMtime < docCreatedAt) {
         thumbnailPath = await this.thumbnailService.regenerateThumbnail(
-          doc.path,
+          doc.versions[0].path,
           id,
-          doc.mimetype,
+          doc.versions[0].mimetype,
         );
       }
     } else {
       // Generar thumbnail si no existe
       thumbnailPath = await this.thumbnailService.generateThumbnail(
-        doc.path,
+        doc.versions[0].path,
         id,
-        doc.mimetype,
+        doc.versions[0].mimetype,
       );
     }
 

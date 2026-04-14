@@ -52,7 +52,7 @@ export class SubjectService {
         _count: {
           select: {
             teachers: true,
-            documents: true,
+            documentAcademics: true,
           },
         },
       },
@@ -100,7 +100,7 @@ export class SubjectService {
           _count: {
             select: {
               teachers: true,
-              documents: true,
+              documentAcademics: true,
             },
           },
         },
@@ -134,7 +134,7 @@ export class SubjectService {
         _count: {
           select: {
             teachers: true,
-            documents: true,
+            documentAcademics: true,
           },
         },
       },
@@ -194,7 +194,7 @@ export class SubjectService {
         _count: {
           select: {
             teachers: true,
-            documents: true,
+            documentAcademics: true,
           },
         },
       },
@@ -210,9 +210,9 @@ export class SubjectService {
       );
     }
 
-    if (subject._count.documents > 0) {
+    if (subject._count.documentAcademics > 0) {
       throw new BadRequestException(
-        `No se puede eliminar la materia porque tiene ${subject._count.documents} documento(s) asociado(s)`,
+        `No se puede eliminar la materia porque tiene ${subject._count.documentAcademics} documento(s) asociado(s)`,
       );
     }
 

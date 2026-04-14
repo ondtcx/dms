@@ -5,7 +5,7 @@ import { DocumentService } from './document.service';
 import { DocumentController } from './document.controller';
 import { ThumbnailService } from './thumbnail.service';
 import { DocumentNumberingService } from './document-numbering.service';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { DocumentTemplateModule } from '../document-template/document-template.module';
 import { SettingsModule } from '../settings/settings.module';
 

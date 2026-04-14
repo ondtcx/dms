@@ -15,7 +15,7 @@ export class AcademicYearService {
   async findAll() {
     const years = await this.prisma.academicYear.findMany({
       orderBy: { startDate: 'desc' },
-      include: { _count: { select: { documents: true } } },
+      include: { _count: { select: { documentAcademics: true } } },
     });
 
     // Contar cursos por año lectivo en una sola query (evita N+1)
@@ -31,7 +31,7 @@ export class AcademicYearService {
       ...year,
       _count: {
         levels: levelMap.get(year.name) ?? 0,
-        documents: year._count.documents,
+        documents: year._count.documentAcademics,
       },
     }));
 
@@ -47,7 +47,7 @@ export class AcademicYearService {
   async findOne(id: number) {
     const year = await this.prisma.academicYear.findUnique({
       where: { id },
-      include: { _count: { select: { documents: true } } },
+      include: { _count: { select: { documentAcademics: true } } },
     });
 
     if (!year)
@@ -59,7 +59,7 @@ export class AcademicYearService {
 
     return {
       ...year,
-      _count: { levels: courseCount, documents: year._count.documents },
+      _count: { levels: courseCount, documents: year._count.documentAcademics },
     };
   }
 

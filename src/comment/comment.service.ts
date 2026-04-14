@@ -59,7 +59,7 @@ export class CommentService {
     // Verificar que el documento existe
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
-      select: { id: true, filename: true },
+      select: { id: true, versions: { select: { filename: true }, take: 1 } },
     });
 
     if (!document) {
@@ -143,7 +143,7 @@ export class CommentService {
         userId,
         documentId,
         comment.id,
-        document.filename,
+        document.versions?.[0]?.filename,
       );
     }
 

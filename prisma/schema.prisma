@@ -354,7 +354,7 @@ model AcademicYear {
   endDate   DateTime
   isCurrent Boolean    @default(false) // Solo uno puede ser true — reforzado por índice único parcial en la migración
   isActive  Boolean    @default(true)
-  documents Document[]
+  documentAcademics DocumentAcademic[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -375,7 +375,7 @@ model Course {
   // Relaciones
   subjects  Subject[]
   teachers  UserCourse[]
-  documents Document[]
+  documentAcademics DocumentAcademic[]
   shares    DocumentShare[]
 
   createdAt DateTime @default(now())
@@ -398,7 +398,7 @@ model Subject {
   isActive    Boolean @default(true)
 
   // Relaciones
-  documents Document[]
+  documentAcademics DocumentAcademic[]
   teachers  UserSubject[]
 
   createdAt DateTime @default(now())
@@ -577,24 +577,14 @@ model Section {
 
 model Document {
   id          Int       @id @default(autoincrement())
-  filename    String // Nombre original del archivo
-  storedName  String    @unique // Nombre almacenado en el servidor
-  mimetype    String // Tipo MIME del archivo
-  size        Int // Tamaño en bytes
-  path        String // Ruta donde está almacenado
   description String? // Descripción del documento
   categoryId  Int? // Relación con categoría (la sección se deriva de category.section)
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
-  // Relaciones organizacionales
-  courseId  Int? // Relación con curso
-  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
-  subjectId Int? // Relación con materia
-  subject   Subject? @relation(fields: [subjectId], references: [id], onDelete: SetNull)
-
-  // Año lectivo al que pertenece (null = documento permanente/institucional sin ciclo específico)
-  academicYearId Int?
-  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+  // Relaciones 1:1
+  academic     DocumentAcademic?
+  search       DocumentSearch?
+  templateData DocumentTemplateData?
 
   // Subtipo de documento (jerarquía: Section → Category → DocumentType)
   documentTypeId Int? // Subtipo del documento dentro de su categoría
@@ -603,14 +593,6 @@ model Document {
   isPublic     Boolean           @default(false) // Si es público o privado
   uploadedBy   User              @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   uploadedById String
-  templateId   Int? // Relación con plantilla si fue creado desde una
-  template     DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  formData     Json? // Datos del formulario si fue creado desde template
-
-  // Lote de generación
-  batchId String? // FK al lote del que forma parte (null si es documento individual)
-  batch   DocumentBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
-
   // Versionado
   currentVersion Int               @default(1) // Versión actual del documento
   versions       DocumentVersion[] // Historial de versiones
@@ -648,10 +630,6 @@ model Document {
   // Numeración institucional
   documentNumber String? @unique // Código oficial asignado (ej: "GA-PLN-2026-0042") — null mientras es borrador sin workflow
 
-  // Búsqueda full-text
-  searchVector  Unsupported("tsvector")? // Vector de búsqueda full-text de PostgreSQL
-  extractedText String?                  @db.Text // Texto extraído del PDF para búsqueda
-
   // Composición de documentos
   isComposite Boolean                   @default(false) // true = este documento agrupa otros
   components  DocumentCompositionItem[] @relation("ComposedDocument")
@@ -661,17 +639,11 @@ model Document {
   updatedAt DateTime @updatedAt
 
   @@index([uploadedById])
-  @@index([templateId])
   @@index([categoryId])
   @@index([documentTypeId])
-  @@index([courseId])
-  @@index([subjectId])
-  @@index([batchId])
   @@index([deletedAt]) // Índice para filtrar documentos eliminados
   @@index([archivedAt]) // Índice para filtrar documentos archivados
   @@index([createdAt]) // Índice para ordenar por fecha
-  @@index([academicYearId]) // Índice para filtrar por año lectivo
-  @@index([searchVector], type: Gin) // Índice GIN para búsqueda full-text
   @@index([isComposite])
 }
 
@@ -743,7 +715,7 @@ model DocumentTemplate {
   previewImageUrl String? // URL de imagen de preview de la plantilla
   usageCount      Int             @default(0) // Contador de uso de la plantilla
   variableSchema  Json? // JSON Schema para validación de variables
-  documents       Document[] // Documentos creados con esta plantilla
+  documentTemplateData DocumentTemplateData[] // Documentos creados con esta plantilla
   batches         DocumentBatch[] // Lotes generados con esta plantilla
   createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdById     String
@@ -765,7 +737,7 @@ model DocumentBatch {
   template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
   createdById String
   createdBy   User             @relation("CreatedBatches", fields: [createdById], references: [id], onDelete: Cascade)
-  documents   Document[] // Documentos que forman parte del lote
+  documentTemplateData DocumentTemplateData[] // Documentos que forman parte del lote
   totalCount  Int              @default(0) // Número de documentos generados exitosamente
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
@@ -780,6 +752,8 @@ model DocumentVersion {
   documentId     Int // Documento al que pertenece esta versión
   document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   version        Int // Número de versión (1, 2, 3, ...)
+  filename       String // Nombre original del archivo
+  mimetype       String // Tipo MIME del archivo
   storedName     String // Nombre del archivo de esta versión
   path           String // Ruta donde está almacenada esta versión
   size           Int // Tamaño en bytes
@@ -984,4 +958,49 @@ model ShareAccess {
   @@index([userId])
   @@index([createdAt])
   @@index([action])
+}
+
+// ============ MODELOS REFRACTORIZADOS ============
+
+model DocumentAcademic {
+  id             Int           @id @default(autoincrement())
+  documentId     Int           @unique
+  document       Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  courseId       Int?
+  course         Course?       @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  subjectId      Int?
+  subject        Subject?      @relation(fields: [subjectId], references: [id], onDelete: SetNull)
+  academicYearId Int?
+  academicYear   AcademicYear? @relation(fields: [academicYearId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([courseId])
+  @@index([subjectId])
+  @@index([academicYearId])
+}
+
+model DocumentSearch {
+  id            Int                      @id @default(autoincrement())
+  documentId    Int                      @unique
+  document      Document                 @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  searchVector  Unsupported("tsvector")?
+  extractedText String?                  @db.Text
+
+  @@index([documentId])
+  @@index([searchVector], type: Gin)
+}
+
+model DocumentTemplateData {
+  id         Int               @id @default(autoincrement())
+  documentId Int               @unique
+  document   Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  templateId Int?
+  template   DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  formData   Json?
+  batchId    String?
+  batch      DocumentBatch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@index([documentId])
+  @@index([templateId])
+  @@index([batchId])
 }

@@ -82,8 +82,8 @@ export class ReportService {
    * 3. Uso de almacenamiento total y por departamento
    */
   private async getTotalStorage() {
-    const result = await this.prisma.document.aggregate({
-      where: { deletedAt: null },
+    const result = await this.prisma.documentVersion.aggregate({
+      where: { document: { deletedAt: null } },
       _sum: { size: true },
       _avg: { size: true },
       _max: { size: true },
@@ -93,11 +93,12 @@ export class ReportService {
     const byDepartment = await this.prisma.$queryRaw<any[]>`
       SELECT
         d."name" as department,
-        COUNT(doc.id) as "documentCount",
-        COALESCE(SUM(doc.size), 0) as "totalSize"
+        COUNT(DISTINCT doc.id) as "documentCount",
+        COALESCE(SUM(dv.size), 0) as "totalSize"
       FROM "Department" d
       LEFT JOIN "User" u ON u."departmentId" = d.id
       LEFT JOIN "Document" doc ON doc."uploadedById" = u.id AND doc."deletedAt" IS NULL
+      LEFT JOIN "DocumentVersion" dv ON dv."documentId" = doc.id AND dv.version = doc."currentVersion"
       GROUP BY d.id, d."name"
       ORDER BY "totalSize" DESC
     `;
@@ -263,7 +264,7 @@ export class ReportService {
       },
       include: {
         document: {
-          select: { id: true, filename: true },
+          select: { id: true, versions: { select: { filename: true }, take: 1 } },
         },
         template: {
           select: { id: true, name: true },

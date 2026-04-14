@@ -41,7 +41,7 @@ export class NotificationService {
         document: {
           select: {
             id: true,
-            filename: true,
+            versions: { select: { filename: true }, take: 1 },
           },
         },
       },
@@ -69,7 +69,7 @@ export class NotificationService {
         document: {
           select: {
             id: true,
-            filename: true,
+            versions: { select: { filename: true }, take: 1 },
           },
         },
         workflow: {

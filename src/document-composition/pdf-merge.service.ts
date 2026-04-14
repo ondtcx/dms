@@ -24,11 +24,8 @@ export class PdfMergeService {
         child: {
           select: {
             id: true,
-            filename: true,
-            mimetype: true,
-            path: true,
-            templateId: true,
-            formData: true,
+            versions: { select: { filename: true, mimetype: true, path: true }, take: 1 },
+            templateData: { select: { templateId: true, formData: true } },
           },
         },
       },
@@ -48,10 +45,10 @@ export class PdfMergeService {
       try {
         let pdfBytes: Buffer;
 
-        if (child.templateId !== null && child.formData !== null) {
+        if (child.templateData?.templateId !== null && child.templateData?.formData !== null) {
           // Documento generado desde plantilla: regenerar PDF con datos actuales
           const template = await this.prisma.documentTemplate.findUnique({
-            where: { id: child.templateId },
+            where: { id: child.templateData?.templateId },
             select: {
               htmlTemplate: true,
               styles: true,
@@ -62,7 +59,7 @@ export class PdfMergeService {
 
           if (!template) {
             this.logger.warn(
-              `Plantilla ${child.templateId} no encontrada para documento ${child.id}, saltando`,
+              `Plantilla ${child.templateData?.templateId} no encontrada para documento ${child.id}, saltando`,
             );
             continue;
           }
@@ -70,23 +67,23 @@ export class PdfMergeService {
           pdfBytes = await this.generator.generatePDF({
             htmlTemplate: template.htmlTemplate,
             styles: template.styles ?? undefined,
-            data: child.formData as Record<string, any>,
+            data: child.templateData?.formData as Record<string, any>,
             pageSize: (template.pageSize as 'A4' | 'Letter' | 'Legal') ?? 'A4',
             orientation:
               (template.orientation as 'portrait' | 'landscape') ?? 'portrait',
           });
-        } else if (child.mimetype === 'application/pdf') {
+        } else if (child.versions?.[0]?.mimetype === 'application/pdf') {
           // PDF subido directamente: leer desde disco
-          if (!fs.existsSync(child.path)) {
+          if (!fs.existsSync(child.versions?.[0]?.path)) {
             throw new BadRequestException(
-              `El archivo del documento "${child.filename}" (ID: ${child.id}) no se encontró en el servidor`,
+              `El archivo del documento "${child.versions?.[0]?.filename}" (ID: ${child.id}) no se encontró en el servidor`,
             );
           }
-          pdfBytes = fs.readFileSync(child.path);
+          pdfBytes = fs.readFileSync(child.versions?.[0]?.path);
         } else {
           // DOCX/XLSX/otro: no incluir en el merge físico
           this.logger.log(
-            `Documento "${child.filename}" (${child.mimetype}) omitido del merge — solo referencia`,
+            `Documento "${child.versions?.[0]?.filename}" (${child.versions?.[0]?.mimetype}) omitido del merge — solo referencia`,
           );
           continue;
         }
@@ -100,11 +97,11 @@ export class PdfMergeService {
       } catch (err) {
         if (err instanceof BadRequestException) throw err;
         this.logger.error(
-          `Error procesando documento "${child.filename}" (ID: ${child.id}):`,
+          `Error procesando documento "${child.versions?.[0]?.filename}" (ID: ${child.id}):`,
           err,
         );
         throw new BadRequestException(
-          `Error al procesar el documento "${child.filename}": ${err.message}`,
+          `Error al procesar el documento "${child.versions?.[0]?.filename}": ${err.message}`,
         );
       }
     }

@@ -1,7 +1,7 @@
 // src/documents/config/multer.config.ts
 import { diskStorage } from 'multer';
 import { extname, join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import { existsSync, mkdirSync } from 'fs';
 
 // Asegurar que el directorio temp existe
@@ -15,7 +15,7 @@ export const multerConfig = {
     destination: tempDir, // Guardar temporalmente en /uploads/temp
     filename: (req, file, callback) => {
       // Generar nombre único temporal
-      const uniqueName = `${Date.now()}_${uuidv4()}${extname(file.originalname)}`;
+      const uniqueName = `${Date.now()}_${randomUUID()}${extname(file.originalname)}`;
       callback(null, uniqueName);
     },
   }),

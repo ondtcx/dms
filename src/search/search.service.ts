@@ -272,20 +272,20 @@ export class SearchService {
     const suggestions = await this.prisma.document.findMany({
       where: {
         OR: [
-          { filename: { contains: query, mode: 'insensitive' } },
+          { versions: { some: { filename: { contains: query, mode: 'insensitive' } } } },
           { description: { contains: query, mode: 'insensitive' } },
         ],
         deletedAt: null,
         ...(accessFilter ?? {}),
       },
-      select: { filename: true, description: true },
+      select: { versions: { select: { filename: true }, take: 1 }, description: true },
       take: limit,
-      distinct: ['filename'],
+      
     });
 
     const terms = new Set<string>();
     suggestions.forEach((doc) => {
-      if (doc.filename) terms.add(doc.filename);
+      if (doc.versions?.[0]?.filename) terms.add(doc.versions[0].filename);
       if (doc.description) terms.add(doc.description);
     });
 

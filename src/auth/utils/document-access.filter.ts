@@ -55,7 +55,7 @@ export function buildDocumentAccessFilter(
           ...(user.departmentId
             ? [
                 {
-                  course: { departmentId: user.departmentId },
+                  academic: { course: { departmentId: user.departmentId } },
                 } as Prisma.DocumentWhereInput,
                 {
                   uploadedBy: { departmentId: user.departmentId },
@@ -70,9 +70,9 @@ export function buildDocumentAccessFilter(
         OR: [
           ...baseAccess,
           // Documentos de cursos donde imparte clase
-          { course: { teachers: { some: { userId: user.id } } } },
+          { academic: { course: { teachers: { some: { userId: user.id } } } } },
           // Documentos de materias donde imparte clase
-          { subject: { teachers: { some: { userId: user.id } } } },
+          { academic: { subject: { teachers: { some: { userId: user.id } } } } },
         ],
       };
 
@@ -102,8 +102,8 @@ export function buildDocumentAccessFilter(
               { isPublic: true },
               {
                 OR: [
-                  { course: { teachers: { some: { userId: user.id } } } },
-                  { subject: { teachers: { some: { userId: user.id } } } },
+                  { academic: { course: { teachers: { some: { userId: user.id } } } } },
+                  { academic: { subject: { teachers: { some: { userId: user.id } } } } },
                 ],
               },
             ],

@@ -97,7 +97,7 @@ export class ShareService {
         document: {
           select: {
             id: true,
-            filename: true,
+            versions: { select: { filename: true }, take: 1 },
             uploadedBy: {
               select: { id: true, name: true, email: true },
             },
@@ -163,9 +163,8 @@ export class ShareService {
         document: {
           select: {
             id: true,
-            filename: true,
-            mimetype: true,
-            size: true,
+            versions: { select: { filename: true,  size: true }, take: 1 },
+            
             createdAt: true,
           },
         },
@@ -191,9 +190,8 @@ export class ShareService {
         document: {
           select: {
             id: true,
-            filename: true,
-            mimetype: true,
-            size: true,
+            versions: { select: { filename: true,  size: true }, take: 1 },
+            
           },
         },
         user: {

@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { existsSync, mkdirSync, unlinkSync, copyFileSync } from 'fs';
 import { join, extname } from 'path';
-import { PrismaService } from 'src/prisma/prisma.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { UpdateInstitutionDto } from './dto/update-institution.dto';
 import { UpdateSchoolYearDto } from './dto/update-school-year.dto';
 import { UpdateAppearanceDto } from './dto/update-appearance.dto';

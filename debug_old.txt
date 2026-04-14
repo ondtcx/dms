@@ -1,0 +1,142 @@
+  async upload(
+    file: Express.Multer.File,
+    uploadDocumentDto: UploadDocumentDto,
+    userId: string,
+  ) {
+    // 0. Validar acceso a la categoría (allowedRoles + requiresCourse)
+    if (uploadDocumentDto.categoryId) {
+      const category = await this.prisma.category.findUnique({
+        where: { id: uploadDocumentDto.categoryId },
+        select: { allowedRoles: true, requiresCourse: true },
+      });
+      if (category) {
+        const allowed = category.allowedRoles as string[];
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { role: true },
+        });
+        const isAdmin = user?.role === 'admin';
+        if (
+          !isAdmin &&
+          allowed.length > 0 &&
+          user &&
+          !allowed.includes(user.role)
+        ) {
+          throw new ForbiddenException(
+            'Tu rol no tiene permiso para subir documentos a esta categoría',
+          );
+        }
+        if (category.requiresCourse && !uploadDocumentDto.courseId) {
+          throw new BadRequestException(
+            'Esta categoría requiere especificar un curso',
+          );
+        }
+      }
+    }
+
+    // 1. Resolver año lectivo: usar el especificado o asignar el año isCurrent automáticamente
+    let resolvedAcademicYearId: number | null =
+      uploadDocumentDto.academicYearId ?? null;
+    if (resolvedAcademicYearId === null) {
+      const currentYear = await this.prisma.academicYear.findFirst({
+        where: { isCurrent: true, isActive: true },
+        select: { id: true },
+      });
+      resolvedAcademicYearId = currentYear?.id ?? null;
+    }
+
+    // 2. Generar nombre único y ruta estructurada
+    const uniqueFilename = `${uuidv4()}${extname(file.originalname)}`;
+    const storageLocation = this.storage.generateStructuredPath(
+      userId,
+      uploadDocumentDto.categoryId,
+      uniqueFilename,
+    );
+
+    // 2. Mover archivo de /temp a ubicación estructurada
+    this.storage.moveFile(file.path, storageLocation.path);
+
+    // 3. Calcular checksum del archivo
+    const checksum = await this.storage.calculateFileHash(storageLocation.path);
+
+    // 4. Extraer texto de PDF si es un PDF
+    let extractedText: string | null = null;
+    if (file.mimetype === 'application/pdf') {
+      extractedText = await this.extractTextFromPDF(storageLocation.path);
+    }
+
+    // 5. Crear registro en BD
+    const document = await this.prisma.document.create({
+      data: {
+        filename: file.originalname,
+        storedName: uniqueFilename,
+        mimetype: file.mimetype,
+        size: file.size,
+        path: storageLocation.path,
+        description: uploadDocumentDto.description,
+        categoryId: uploadDocumentDto.categoryId,
+        documentTypeId: uploadDocumentDto.documentTypeId,
+        courseId: uploadDocumentDto.courseId,
+        subjectId: uploadDocumentDto.subjectId,
+        academicYearId: resolvedAcademicYearId,
+        isPublic: uploadDocumentDto.isPublic || false,
+        uploadedById: userId,
+        checksumSHA256: checksum,
+        currentVersion: 1,
+        extractedText: extractedText,
+      },
+      include: {
+        uploadedBy: {
+          select: { id: true, name: true, email: true, role: true },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+            section: {
+              select: { id: true, name: true, color: true, icon: true },
+            },
+          },
+        },
+        documentType: {
+          select: { id: true, name: true },
+        },
+        template: {
+          select: {
+            id: true,
+            name: true,
+            documentType: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+
+    // 6. Crear versión inicial
+    await this.prisma.documentVersion.create({
+      data: {
+        documentId: document.id,
+        version: 1,
+        storedName: uniqueFilename,
+        path: storageLocation.path,
+        size: file.size,
+        checksumSHA256: checksum,
+        comment: 'Versión inicial',
+        createdById: userId,
+        source: 'UPLOAD_INICIAL',
+      },
+    });
+
+    // 7. Regenerar thumbnail en background para garantizar que corresponde al archivo actual
+    this.thumbnailService
+      .regenerateThumbnail(storageLocation.path, document.id, file.mimetype)
+      .catch(() => {});
+
+    // 8. Asignar número institucional en background (no bloquea la respuesta)
+    this.numberingService
+      .assignNumber(document.id, uploadDocumentDto.categoryId)
+      .catch(() => {});
+
+    return document;
+  }

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
 import { join } from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import PizZip from 'pizzip';
 import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -61,7 +61,7 @@ export class OnlyofficeService {
   async createBlankDocument(dto: CreateBlankDocumentDto, userId: string) {
     const { title, fileType, categoryId, courseId, documentTypeId } = dto;
     const filename = `${title}.${fileType}`;
-    const uniqueFilename = `${uuidv4()}.${fileType}`;
+    const uniqueFilename = `${randomUUID()}.${fileType}`;
     const mimetype = this.getMimetype(fileType);
 
     // Build blank OOXML content and write to temp
@@ -89,19 +89,33 @@ export class OnlyofficeService {
     // Create document record
     const document = await this.prisma.document.create({
       data: {
-        filename,
-        storedName: uniqueFilename,
-        mimetype,
-        size: buffer.length,
-        path: storageLocation.path,
         categoryId: categoryId ?? null,
-        courseId: courseId ?? null,
         documentTypeId: documentTypeId ?? null,
         isPublic: false,
         uploadedById: userId,
-        checksumSHA256: checksum,
         currentVersion: 1,
-        academicYearId: currentYear?.id ?? null,
+        versions: {
+          create: {
+            version: 1,
+            filename,
+            mimetype,
+            storedName: uniqueFilename,
+            path: storageLocation.path,
+            size: buffer.length,
+            checksumSHA256: checksum,
+            comment: 'Created in editor',
+            createdById: userId,
+            source: 'UPLOAD_INICIAL',
+          }
+        },
+        ...((courseId !== undefined || currentYear?.id) ? {
+          academic: {
+            create: {
+              ...(courseId !== undefined ? { courseId } : {}),
+              ...(currentYear?.id ? { academicYearId: currentYear.id } : {})
+            }
+          }
+        } : {})
       },
       include: {
         uploadedBy: {
@@ -121,20 +135,7 @@ export class OnlyofficeService {
       },
     });
 
-    // Create initial version record
-    await this.prisma.documentVersion.create({
-      data: {
-        documentId: document.id,
-        version: 1,
-        storedName: uniqueFilename,
-        path: storageLocation.path,
-        size: buffer.length,
-        checksumSHA256: checksum,
-        comment: 'Created in editor',
-        createdById: userId,
-        source: 'UPLOAD_INICIAL',
-      },
-    });
+
 
     // Generate thumbnail in background
     this.thumbnailService

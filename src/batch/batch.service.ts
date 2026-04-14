@@ -99,7 +99,7 @@ export class BatchService {
       select: {
         id: true,
         uploadedById: true,
-        path: true,
+        versions: { select: { path: true }, take: 1 },
       },
     });
 
@@ -228,8 +228,7 @@ export class BatchService {
       },
       select: {
         id: true,
-        filename: true,
-        path: true,
+        versions: { select: { filename: true, path: true }, take: 1 },
         uploadedById: true,
       },
     });
@@ -274,10 +273,10 @@ export class BatchService {
 
     // Agregar archivos al ZIP
     for (const doc of documents) {
-      const filePath = join(process.cwd(), doc.path);
+      const filePath = join(process.cwd(), doc.versions[0].path);
 
       if (existsSync(filePath)) {
-        archive.append(createReadStream(filePath), { name: doc.filename });
+        archive.append(createReadStream(filePath), { name: doc.versions[0].filename });
       } else {
         console.warn(`Archivo no encontrado: ${filePath}`);
       }
@@ -380,7 +379,7 @@ export class BatchService {
             },
           },
           createdBy: { select: { id: true, name: true, email: true } },
-          _count: { select: { documents: true } },
+          _count: { select: { documentTemplateData: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,
@@ -412,23 +411,26 @@ export class BatchService {
           },
         },
         createdBy: { select: { id: true, name: true, email: true } },
-        documents: {
-          where: { deletedAt: null },
-          include: {
-            uploadedBy: { select: { id: true, name: true, email: true } },
-            category: {
-              select: {
-                id: true,
-                name: true,
-                color: true,
-                icon: true,
-                section: {
-                  select: { id: true, name: true, color: true, icon: true },
+        documentTemplateData: {
+          select: {
+            document: {
+              include: {
+                versions: { select: { filename: true }, take: 1 },
+                uploadedBy: { select: { id: true, name: true, email: true } },
+                category: {
+                  select: {
+                    id: true,
+                    name: true,
+                    color: true,
+                    icon: true,
+                    section: {
+                      select: { id: true, name: true, color: true, icon: true },
+                    },
+                  },
                 },
-              },
-            },
-          },
-          orderBy: { createdAt: 'asc' },
+              }
+            }
+          }
         },
       },
     });
@@ -448,12 +450,17 @@ export class BatchService {
     const batch = await this.getBatch(id, userId, userRole);
 
     const docsCount = await this.prisma.document.count({
-      where: { batchId: id, deletedAt: null },
+      where: { templateData: { batchId: id }, deletedAt: null },
+    });
+
+    const docsToUpdate = await this.prisma.document.findMany({
+      where: { templateData: { batchId: id }, deletedAt: null },
+      select: { id: true }
     });
 
     // Soft-delete todos los documentos del lote
     await this.prisma.document.updateMany({
-      where: { batchId: id, deletedAt: null },
+      where: { id: { in: docsToUpdate.map(d => d.id) } },
       data: { deletedAt: new Date(), deletedById: userId },
     });
 
@@ -490,17 +497,17 @@ export class BatchService {
     archive.pipe(res);
 
     const batchDocuments = await this.prisma.document.findMany({
-      where: { batchId: id, deletedAt: null },
-      select: { id: true, filename: true, path: true },
+      where: { templateData: { batchId: id }, deletedAt: null },
+      select: { id: true, versions: { select: { filename: true, path: true }, take: 1 } },
     });
 
     for (const doc of batchDocuments) {
       const filePath = join(
         process.cwd(),
-        doc.path.startsWith('/') ? doc.path.slice(1) : doc.path,
+        doc.versions[0].path.startsWith('/') ? doc.versions[0].path.slice(1) : doc.versions[0].path,
       );
       if (existsSync(filePath)) {
-        archive.append(createReadStream(filePath), { name: doc.filename });
+        archive.append(createReadStream(filePath), { name: doc.versions[0].filename });
       } else {
         this.logger.warn(`File not found for document ${doc.id}: ${filePath}`);
       }
