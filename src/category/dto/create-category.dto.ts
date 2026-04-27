@@ -7,6 +7,7 @@ import {
   IsInt,
   IsArray,
   Matches,
+  IsUUID,
 } from 'class-validator';
 
 export class CreateCategoryDto {
@@ -73,13 +74,14 @@ export class CreateCategoryDto {
 
   @ApiPropertyOptional({
     description:
-      'Roles que pueden subir documentos a esta categoría (vacío = sin restricción)',
-    example: ['profesor', 'coordinador'],
+      'IDs de Roles que pueden subir documentos a esta categoría (vacío = sin restricción)',
+    example: ['123e4567-e89b-12d3-a456-426614174000', '123e4567-e89b-12d3-a456-426614174001'],
     default: [],
   })
   @IsArray()
+  @IsUUID('all', { each: true })
   @IsOptional()
-  allowedRoles?: string[];
+  roleIds?: string[];
 
   @ApiPropertyOptional({
     description:

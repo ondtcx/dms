@@ -25,8 +25,8 @@ import { UpdateAppearanceDto } from './dto/update-appearance.dto';
 import { UpdateDocumentsDto } from './dto/update-documents.dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { UpdateSecurityDto } from './dto/update-security.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('settings')
 @ApiBearerAuth()
@@ -42,7 +42,7 @@ export class SettingsController {
   }
 
   @Patch('institution')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({ summary: 'Actualizar datos de la institución' })
   @ApiResponse({
     status: 200,
@@ -53,7 +53,7 @@ export class SettingsController {
   }
 
   @Post('institution/logo')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({ summary: 'Subir logo de la institución' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -87,7 +87,7 @@ export class SettingsController {
   }
 
   @Patch('school-year')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Actualizar ciclo escolar' })
   @ApiResponse({ status: 200, description: 'Ciclo escolar actualizado' })
   updateSchoolYear(@Body() dto: UpdateSchoolYearDto) {
@@ -95,7 +95,7 @@ export class SettingsController {
   }
 
   @Patch('appearance')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({ summary: 'Actualizar configuración de apariencia' })
   @ApiResponse({ status: 200, description: 'Apariencia actualizada' })
   updateAppearance(@Body() dto: UpdateAppearanceDto) {
@@ -103,7 +103,7 @@ export class SettingsController {
   }
 
   @Patch('documents')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({ summary: 'Actualizar configuración de documentos' })
   @ApiResponse({
     status: 200,
@@ -114,7 +114,7 @@ export class SettingsController {
   }
 
   @Patch('notifications')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({ summary: 'Actualizar configuración de notificaciones' })
   @ApiResponse({
     status: 200,
@@ -125,7 +125,7 @@ export class SettingsController {
   }
 
   @Patch('security')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({ summary: 'Actualizar configuración de seguridad' })
   @ApiResponse({
     status: 200,

@@ -76,7 +76,7 @@ export class ShareService {
       data: {
         documentId: createShareDto.documentId,
         userId: resolvedUserId,
-        role: createShareDto.role,
+        roleId: createShareDto.roleId,
         departmentId: createShareDto.departmentId,
         courseId: createShareDto.courseId,
         canView: createShareDto.canView ?? true,
@@ -129,7 +129,7 @@ export class ShareService {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
-        role: true,
+        roleId: true,
         departmentId: true,
         courses: { select: { courseId: true } },
       },
@@ -139,7 +139,7 @@ export class ShareService {
 
     const orConditions: any[] = [
       { userId }, // Share directo al usuario
-      { role: user.role }, // Share al rol del usuario
+      { roleId: user.roleId }, // Share al rol del usuario
     ];
 
     if (user.departmentId) {

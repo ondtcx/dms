@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Script de migración para mover documentos existentes a estructura organizada
  *

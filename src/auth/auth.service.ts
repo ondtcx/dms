@@ -5,33 +5,45 @@ import { RegisterDto } from './dto/register.dto';
 import { User } from '@prisma/client';
 import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
-import { UserRole } from './role.enum';
+import { RoleService } from '../role/role.service';
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
+    private readonly roleService: RoleService,
   ) {}
 
-  async register(
-    registerDto: RegisterDto,
-  ): Promise<{ user: Omit<User, 'password'>; access_token: string }> {
+  async register(registerDto: RegisterDto): Promise<{
+    user: Omit<User, 'password'> & { permissions?: string[] };
+    access_token: string;
+  }> {
     const user = await this.userService.create({
       ...registerDto,
-      role: UserRole.USER, // Siempre USER
     });
 
-    const payload = { email: user.email, sub: user.id, role: user.role };
+    let permissions: string[] = [];
+    if (user.roleId) {
+      permissions = await this.roleService.getRolePermissions(user.roleId);
+    }
+
+    const payload = {
+      email: user.email,
+      sub: user.id,
+      roleId: user.roleId,
+      role: user.role?.name,
+      permissions,
+    };
 
     return {
-      user,
+      user: { ...user, permissions },
       access_token: await this.jwtService.signAsync(payload),
     };
   }
 
   async login(loginDto: LoginDto): Promise<{
-    user: Omit<User, 'password'>;
+    user: Omit<User, 'password'> & { permissions?: string[] };
     access_token: string;
   }> {
     const user = await this.userService.findByEmail(loginDto.email);
@@ -40,21 +52,36 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    let permissions: string[] = [];
+    if (user.roleId) {
+      permissions = await this.roleService.getRolePermissions(user.roleId);
+    }
+
     const payload = {
       email: user.email,
       sub: user.id,
-      role: user.role,
+      roleId: user.roleId,
+      role: user.role?.name,
       name: user.name,
+      permissions,
     };
-    const { password, ...result } = user;
+    const result = { ...user };
+    delete (result as Partial<User>).password;
 
     return {
-      user: result,
+      user: { ...result, permissions },
       access_token: await this.jwtService.signAsync(payload),
     };
   }
 
-  async getProfile(userId: string): Promise<Omit<User, 'password'>> {
-    return this.userService.findById(userId);
+  async getProfile(
+    userId: string,
+  ): Promise<Omit<User, 'password'> & { permissions?: string[] }> {
+    const user = await this.userService.findById(userId);
+    let permissions: string[] = [];
+    if (user.roleId) {
+      permissions = await this.roleService.getRolePermissions(user.roleId);
+    }
+    return { ...user, permissions };
   }
 }

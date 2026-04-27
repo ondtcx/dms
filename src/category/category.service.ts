@@ -32,8 +32,17 @@ export class CategoryService {
       );
     }
 
+    const { roleIds, ...data } = createCategoryDto;
+
     return this.prisma.category.create({
-      data: createCategoryDto,
+      data: {
+        ...data,
+        ...(roleIds && {
+          categoryRoles: {
+            create: roleIds.map((roleId) => ({ roleId })),
+          },
+        }),
+      },
       include: CATEGORY_INCLUDE,
     });
   }
@@ -81,9 +90,21 @@ export class CategoryService {
       }
     }
 
+    const { roleIds, ...data } = updateCategoryDto;
+
     return this.prisma.category.update({
       where: { id },
-      data: updateCategoryDto,
+      data: {
+        ...data,
+        ...(roleIds !== undefined && {
+          categoryRoles: {
+            deleteMany: {},
+            ...(roleIds.length > 0 && {
+              create: roleIds.map((roleId) => ({ roleId })),
+            }),
+          },
+        }),
+      },
       include: CATEGORY_INCLUDE,
     });
   }

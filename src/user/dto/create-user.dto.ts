@@ -4,9 +4,7 @@ import {
   IsOptional,
   IsString,
   MinLength,
-  IsEnum,
 } from 'class-validator';
-import { UserRole } from '../../auth/role.enum';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -39,19 +37,10 @@ export class CreateUserDto {
   password: string;
 
   @ApiPropertyOptional({
-    description: 'Rol del usuario en el sistema',
-    enum: UserRole,
-    enumName: 'UserRole',
-    example: UserRole.USER,
-    default: UserRole.USER,
+    description: 'ID del rol del usuario',
+    example: 'rol_id_123',
   })
   @IsString()
-  @IsNotEmpty()
-  @MinLength(3)
   @IsOptional()
-  @IsEnum(UserRole, {
-    message:
-      'role debe ser uno de los siguientes valores: admin, user, moderator',
-  })
-  role?: UserRole;
+  roleId?: string;
 }

@@ -65,15 +65,26 @@ export class ReportService {
    */
   private async getTotalUsers() {
     const usersByRole = await this.prisma.user.groupBy({
-      by: ['role'],
-      _count: { role: true },
+      by: ['roleId'],
+      _count: { roleId: true },
     });
 
+    const roleIds = usersByRole
+      .map((item) => item.roleId)
+      .filter((roleId): roleId is string => Boolean(roleId));
+
+    const roles = await this.prisma.role.findMany({
+      where: { id: { in: roleIds } },
+      select: { id: true, name: true },
+    });
+
+    const roleMap = new Map(roles.map((role) => [role.id, role.name]));
+
     return {
-      total: usersByRole.reduce((sum, item) => sum + item._count.role, 0),
+      total: usersByRole.reduce((sum, item) => sum + item._count.roleId, 0),
       byRole: usersByRole.map((item) => ({
-        role: item.role,
-        count: item._count.role,
+        role: item.roleId ? roleMap.get(item.roleId) || item.roleId : 'sin_rol',
+        count: item._count.roleId,
       })),
     };
   }

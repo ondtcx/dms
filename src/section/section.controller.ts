@@ -20,8 +20,8 @@ import { SectionService } from './section.service';
 import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { QuerySectionDto } from './dto/query-section.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('sections')
 @Controller('sections')
@@ -30,7 +30,7 @@ export class SectionController {
   constructor(private readonly sectionService: SectionService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Crear una nueva sección',
     description:
@@ -98,7 +98,7 @@ export class SectionController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Actualizar una sección',
     description:
@@ -125,7 +125,7 @@ export class SectionController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Eliminar una sección',
     description:

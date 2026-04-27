@@ -7,24 +7,19 @@ import {
 } from '@nestjs/swagger';
 import { ReportService } from './report.service';
 import { AuthGuard } from '../auth/guards/auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('reports')
 @ApiBearerAuth()
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard)
 @Controller('reports')
 export class ReportController {
   constructor(private readonly reportService: ReportService) {}
 
   @Get('dashboard')
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.RECTOR,
-    UserRole.VICERRECTOR,
-    UserRole.COORDINADOR,
-  )
+  @Permissions('role:admin', 'role:rector', 'role:vicerrector', 'role:coordinador', 'role:secretario')
   @ApiOperation({
     summary: 'Obtener dashboard principal con métricas clave',
     description:
@@ -60,12 +55,7 @@ export class ReportController {
   }
 
   @Get('workflow-bottlenecks')
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.RECTOR,
-    UserRole.VICERRECTOR,
-    UserRole.COORDINADOR,
-  )
+  @Permissions('role:admin', 'role:rector', 'role:vicerrector', 'role:coordinador', 'role:secretario')
   @ApiOperation({
     summary: 'Obtener cuellos de botella en workflows',
     description: 'Identifica workflows pendientes con mayor tiempo de espera',
@@ -92,12 +82,7 @@ export class ReportController {
   }
 
   @Get('document-compliance')
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.RECTOR,
-    UserRole.VICERRECTOR,
-    UserRole.COORDINADOR,
-  )
+  @Permissions('role:admin', 'role:rector', 'role:vicerrector', 'role:coordinador', 'role:secretario')
   @ApiOperation({
     summary: 'Reporte de cumplimiento de documentos',
     description: 'Muestra tasas de cumplimiento de documentos por categoría',

@@ -40,9 +40,9 @@ import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { UserRole } from '../auth/role.enum';
+
 import { multerConfig, allFilesFilter } from './config/multer.config';
 import { CreateDocumentFromTemplateDto } from '../document-template/dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from '../document-template/dto/update-document-from-template.dto';
@@ -63,9 +63,10 @@ export class DocumentController {
 
   @Post('from-template')
   @ApiOperation({
-    summary: 'Crear documento desde una plantilla',
+    summary: 'Crear documento desde una plantilla (flujo heredado fuera del MVP)',
     description:
-      'Genera un nuevo documento a partir de un formulario basado en una plantilla existente. El sistema valida que todos los campos requeridos estén presentes y genera un archivo JSON estructurado.',
+      'Genera un nuevo documento a partir de una plantilla existente. Este endpoint se mantiene por compatibilidad técnica, pero no forma parte del flujo principal del piloto de tesis centrado en secretaría.',
+    deprecated: true,
   })
   @ApiBody({
     type: CreateDocumentFromTemplateDto,
@@ -185,7 +186,12 @@ export class DocumentController {
   }
 
   @Post('batch-from-template')
-  @ApiOperation({ summary: 'Generar documentos en lote desde una plantilla' })
+  @ApiOperation({
+    summary: 'Generar documentos en lote desde una plantilla (fuera del MVP)',
+    description:
+      'Endpoint heredado del producto grande. Se conserva por reutilización futura, pero queda fuera del alcance del piloto de tesis.',
+    deprecated: true,
+  })
   @ApiResponse({ status: 201, description: 'Lote creado exitosamente' })
   @ApiResponse({
     status: 400,
@@ -204,7 +210,11 @@ export class DocumentController {
   }
 
   @Post('upload')
-  @ApiOperation({ summary: 'Subir un documento' })
+  @ApiOperation({
+    summary: 'Registrar un documento del piloto',
+    description:
+      'Permite registrar documentos digitales o exclusivamente físicos. Si no se adjunta archivo, el registro queda como documento físico con ubicación y metadatos.',
+  })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -214,7 +224,18 @@ export class DocumentController {
           type: 'string',
           format: 'binary',
         },
+        title: { type: 'string', example: 'Solicitud de permiso docente' },
+        documentDate: { type: 'string', format: 'date', example: '2026-04-22' },
+        sender: { type: 'string', example: 'Secretaría General' },
+        recipient: { type: 'string', example: 'Rectorado' },
         description: { type: 'string' },
+        keywords: { type: 'string', example: 'permiso, docente, abril' },
+        status: { type: 'string', enum: ['REGISTRADO', 'EN_REVISION', 'ARCHIVADO'] },
+        physicalBuilding: { type: 'string', example: 'Edificio principal' },
+        physicalOffice: { type: 'string', example: 'Secretaría' },
+        physicalArchive: { type: 'string', example: 'Archivo A' },
+        physicalBox: { type: 'string', example: 'Gaveta 2' },
+        physicalNotes: { type: 'string', example: 'Carpeta azul con separador rojo' },
         isPublic: { type: 'boolean' },
       },
     },
@@ -231,7 +252,9 @@ export class DocumentController {
     @Body() uploadDocumentDto: UploadDocumentDto,
     @CurrentUser() user: any,
   ) {
-    await this.validateFile(file);
+    if (file) {
+      await this.validateFile(file);
+    }
     return this.documentsService.upload(file, uploadDocumentDto, user.id);
   }
 
@@ -249,7 +272,18 @@ export class DocumentController {
             format: 'binary',
           },
         },
+        title: { type: 'string', example: 'Lote de oficios de secretaría' },
+        documentDate: { type: 'string', format: 'date', example: '2026-04-22' },
+        sender: { type: 'string', example: 'Secretaría General' },
+        recipient: { type: 'string', example: 'Rectorado' },
         description: { type: 'string' },
+        keywords: { type: 'string', example: 'oficio, secretaría, abril' },
+        status: { type: 'string', enum: ['REGISTRADO', 'EN_REVISION', 'ARCHIVADO'] },
+        physicalBuilding: { type: 'string', example: 'Edificio principal' },
+        physicalOffice: { type: 'string', example: 'Secretaría' },
+        physicalArchive: { type: 'string', example: 'Archivo A' },
+        physicalBox: { type: 'string', example: 'Gaveta 2' },
+        physicalNotes: { type: 'string', example: 'Carpeta azul con separador rojo' },
         isPublic: { type: 'boolean' },
       },
     },
@@ -291,7 +325,12 @@ export class DocumentController {
   }
 
   @Get('archive/stats')
-  @ApiOperation({ summary: 'Obtener estadísticas del archivo histórico' })
+  @ApiOperation({
+    summary: 'Obtener estadísticas del archivo histórico (flujo congelado)',
+    description:
+      'Este endpoint pertenece a un módulo heredado que no forma parte de la demo principal del piloto, aunque se mantiene disponible a nivel técnico.',
+    deprecated: true,
+  })
   @ApiResponse({
     status: 200,
     description: 'Total archivados y distribución por categoría',
@@ -301,7 +340,12 @@ export class DocumentController {
   }
 
   @Get('archive')
-  @ApiOperation({ summary: 'Listar documentos archivados' })
+  @ApiOperation({
+    summary: 'Listar documentos archivados (flujo congelado)',
+    description:
+      'Endpoint heredado del archivo histórico. Se conserva en backend, pero su interfaz fue retirada del flujo principal del piloto.',
+    deprecated: true,
+  })
   @ApiResponse({
     status: 200,
     description: 'Lista paginada de documentos archivados',
@@ -312,7 +356,10 @@ export class DocumentController {
 
   @Post(':id/restore-from-archive')
   @ApiOperation({
-    summary: 'Restaurar documento desde el archivo histórico al activo',
+    summary: 'Restaurar documento desde archivo histórico (flujo congelado)',
+    description:
+      'Acción heredada del módulo de archivo histórico. Se mantiene por compatibilidad, pero queda fuera del circuito central del piloto.',
+    deprecated: true,
   })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({ status: 200, description: 'Documento restaurado al activo' })
@@ -328,7 +375,10 @@ export class DocumentController {
 
   @Get('calendar')
   @ApiOperation({
-    summary: 'Obtener documentos agrupados por fecha para vista de calendario',
+    summary: 'Obtener documentos para vista de calendario (fuera del MVP)',
+    description:
+      'Endpoint heredado para el módulo calendario. El piloto actual no usa esta vista como parte de su narrativa principal.',
+    deprecated: true,
   })
   @ApiResponse({
     status: 200,
@@ -485,7 +535,10 @@ export class DocumentController {
 
   @Patch(':id/from-template')
   @ApiOperation({
-    summary: 'Regenerar documento desde formulario de plantilla',
+    summary: 'Regenerar documento desde plantilla (flujo heredado)',
+    description:
+      'Se conserva para documentos ya vinculados a plantillas, pero no representa el flujo principal del piloto de tesis.',
+    deprecated: true,
   })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({
@@ -512,8 +565,9 @@ export class DocumentController {
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Actualizar metadata de un documento' })
+  @ApiOperation({ summary: 'Actualizar metadatos de un documento del piloto' })
   @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiBody({ type: UpdateDocumentDto })
   @ApiResponse({ status: 200, description: 'Documento actualizado' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   update(
@@ -570,8 +624,13 @@ export class DocumentController {
   }
 
   @Post('bulk/delete')
-  @Roles(UserRole.ADMIN)
-  @ApiOperation({ summary: 'Eliminar múltiples documentos (Solo ADMIN)' })
+  @Permissions('role:admin')
+  @ApiOperation({
+    summary: 'Eliminar múltiples documentos (operación heredada de administración)',
+    description:
+      'Esta operación masiva no forma parte del flujo principal del piloto. Se conserva como capacidad administrativa avanzada.',
+    deprecated: true,
+  })
   @ApiBody({
     schema: {
       type: 'object',
@@ -602,7 +661,12 @@ export class DocumentController {
   }
 
   @Post(':id/restore')
-  @ApiOperation({ summary: 'Restaurar documento desde la papelera' })
+  @ApiOperation({
+    summary: 'Restaurar documento desde la papelera (flujo congelado)',
+    description:
+      'Acción heredada del módulo de papelera. Se mantiene en backend, pero su interfaz quedó fuera del alcance del piloto.',
+    deprecated: true,
+  })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({ status: 200, description: 'Documento restaurado' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
@@ -611,9 +675,12 @@ export class DocumentController {
   }
 
   @Delete(':id/permanent')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
-    summary: 'Eliminar permanentemente un documento (Solo ADMIN)',
+    summary: 'Eliminar permanentemente un documento (administración avanzada)',
+    description:
+      'Operación administrativa heredada. No forma parte del flujo demostrable del piloto de tesis.',
+    deprecated: true,
   })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({
@@ -638,7 +705,11 @@ export class DocumentController {
   }
 
   @Post(':id/versions/:version/restore')
-  @ApiOperation({ summary: 'Restaurar una versión anterior del documento' })
+  @ApiOperation({
+    summary: 'Restaurar una versión anterior del documento',
+    description:
+      'Esta capacidad se mantiene como soporte de trazabilidad reutilizable. No es el foco narrativo del piloto, pero sigue siendo útil como evidencia técnica mínima.',
+  })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiParam({ name: 'version', description: 'Número de versión a restaurar' })
   @ApiResponse({ status: 200, description: 'Versión restaurada exitosamente' })

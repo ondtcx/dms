@@ -19,8 +19,8 @@ import {
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 
 @ApiTags('users')
@@ -31,7 +31,7 @@ export class UserController {
   //@Public()
   @Get()
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Listar todos los usuarios (Solo ADMIN)',
     description: 'Obtiene una lista de todos los usuarios registrados',
@@ -116,7 +116,7 @@ export class UserController {
 
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Obtener usuario por ID (Solo ADMIN)',
     description: 'Obtiene la información detallada de un usuario específico',
@@ -145,7 +145,7 @@ export class UserController {
 
   @Post()
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Crear nuevo usuario (Solo ADMIN)',
     description: 'Crea un nuevo usuario en el sistema',
@@ -164,7 +164,7 @@ export class UserController {
 
   @Patch(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Actualizar usuario (Solo ADMIN)',
     description: 'Actualiza la información de un usuario existente',
@@ -196,7 +196,7 @@ export class UserController {
 
   @Delete(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Eliminar usuario (Solo ADMIN)',

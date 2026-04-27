@@ -5,7 +5,7 @@ import {
   BadRequestException,
   Logger,
 } from '@nestjs/common';
-import { UserRole } from '../auth/role.enum';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { ShareService } from '../share/share.service';
 import { BatchUpdateDto } from './dto/batch-update.dto';
@@ -358,13 +358,13 @@ export class BatchService {
 
   async listBatches(
     userId: string,
-    userRole: UserRole,
+    userRole: string,
     page: number | string = 1,
     limit: number | string = 20,
   ) {
     const pageNum = parseInt(String(page), 10) || 1;
     const limitNum = parseInt(String(limit), 10) || 20;
-    const where = userRole === UserRole.ADMIN ? {} : { createdById: userId };
+    const where = userRole === 'admin' ? {} : { createdById: userId };
     const skip = (pageNum - 1) * limitNum;
 
     const [batches, total] = await Promise.all([
@@ -399,7 +399,7 @@ export class BatchService {
     };
   }
 
-  async getBatch(id: string, userId: string, userRole: UserRole) {
+  async getBatch(id: string, userId: string, userRole: string) {
     const batch = await this.prisma.documentBatch.findUnique({
       where: { id },
       include: {
@@ -439,14 +439,14 @@ export class BatchService {
       throw new NotFoundException('Lote no encontrado');
     }
 
-    if (userRole !== UserRole.ADMIN && batch.createdById !== userId) {
+    if (userRole !== 'admin' && batch.createdById !== userId) {
       throw new ForbiddenException('No tienes permiso para ver este lote');
     }
 
     return batch;
   }
 
-  async deleteBatch(id: string, userId: string, userRole: UserRole) {
+  async deleteBatch(id: string, userId: string, userRole: string) {
     const batch = await this.getBatch(id, userId, userRole);
 
     const docsCount = await this.prisma.document.count({
@@ -477,7 +477,7 @@ export class BatchService {
   async exportBatch(
     id: string,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
     res: Response,
   ) {
     const batch = await this.getBatch(id, userId, userRole);

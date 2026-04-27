@@ -19,13 +19,13 @@ import { PermissionService } from './permission.service';
 import { GrantDocumentPermissionDto } from './dto/grant-document-permission.dto';
 import { ExplainPermissionDto } from './dto/explain-permission.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('permissions')
 @ApiBearerAuth()
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard)
 @Controller('permissions')
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
@@ -33,7 +33,7 @@ export class PermissionController {
   // ============ Permisos de Documentos ============
 
   @Post('documents/:id/grant')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Otorgar permisos específicos sobre un documento' })
   @ApiResponse({ status: 201, description: 'Permiso otorgado exitosamente' })
   @ApiResponse({
@@ -53,7 +53,7 @@ export class PermissionController {
   }
 
   @Delete('documents/permissions/:id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Revocar permiso específico de documento' })
   @ApiResponse({ status: 200, description: 'Permiso revocado exitosamente' })
   @ApiResponse({ status: 404, description: 'Permiso no encontrado' })
@@ -69,7 +69,7 @@ export class PermissionController {
   }
 
   @Post('explain')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Explicar por qué un usuario tiene (o no) acceso a un documento' })
   @ApiResponse({ status: 200, description: 'Análisis detallado de permisos del usuario sobre el documento' })
   @ApiResponse({ status: 404, description: 'Documento o usuario no encontrado' })

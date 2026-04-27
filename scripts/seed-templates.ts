@@ -736,7 +736,7 @@ async function main() {
         email: SYSTEM_USER_EMAIL,
         password: 'hashed_password', // This should be properly hashed
         name: 'Sistema',
-        role: 'admin',
+        role: { connect: { name: 'admin' } },
       },
     });
     console.log('✅ System user created');

@@ -18,8 +18,8 @@ import {
 import { AcademicYearService } from './academic-year.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('academic-years')
 @ApiBearerAuth('JWT-auth')
@@ -51,7 +51,7 @@ export class AcademicYearController {
   }
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Crear nuevo año lectivo' })
   @ApiResponse({ status: 201, description: 'Año lectivo creado exitosamente' })
   create(@Body() dto: CreateAcademicYearDto) {
@@ -59,7 +59,7 @@ export class AcademicYearController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Actualizar un año lectivo' })
   update(
     @Param('id', ParseIntPipe) id: number,
@@ -69,7 +69,7 @@ export class AcademicYearController {
   }
 
   @Patch(':id/set-current')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Marcar un año lectivo como el actual' })
   setCurrent(@Param('id', ParseIntPipe) id: number) {
@@ -77,7 +77,7 @@ export class AcademicYearController {
   }
 
   @Patch(':id/deactivate')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:

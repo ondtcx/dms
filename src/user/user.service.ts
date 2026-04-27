@@ -4,16 +4,18 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { User } from '@prisma/client';
+import { User, Role } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
+
+export type UserWithoutPassword = Omit<User, 'password'> & { role?: Role | null };
 
 @Injectable()
 export class UserService {
   constructor(private prisma: PrismaService) {}
 
-  async create(user: CreateUserDto): Promise<Omit<User, 'password'>> {
+  async create(user: CreateUserDto): Promise<UserWithoutPassword> {
     const existingUser = await this.prisma.user.findUnique({
       where: { email: user.email },
     });
@@ -29,6 +31,7 @@ export class UserService {
         ...user,
         password: hashedPassword,
       },
+      include: { role: true },
     });
 
     const { password, ...result } = newUser;
@@ -36,12 +39,13 @@ export class UserService {
     return result;
   }
 
-  async findAll(): Promise<Omit<User, 'password'>[]> {
+  async findAll(): Promise<UserWithoutPassword[]> {
     return this.prisma.user.findMany({
       select: {
         id: true,
         email: true,
         name: true,
+        roleId: true,
         role: true,
         departmentId: true,
         phoneNumber: true,
@@ -65,13 +69,14 @@ export class UserService {
     });
   }
 
-  async findById(id: string): Promise<Omit<User, 'password'>> {
+  async findById(id: string): Promise<UserWithoutPassword> {
     const userFound = await this.prisma.user.findUnique({
       where: { id: id },
       select: {
         id: true,
         email: true,
         name: true,
+        roleId: true,
         role: true,
         departmentId: true,
         phoneNumber: true,
@@ -88,13 +93,14 @@ export class UserService {
     return userFound;
   }
 
-  async findByEmail(email: string): Promise<User> {
+  async findByEmail(email: string): Promise<User & { role?: Role | null }> {
     const userFound = await this.prisma.user.findUnique({
       where: { email: email },
       select: {
         id: true,
         email: true,
         name: true,
+        roleId: true,
         role: true,
         departmentId: true,
         phoneNumber: true,
@@ -115,7 +121,7 @@ export class UserService {
   async update(
     id: string,
     user: UpdateUserDto,
-  ): Promise<Omit<User, 'password'>> {
+  ): Promise<UserWithoutPassword> {
     await this.findById(id); // Check if user exists
 
     const updatedUser = await this.prisma.user.update({
@@ -125,6 +131,7 @@ export class UserService {
         id: true,
         email: true,
         name: true,
+        roleId: true,
         role: true,
         departmentId: true,
         phoneNumber: true,

@@ -7,20 +7,21 @@ import {
   IsArray,
   ValidateNested,
   Length,
+  IsUUID,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
-class StateDefinition {
+export class WorkflowStateDefinitionDto {
   @ApiProperty({ description: 'Nombre del estado', example: 'pending_coord' })
   @IsString()
   state: string;
 
   @ApiProperty({
-    description: 'Rol requerido para aprobar',
-    example: 'coordinador',
+    description: 'UUID del rol requerido para aprobar',
+    example: '123e4567-e89b-12d3-a456-426614174000',
   })
-  @IsString()
-  role: string;
+  @IsUUID()
+  roleId: string;
 
   @ApiProperty({ description: 'Orden del estado en el workflow', example: 1 })
   @IsInt()
@@ -69,16 +70,16 @@ export class CreateWorkflowTemplateDto {
 
   @ApiProperty({
     description: 'Definiciones de estados del workflow',
-    type: [StateDefinition],
+    type: [WorkflowStateDefinitionDto],
     example: [
-      { state: 'pending_coord', role: 'coordinador', order: 1 },
-      { state: 'pending_rector', role: 'rector', order: 2 },
+      { state: 'pending_coord', roleId: '123e4567-e89b-12d3-a456-426614174000', order: 1 },
+      { state: 'pending_rector', roleId: '123e4567-e89b-12d3-a456-426614174001', order: 2 },
     ],
   })
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => StateDefinition)
-  stateDefinitions: StateDefinition[];
+  @Type(() => WorkflowStateDefinitionDto)
+  states: WorkflowStateDefinitionDto[];
 
   @ApiPropertyOptional({
     description: 'Auto-asignar aprobadores según rol',
@@ -100,13 +101,14 @@ export class CreateWorkflowTemplateDto {
 
   @ApiPropertyOptional({
     description:
-      'Roles que pueden iniciar esta plantilla. Vacío = sin restricción. ADMIN bypasea siempre.',
-    example: ['profesor', 'coordinador'],
+      'IDs de Roles que pueden iniciar esta plantilla. Vacío = sin restricción.',
+    example: ['123e4567-e89b-12d3-a456-426614174000', '123e4567-e89b-12d3-a456-426614174001'],
     default: [],
   })
   @IsArray()
+  @IsUUID('all', { each: true })
   @IsOptional()
-  allowedInitiatorRoles?: string[];
+  initiatorRoleIds?: string[];
 
   @ApiPropertyOptional({
     description: 'Si la plantilla está activa',

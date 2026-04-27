@@ -6,12 +6,15 @@ import { UserModule } from '../user/user.module';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthGuard } from './guards/auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
-import { RolesGuard } from './guards/roles.guard';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { PermissionsGuard } from './guards/permissions.guard';
+import { ConfigService } from '@nestjs/config';
+
+import { RoleModule } from '../role/role.module';
 
 @Module({
   imports: [
     UserModule,
+    RoleModule,
     /* JwtModule.register({
       global: true,
       secret: jwtConstants.secret,
@@ -36,7 +39,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     },
     {
       provide: APP_GUARD,
-      useClass: RolesGuard,
+      useClass: PermissionsGuard,
     },
     PrismaService,
   ],

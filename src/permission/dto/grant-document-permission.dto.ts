@@ -8,7 +8,7 @@ import {
   IsDateString,
   ValidateIf,
 } from 'class-validator';
-import { UserRole } from '../../auth/role.enum';
+
 
 export class GrantDocumentPermissionDto {
   @ApiPropertyOptional({
@@ -22,12 +22,11 @@ export class GrantDocumentPermissionDto {
 
   @ApiPropertyOptional({
     description: 'Rol al que se otorga el permiso',
-    enum: UserRole,
-    example: UserRole.PROFESOR,
+    example: 'cuid123',
   })
-  @IsEnum(UserRole)
+  @IsString()
   @IsOptional()
-  role?: UserRole;
+  roleId?: string;
 
   @ApiPropertyOptional({
     description: 'ID del departamento al que se otorga el permiso',

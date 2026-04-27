@@ -146,6 +146,16 @@ const defaultWorkflowTemplates = [
 async function main() {
   console.log('🌱 Iniciando seeding de plantillas de workflow...\n');
 
+  const roles = await prisma.role.findMany({
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+  const roleIdByName = new Map(
+    roles.map((role) => [role.name.toLowerCase(), role.id]),
+  );
+
   let createdCount = 0;
   let skippedCount = 0;
 
@@ -165,17 +175,40 @@ async function main() {
       }
 
       // Crear plantilla
+      const states = template.stateDefinitions
+        .map((stateDefinition) => ({
+          ...stateDefinition,
+          roleId: roleIdByName.get(stateDefinition.role.toLowerCase()) ?? null,
+        }))
+        .filter((stateDefinition) => !!stateDefinition.roleId) as Array<{
+        state: string;
+        order: number;
+        requiresComment: boolean;
+        roleId: string;
+      }>;
+
       const created = await prisma.workflowTemplate.create({
-        data: template,
+        data: {
+          name: template.name,
+          description: template.description,
+          categoryId: template.categoryId,
+          autoAssign: template.autoAssign,
+          requiresComment: template.requiresComment,
+          isActive: template.isActive,
+          states: {
+            create: states.map((state) => ({
+              state: state.state,
+              roleId: state.roleId,
+              order: state.order,
+              requiresComment: state.requiresComment,
+            })),
+          },
+        },
       });
 
       console.log(`✅ Plantilla creada: ${created.name}`);
-      console.log(
-        `   - Estados: ${(created.stateDefinitions as any[]).length}`,
-      );
-      console.log(
-        `   - Roles: ${(created.stateDefinitions as any[]).map((s: any) => s.role).join(' → ')}`,
-      );
+      console.log(`   - Estados: ${states.length}`);
+      console.log(`   - Roles: ${states.map((state) => state.roleId).join(' → ')}`);
       console.log('');
       createdCount++;
     } catch (error) {

@@ -13,14 +13,13 @@ import { ApproveWorkflowDto } from './dto/approve-workflow.dto';
 import { MyInitiatedQueryDto } from './dto/my-initiated-query.dto';
 import { WorkflowStatus } from './workflow-status.enum';
 import { ApprovalAction } from './approval-action.enum';
-import { UserRole } from '../auth/role.enum';
-import { UserRole as PrismaUserRole } from '@prisma/client';
+
 import { NotificationService } from '../notification/notification.service';
 import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
 
 interface StateDefinition {
   state: string;
-  role: string;
+  roleId: string;
   order: number;
   requiresComment?: boolean;
 }
@@ -59,15 +58,25 @@ export class WorkflowService {
       }
     }
 
-    // Validar stateDefinitions
-    this.validateStateDefinitions(createDto.stateDefinitions);
+    // Validar states
+    this.validateStateDefinitions(createDto.states);
 
-    const { sectionIds, ...rest } = createDto;
+    const { sectionIds, initiatorRoleIds, states, ...rest } = createDto;
 
     return this.prisma.workflowTemplate.create({
       data: {
         ...rest,
-        stateDefinitions: createDto.stateDefinitions as any,
+        initiatorRoles: {
+          create: initiatorRoleIds?.map((roleId) => ({ roleId })) || [],
+        },
+        states: {
+          create: states.map((state) => ({
+            state: state.state,
+            roleId: state.roleId,
+            order: state.order,
+            requiresComment: state.requiresComment || false,
+          })),
+        },
         sections: sectionIds?.length
           ? { connect: sectionIds.map((id) => ({ id })) }
           : undefined,
@@ -75,6 +84,8 @@ export class WorkflowService {
       include: {
         category: true,
         sections: true,
+        initiatorRoles: true,
+        states: true,
       },
     });
   }
@@ -136,9 +147,9 @@ export class WorkflowService {
       }
     }
 
-    // Validar stateDefinitions si se actualizan
-    if (updateDto.stateDefinitions) {
-      this.validateStateDefinitions(updateDto.stateDefinitions);
+    // Validar states si se actualizan
+    if (updateDto.states) {
+      this.validateStateDefinitions(updateDto.states);
     }
 
     // Verificar categoría si se actualiza
@@ -154,15 +165,33 @@ export class WorkflowService {
       }
     }
 
-    const { sectionIds, ...rest } = updateDto;
+    const { sectionIds, initiatorRoleIds, states, ...rest } = updateDto;
 
     return this.prisma.workflowTemplate.update({
       where: { id },
       data: {
         ...rest,
-        stateDefinitions: updateDto.stateDefinitions
-          ? (updateDto.stateDefinitions as any)
-          : undefined,
+        ...(initiatorRoleIds !== undefined && {
+          initiatorRoles: {
+            deleteMany: {},
+            ...(initiatorRoleIds.length > 0 && {
+              create: initiatorRoleIds.map((roleId) => ({ roleId })),
+            }),
+          },
+        }),
+        ...(states !== undefined && {
+          states: {
+            deleteMany: {},
+            ...(states.length > 0 && {
+              create: states.map((state) => ({
+                state: state.state,
+                roleId: state.roleId,
+                order: state.order,
+                requiresComment: state.requiresComment || false,
+              })),
+            }),
+          },
+        }),
         ...(sectionIds !== undefined
           ? { sections: { set: sectionIds.map((id) => ({ id })) } }
           : {}),
@@ -170,6 +199,8 @@ export class WorkflowService {
       include: {
         category: true,
         sections: true,
+        initiatorRoles: true,
+        states: true,
       },
     });
   }
@@ -217,7 +248,7 @@ export class WorkflowService {
     const accessFilter = userForAccess
       ? buildDocumentAccessFilter({
           ...userForAccess,
-          role: userForAccess.role as unknown as UserRole,
+          role: userForAccess.role as unknown as string,
         })
       : null;
 
@@ -270,6 +301,10 @@ export class WorkflowService {
     // Verificar que la plantilla existe y está activa
     const template = await this.prisma.workflowTemplate.findUnique({
       where: { id: initiateDto.templateId },
+      include: {
+        initiatorRoles: true,
+        states: { include: { role: true }, orderBy: { order: 'asc' } },
+      },
     });
 
     if (!template) {
@@ -286,12 +321,12 @@ export class WorkflowService {
 
     // Verificar que el rol del usuario puede iniciar esta plantilla
     // ADMIN bypasea siempre — acceso total por rol, no por lista
-    const isAdmin = userForAccess?.role === UserRole.ADMIN;
+    const isAdmin = userForAccess?.role?.name === 'admin';
     if (!isAdmin) {
-      const initiatorRoles = (template.allowedInitiatorRoles as string[]) ?? [];
+      const initiatorRoleIds = template.initiatorRoles.map((initiatorRole) => initiatorRole.roleId) ?? [];
       if (
-        initiatorRoles.length > 0 &&
-        !initiatorRoles.includes(userForAccess?.role ?? '')
+        initiatorRoleIds.length > 0 &&
+        !initiatorRoleIds.includes(userForAccess?.role?.id ?? '')
       ) {
         throw new ForbiddenException(
           `Tu rol no tiene permiso para iniciar el workflow "${template.name}"`,
@@ -300,8 +335,12 @@ export class WorkflowService {
     }
 
     // Obtener el primer estado del workflow
-    const stateDefinitions =
-      template.stateDefinitions as unknown as StateDefinition[];
+    const stateDefinitions = template.states.map(s => ({
+      state: s.state,
+      roleId: s.roleId,
+      order: s.order,
+      requiresComment: s.requiresComment,
+    }));
     const firstState = stateDefinitions.sort((a, b) => a.order - b.order)[0];
 
     if (!firstState) {
@@ -312,12 +351,12 @@ export class WorkflowService {
 
     // Verificar que hay usuarios disponibles para el primer estado
     const usersForFirst = await this.findUsersForState(
-      firstState.role,
+      firstState.roleId,
       documentDeptId,
     );
     if (usersForFirst.length === 0) {
       throw new BadRequestException(
-        `No hay usuarios con el rol "${firstState.role}" disponibles para la etapa "${firstState.state}". No se puede iniciar el workflow.`,
+        `No hay usuarios con el rol requerido disponibles para la etapa "${firstState.state}". No se puede iniciar el workflow.`,
       );
     }
 
@@ -369,7 +408,7 @@ export class WorkflowService {
 
     // Notificar a los usuarios con el rol requerido para el primer estado
     await this.notifyUsersForState(
-      firstState.role,
+      firstState.roleId,
       workflow.id,
       documentId,
       document.versions?.[0]?.filename,
@@ -427,15 +466,14 @@ export class WorkflowService {
     }
 
     // ADMIN y DIRECTOR ven todo
-    if (user?.role === UserRole.ADMIN || user?.role === UserRole.RECTOR) {
+    if (user?.role?.name === 'admin' || user?.role?.name === 'rector') {
       return workflow;
     }
 
     const isInitiator = workflow.initiatedById === userId;
     const hasApproved = (workflow.approvals || []).some((a) => a.userId === userId);
-    const states = (workflow.template as any)
-      .stateDefinitions as unknown as StateDefinition[];
-    const hasRoleInTemplate = states.some((s) => s.role === user?.role);
+    const states = (workflow.template as any).states as any[];
+    const hasRoleInTemplate = states.some((s) => s.roleId === user?.role?.id);
 
     if (!isInitiator && !hasApproved && !hasRoleInTemplate) {
       throw new ForbiddenException('No tienes acceso a este workflow');
@@ -446,16 +484,16 @@ export class WorkflowService {
 
   async getPendingWorkflows(userId: string) {
     const NON_APPROVER_ROLES = [
-      UserRole.PADRE,
-      UserRole.ESTUDIANTE,
-      UserRole.USER,
+      'padre',
+      'estudiante',
+      'user',
     ];
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { role: true },
     });
 
-    if (!user || NON_APPROVER_ROLES.includes(user.role as UserRole)) return [];
+    if (!user || NON_APPROVER_ROLES.includes(user.role?.name as string)) return [];
 
     return this.prisma.documentWorkflow.findMany({
       where: {
@@ -463,7 +501,7 @@ export class WorkflowService {
         approvals: { some: { userId, action: null } },
       },
       include: {
-        template: true,
+        template: { include: { states: true, initiatorRoles: true } },
         document: { select: { id: true, versions: { select: { filename: true }, take: 1 }, description: true } },
         initiatedBy: { select: { id: true, name: true, email: true } },
         approvals: {
@@ -483,7 +521,7 @@ export class WorkflowService {
     const workflow = await this.prisma.documentWorkflow.findUnique({
       where: { id: workflowId },
       include: {
-        template: true,
+        template: { include: { states: true } },
         document: { include: { versions: { select: { filename: true }, take: 1 } } },
       },
     });
@@ -504,6 +542,7 @@ export class WorkflowService {
     // Obtener usuario
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: { role: true },
     });
 
     if (!user) {
@@ -511,8 +550,7 @@ export class WorkflowService {
     }
 
     // Obtener definición del estado actual (necesaria para requiresComment + advanceWorkflow)
-    const stateDefinitions = (workflow.template as any)
-      .stateDefinitions as unknown as StateDefinition[];
+    const stateDefinitions = workflow.template.states as unknown as StateDefinition[];
     const currentState = stateDefinitions.find(
       (s) => s.state === workflow.currentState,
     );
@@ -523,13 +561,20 @@ export class WorkflowService {
       );
     }
 
+    const isAdmin = user.role?.name === 'admin';
+    if (!isAdmin && currentState.roleId && user.role?.id !== currentState.roleId) {
+      throw new ForbiddenException(
+        'Tu rol no tiene permiso para aprobar el estado actual de este workflow',
+      );
+    }
+
     // Buscar pre-asignación pendiente del usuario para el estado actual
     let approval = await this.prisma.workflowApproval.findFirst({
       where: { workflowId, userId, state: workflow.currentState, action: null },
     });
 
     if (!approval) {
-      if (user.role !== UserRole.ADMIN) {
+      if (!isAdmin) {
         throw new ForbiddenException(
           'No tienes una aprobación pendiente asignada en este workflow',
         );
@@ -648,12 +693,13 @@ export class WorkflowService {
     // Verificar que el usuario sea el iniciador o admin
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: { role: true },
     });
 
     if (
       workflow.initiatedById !== userId &&
-      user?.role !== UserRole.ADMIN &&
-      user?.role !== UserRole.RECTOR
+      user?.role?.name !== 'admin' &&
+      user?.role?.name !== 'rector'
     ) {
       throw new ForbiddenException(
         'Solo el iniciador o un administrador pueden cancelar el workflow',
@@ -767,7 +813,7 @@ export class WorkflowService {
         include: {
           document: { select: { id: true, versions: { select: { filename: true }, take: 1 }, description: true } },
           template: {
-            select: { id: true, name: true, stateDefinitions: true },
+            select: { id: true, name: true, states: true },
           },
         },
         orderBy: { createdAt: 'desc' },
@@ -891,7 +937,7 @@ export class WorkflowService {
         (workflow.document).uploadedBy?.departmentId ??
         null;
 
-      const usersForNext = await this.findUsersForState(nextState.role, deptId);
+      const usersForNext = await this.findUsersForState(nextState.roleId, deptId);
 
       // Limpiar aprobaciones pendientes no utilizadas del estado anterior
       await this.prisma.workflowApproval.deleteMany({
@@ -918,7 +964,7 @@ export class WorkflowService {
 
       // Notificar a los usuarios con el rol requerido para el siguiente estado
       await this.notifyUsersForState(
-        nextState.role,
+        nextState.roleId,
         workflowId,
         workflow.document?.id,
         workflow.document?.versions?.[0]?.filename,
@@ -935,21 +981,24 @@ export class WorkflowService {
   }
 
   private async findUsersForState(
-    role: string,
+    roleId: string,
     documentDepartmentId: number | null,
   ): Promise<{ id: string }[]> {
-    const GLOBAL_ROLES = [UserRole.ADMIN, UserRole.RECTOR];
+    const roleRecord = await this.prisma.role.findUnique({ where: { id: roleId } });
+    if (!roleRecord) return [];
 
-    if (GLOBAL_ROLES.includes(role as UserRole) || !documentDepartmentId) {
+    const GLOBAL_ROLES = ['admin', 'rector'];
+
+    if (GLOBAL_ROLES.includes(roleRecord.name) || !documentDepartmentId) {
       return this.prisma.user.findMany({
-        where: { role: role as PrismaUserRole },
+        where: { roleId },
         select: { id: true },
       });
     }
 
     const deptUsers = await this.prisma.user.findMany({
       where: {
-        role: role as PrismaUserRole,
+        roleId,
         departmentId: documentDepartmentId,
       },
       select: { id: true },
@@ -958,7 +1007,7 @@ export class WorkflowService {
     if (deptUsers.length > 0) return deptUsers;
     // Fallback: si nadie en el dpto, usar todos (evita bloqueo del workflow)
     return this.prisma.user.findMany({
-      where: { role: role as PrismaUserRole },
+      where: { roleId },
       select: { id: true },
     });
   }

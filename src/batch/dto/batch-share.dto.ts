@@ -8,7 +8,7 @@ import {
   IsString,
   IsDateString,
 } from 'class-validator';
-import { UserRole } from '../../auth/role.enum';
+
 
 export class BatchShareDto {
   @ApiProperty({
@@ -26,11 +26,10 @@ export class BatchShareDto {
 
   @ApiPropertyOptional({
     description: 'Rol específico (opcional)',
-    enum: UserRole,
   })
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsString()
+  roleId?: string;
 
   @ApiPropertyOptional({ description: 'ID del departamento (opcional)' })
   @IsOptional()

@@ -6,7 +6,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { GrantDocumentPermissionDto } from './dto/grant-document-permission.dto';
 import { ExplainPermissionDto } from './dto/explain-permission.dto';
-import { UserRole } from '../auth/role.enum';
+
 
 @Injectable()
 export class PermissionService {
@@ -19,11 +19,11 @@ export class PermissionService {
     grantedById: string,
     grantDto: GrantDocumentPermissionDto,
   ) {
-    const { userId, role, departmentId, ...permissions } = grantDto;
+    const { userId, roleId, departmentId, ...permissions } = grantDto;
 
-    if (!userId && !role && !departmentId) {
+    if (!userId && !roleId && !departmentId) {
       throw new BadRequestException(
-        'Debe proporcionar al menos userId, role o departmentId',
+        'Debe proporcionar al menos userId, roleId o departmentId',
       );
     }
 
@@ -69,7 +69,7 @@ export class PermissionService {
       data: {
         documentId,
         userId,
-        role,
+        roleId,
         departmentId,
         grantedById,
         ...permissions,
@@ -117,6 +117,7 @@ export class PermissionService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      include: { role: true },
     });
 
     if (!user) {
@@ -130,7 +131,7 @@ export class PermissionService {
           where: {
             OR: [
               { userId: user.id },
-              { role: user.role },
+              { roleId: user.roleId },
               ...(user.departmentId ? [{ departmentId: user.departmentId }] : []),
             ],
           },
@@ -152,11 +153,11 @@ export class PermissionService {
     let hasAccess = false;
     const reasons: string[] = [];
 
-    if (user.role === UserRole.ADMIN || user.role === UserRole.RECTOR) {
+    if (user.role?.name === 'admin' || user.role?.name === 'rector') {
       return {
         hasAccess: true,
-        role: user.role,
-        reasons: [`Acceso total concedido por tener rol privilegiado: ${user.role}`]
+        roleId: user.roleId,
+        reasons: [`Acceso total concedido por tener rol privilegiado: ${user.role.name}`]
       };
     }
 
@@ -175,8 +176,8 @@ export class PermissionService {
       reasons.push('El usuario cuenta con un permiso de visualización explícito activo sobre este documento');
     }
 
-    switch (user.role as UserRole) {
-      case UserRole.COORDINADOR:
+    switch (user.role?.name) {
+      case 'coordinador':
         if (document.isPublic) {
           hasAccess = true;
           reasons.push('El documento es público');
@@ -193,7 +194,7 @@ export class PermissionService {
         }
         break;
 
-      case UserRole.PROFESOR:
+      case 'profesor':
         if (document.isPublic) {
           hasAccess = true;
           reasons.push('El documento es público');
@@ -211,7 +212,7 @@ export class PermissionService {
         }
         break;
 
-      case UserRole.SECRETARIO:
+      case 'secretario':
         if (document.isPublic) {
           hasAccess = true;
           reasons.push('El documento es público');
@@ -222,7 +223,7 @@ export class PermissionService {
         }
         break;
 
-      case UserRole.ESTUDIANTE:
+      case 'estudiante':
         if (document.isPublic) {
           const isStudentInCourse = document.academic?.course?.teachers?.some((t) => t.userId === user.id);
           const isStudentInSubject = document.academic?.subject?.teachers?.some((t) => t.userId === user.id);
@@ -234,7 +235,7 @@ export class PermissionService {
         }
         break;
 
-      case UserRole.PADRE:
+      case 'padre':
       default:
         if (document.isPublic) {
           hasAccess = true;
@@ -249,7 +250,7 @@ export class PermissionService {
 
     return {
       hasAccess,
-      role: user.role,
+      roleId: user.roleId,
       reasons: [...new Set(reasons)],
     };
   }

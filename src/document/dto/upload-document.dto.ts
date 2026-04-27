@@ -1,6 +1,15 @@
 // src/documents/dto/upload-document.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsOptional, IsBoolean, IsInt, ValidateNested } from 'class-validator';
+import { PilotDocumentStatus } from '@prisma/client';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  ValidateNested,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { toBoolean } from '../../common/helpers/transform.helper';
 
@@ -49,10 +58,69 @@ export class DocumentSearchDto {
 }
 
 export class UploadDocumentDto {
+  @ApiPropertyOptional({ description: 'Título del documento', example: 'Solicitud de permiso' })
+  @IsString()
+  @IsOptional()
+  title?: string;
+
   @ApiPropertyOptional({ description: 'Descripción del documento', example: 'Contrato de servicio 2024' })
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Fecha propia del documento', example: '2026-04-22' })
+  @IsDateString()
+  @IsOptional()
+  documentDate?: string;
+
+  @ApiPropertyOptional({ description: 'Remitente del documento', example: 'Secretaría General' })
+  @IsString()
+  @IsOptional()
+  sender?: string;
+
+  @ApiPropertyOptional({ description: 'Destinatario del documento', example: 'Rectorado' })
+  @IsString()
+  @IsOptional()
+  recipient?: string;
+
+  @ApiPropertyOptional({ description: 'Palabras clave separadas por comas', example: 'permiso, docente, abril' })
+  @IsString()
+  @IsOptional()
+  keywords?: string;
+
+  @ApiPropertyOptional({
+    description: 'Estado del documento para el piloto de secretaría',
+    enum: PilotDocumentStatus,
+    example: PilotDocumentStatus.REGISTRADO,
+  })
+  @IsEnum(PilotDocumentStatus)
+  @IsOptional()
+  status?: PilotDocumentStatus;
+
+  @ApiPropertyOptional({ description: 'Edificio donde se archiva el documento', example: 'Edificio principal' })
+  @IsString()
+  @IsOptional()
+  physicalBuilding?: string;
+
+  @ApiPropertyOptional({ description: 'Oficina donde se archiva el documento', example: 'Secretaría' })
+  @IsString()
+  @IsOptional()
+  physicalOffice?: string;
+
+  @ApiPropertyOptional({ description: 'Archivo o estante físico', example: 'Archivo A' })
+  @IsString()
+  @IsOptional()
+  physicalArchive?: string;
+
+  @ApiPropertyOptional({ description: 'Gaveta o caja física', example: 'Gaveta 2' })
+  @IsString()
+  @IsOptional()
+  physicalBox?: string;
+
+  @ApiPropertyOptional({ description: 'Observaciones de ubicación física', example: 'Carpeta azul con separador rojo' })
+  @IsString()
+  @IsOptional()
+  physicalNotes?: string;
 
   @ApiPropertyOptional({ description: 'ID de la categoría del documento', example: 2 })
   @IsInt()

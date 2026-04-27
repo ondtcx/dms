@@ -1,6 +1,14 @@
 // src/documents/dto/query-documents.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsInt, Min } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsInt,
+  Min,
+  IsDateString,
+  IsIn,
+} from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class QueryDocumentDto {
@@ -11,6 +19,42 @@ export class QueryDocumentDto {
   @IsString()
   @IsOptional()
   search?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por estado documental del piloto',
+    example: 'REGISTRADO',
+    enum: ['REGISTRADO', 'EN_REVISION', 'ARCHIVADO'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['REGISTRADO', 'EN_REVISION', 'ARCHIVADO'])
+  status?: 'REGISTRADO' | 'EN_REVISION' | 'ARCHIVADO';
+
+  @ApiPropertyOptional({
+    description: 'Filtrar por modalidad documental',
+    example: 'DIGITAL',
+    enum: ['PHYSICAL', 'DIGITAL'],
+  })
+  @IsOptional()
+  @IsString()
+  @IsIn(['PHYSICAL', 'DIGITAL'])
+  modality?: 'PHYSICAL' | 'DIGITAL';
+
+  @ApiPropertyOptional({
+    description: 'Filtrar documentos desde esta fecha (inclusive)',
+    example: '2026-01-01',
+  })
+  @IsOptional()
+  @IsDateString()
+  dateFrom?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filtrar documentos hasta esta fecha (inclusive)',
+    example: '2026-12-31',
+  })
+  @IsOptional()
+  @IsDateString()
+  dateTo?: string;
 
   @ApiPropertyOptional({
     description: 'Filtrar por ID de categoría',

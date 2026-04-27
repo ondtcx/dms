@@ -17,11 +17,11 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
-import { Roles } from './decorators/roles.decorator';
+import { Permissions } from '../auth/decorators/permissions.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { UserRole } from './role.enum';
+
 
 @ApiTags('auth')
 @Controller('auth')
@@ -61,7 +61,7 @@ export class AuthController {
   }
 
   @Post('register')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @HttpCode(HttpStatus.CREATED)
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({

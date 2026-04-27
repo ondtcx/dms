@@ -15,7 +15,7 @@ import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CreateDocumentFromTemplateDto } from './dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from './dto/update-document-from-template.dto';
 import { CreateBatchFromTemplateDto } from './dto/create-batch-from-template.dto';
-import { UserRole } from '../auth/role.enum';
+
 import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
@@ -30,7 +30,11 @@ const TEMPLATE_INCLUDE = {
       name: true,
       color: true,
       icon: true,
-      allowedRoles: true,
+      categoryRoles: {
+        select: {
+          roleId: true,
+        },
+      },
       section: { select: { id: true, name: true } },
     },
   },
@@ -54,18 +58,45 @@ export class DocumentTemplateService {
 
   /**
    * Retorna los IDs de categorías que el rol puede acceder.
-   * Vacío = sin restricción (categoría sin allowedRoles).
+   * Vacío = sin restricción (categoría sin relaciones de roles).
    */
-  private async getAllowedCategoryIds(userRole: UserRole): Promise<number[]> {
+  private async getAllowedCategoryIds(userRoleId: string | null): Promise<number[]> {
     const categories = await this.prisma.category.findMany({
-      select: { id: true, allowedRoles: true },
+      select: {
+        id: true,
+        categoryRoles: {
+          select: {
+            roleId: true,
+          },
+        },
+      },
     });
+
     return categories
       .filter((cat) => {
-        const roles = cat.allowedRoles as string[];
-        return roles.length === 0 || roles.includes(userRole);
+        const roleIds = cat.categoryRoles.map((categoryRole) => categoryRole.roleId);
+        return roleIds.length === 0 || (!!userRoleId && roleIds.includes(userRoleId));
       })
       .map((cat) => cat.id);
+  }
+
+  private async getUserRoleContext(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        role: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return {
+      roleId: user?.role?.id ?? null,
+      roleName: user?.role?.name ?? null,
+    };
   }
 
   /**
@@ -134,7 +165,7 @@ export class DocumentTemplateService {
   async findAll(
     query: QueryDocumentTemplateDto,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const {
       search,
@@ -149,8 +180,9 @@ export class DocumentTemplateService {
 
     // Filtrar por rol: admin ve todo; demás usuarios ven sus propias plantillas +
     // plantillas sin categoría (sin restricción) + plantillas de categorías permitidas.
-    if (userRole !== UserRole.ADMIN) {
-      const allowedCategoryIds = await this.getAllowedCategoryIds(userRole);
+    if (userRole !== 'admin') {
+      const { roleId } = await this.getUserRoleContext(userId);
+      const allowedCategoryIds = await this.getAllowedCategoryIds(roleId);
       where.AND = [
         { isActive: true },
         {
@@ -217,7 +249,7 @@ export class DocumentTemplateService {
     };
   }
 
-  async findOne(id: number, userId: string, userRole: UserRole) {
+  async findOne(id: number, userId: string, userRole: string) {
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id },
       include: {
@@ -235,7 +267,7 @@ export class DocumentTemplateService {
 
     // Solo el creador, admin o si está activa pueden ver
     if (
-      userRole !== UserRole.ADMIN &&
+      userRole !== 'admin' &&
       template.createdById !== userId &&
       !template.isActive
     ) {
@@ -249,12 +281,12 @@ export class DocumentTemplateService {
     id: number,
     updateDocumentTemplateDto: UpdateDocumentTemplateDto,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const template = await this.findOne(id, userId, userRole);
 
     // Solo el creador o admin pueden actualizar
-    if (userRole !== UserRole.ADMIN && template.createdById !== userId) {
+    if (userRole !== 'admin' && template.createdById !== userId) {
       throw new ForbiddenException(
         'No tienes permiso para actualizar esta plantilla',
       );
@@ -274,11 +306,11 @@ export class DocumentTemplateService {
     return updatedTemplate;
   }
 
-  async remove(id: number, userId: string, userRole: UserRole) {
+  async remove(id: number, userId: string, userRole: string) {
     const template = await this.findOne(id, userId, userRole);
 
     // Solo el creador o admin pueden eliminar
-    if (userRole !== UserRole.ADMIN && template.createdById !== userId) {
+    if (userRole !== 'admin' && template.createdById !== userId) {
       throw new ForbiddenException(
         'No tienes permiso para eliminar esta plantilla',
       );
@@ -477,7 +509,7 @@ export class DocumentTemplateService {
   async createDocumentFromTemplate(
     createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const { templateId, formData, filename, description, isPublic, sectionId } =
       createDocumentFromTemplateDto;
@@ -499,14 +531,21 @@ export class DocumentTemplateService {
 
     // Usar el categoryId de la plantilla; validar que el rol tenga acceso
     const effectiveCategoryId = template.categoryId ?? null;
-    if (effectiveCategoryId && userRole !== UserRole.ADMIN) {
+    if (effectiveCategoryId && userRole !== 'admin') {
+      const { roleId } = await this.getUserRoleContext(userId);
       const category = await this.prisma.category.findUnique({
         where: { id: effectiveCategoryId },
-        select: { allowedRoles: true },
+        select: {
+          categoryRoles: {
+            select: {
+              roleId: true,
+            },
+          },
+        },
       });
       if (category) {
-        const allowed = category.allowedRoles as string[];
-        if (allowed.length > 0 && !allowed.includes(userRole)) {
+        const allowedRoleIds = category.categoryRoles.map((categoryRole) => categoryRole.roleId);
+        if (allowedRoleIds.length > 0 && !allowedRoleIds.includes(roleId ?? '')) {
           throw new ForbiddenException(
             'Tu rol no tiene permiso para generar documentos con esta plantilla',
           );
@@ -535,7 +574,7 @@ export class DocumentTemplateService {
   async createBatchFromTemplate(
     dto: CreateBatchFromTemplateDto,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const { templateId, batchName, rows, sectionId, isPublic } = dto;
 
@@ -558,14 +597,21 @@ export class DocumentTemplateService {
 
     // Usar el categoryId de la plantilla; validar que el rol tenga acceso
     const effectiveCategoryId = template.categoryId ?? null;
-    if (effectiveCategoryId && userRole !== UserRole.ADMIN) {
+    if (effectiveCategoryId && userRole !== 'admin') {
+      const { roleId } = await this.getUserRoleContext(userId);
       const category = await this.prisma.category.findUnique({
         where: { id: effectiveCategoryId },
-        select: { allowedRoles: true },
+        select: {
+          categoryRoles: {
+            select: {
+              roleId: true,
+            },
+          },
+        },
       });
       if (category) {
-        const allowed = category.allowedRoles as string[];
-        if (allowed.length > 0 && !allowed.includes(userRole)) {
+        const allowedRoleIds = category.categoryRoles.map((categoryRole) => categoryRole.roleId);
+        if (allowedRoleIds.length > 0 && !allowedRoleIds.includes(roleId ?? '')) {
           throw new ForbiddenException(
             'Tu rol no tiene permiso para generar documentos con esta plantilla',
           );
@@ -706,7 +752,7 @@ export class DocumentTemplateService {
     return sampleData;
   }
 
-  async generatePreview(id: number, userId: string, userRole: UserRole) {
+  async generatePreview(id: number, userId: string, userRole: string) {
     // Verificar que la plantilla existe y el usuario tiene acceso
     const template = await this.findOne(id, userId, userRole);
 
@@ -734,7 +780,7 @@ export class DocumentTemplateService {
   async getTemplateThumbnail(
     id: number,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ): Promise<string | null> {
     // Verificar que la plantilla existe y el usuario tiene acceso
     const template = await this.findOne(id, userId, userRole);
@@ -947,7 +993,7 @@ export class DocumentTemplateService {
     id: number,
     dto: UpdateDocumentFromTemplateDto,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     // 1. Verificar que el documento existe y no está eliminado
     const document = await this.prisma.document.findUnique({
@@ -961,8 +1007,8 @@ export class DocumentTemplateService {
 
     // 2. Verificar ownership: el dueño, admin y director pueden editar
     const canEdit =
-      userRole === UserRole.ADMIN ||
-      userRole === UserRole.RECTOR ||
+      userRole === 'admin' ||
+      userRole === 'rector' ||
       document.uploadedById === userId;
     if (!canEdit) {
       throw new ForbiddenException(
@@ -1094,13 +1140,34 @@ export class DocumentTemplateService {
     const updatedDocument = await this.prisma.document.update({
       where: { id },
       data: {
+        title: dto.title,
         currentVersion: newVersion,
         templateData: {
           update: {
             formData: dto.formData,
           }
         },
+        ...(dto.documentDate !== undefined && {
+          documentDate: dto.documentDate ? new Date(dto.documentDate) : null,
+        }),
+        ...(dto.sender !== undefined && { sender: dto.sender }),
+        ...(dto.recipient !== undefined && { recipient: dto.recipient }),
         ...(dto.description !== undefined && { description: dto.description }),
+        ...(dto.keywords !== undefined && { keywords: dto.keywords }),
+        ...(dto.status !== undefined && { status: dto.status }),
+        ...(dto.physicalBuilding !== undefined && {
+          physicalBuilding: dto.physicalBuilding,
+        }),
+        ...(dto.physicalOffice !== undefined && {
+          physicalOffice: dto.physicalOffice,
+        }),
+        ...(dto.physicalArchive !== undefined && {
+          physicalArchive: dto.physicalArchive,
+        }),
+        ...(dto.physicalBox !== undefined && { physicalBox: dto.physicalBox }),
+        ...(dto.physicalNotes !== undefined && {
+          physicalNotes: dto.physicalNotes,
+        }),
         ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
         ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
       },

@@ -1,8 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SearchQueryDto } from './dto/search-query.dto';
 import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
-import { UserRole } from '../auth/role.enum';
+
 
 @Injectable()
 export class SearchService {
@@ -35,13 +36,17 @@ export class SearchService {
     // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: {
+        id: true,
+        departmentId: true,
+        role: { select: { name: true } },
+      },
     });
 
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
-          role: user.role as unknown as UserRole,
+          role: user.role?.name ?? '',
         })
       : null;
 
@@ -60,15 +65,22 @@ export class SearchService {
         .join(' & ');
 
       if (tsquery) {
+        const deletedFilter = includeDeleted
+          ? Prisma.empty
+          : Prisma.sql`AND d."deletedAt" IS NULL`;
+
         const rows = await this.prisma.$queryRaw<
           { id: number; rank: number }[]
-        >`
-          SELECT id, ts_rank("searchVector", to_tsquery('simple', ${tsquery})) AS rank
-          FROM "Document"
-          WHERE "searchVector" @@ to_tsquery('simple', ${tsquery})
-            AND "deletedAt" IS NULL
+        >(Prisma.sql`
+          SELECT
+            ds."documentId" AS id,
+            ts_rank(ds."searchVector", to_tsquery('simple', ${tsquery})) AS rank
+          FROM "DocumentSearch" ds
+          INNER JOIN "Document" d ON d."id" = ds."documentId"
+          WHERE ds."searchVector" @@ to_tsquery('simple', ${tsquery})
+            ${deletedFilter}
           ORDER BY rank DESC
-        `;
+        `);
         ftsIds = rows.map((r) => Number(r.id));
       }
     }
@@ -93,7 +105,7 @@ export class SearchService {
         ...(baseWhere.AND ?? []),
         {
           OR: [
-            { course: { departmentId: { in: departmentIds } } },
+            { academic: { is: { course: { departmentId: { in: departmentIds } } } } },
             { uploadedBy: { departmentId: { in: departmentIds } } },
           ],
         },
@@ -101,11 +113,21 @@ export class SearchService {
     }
 
     if (courseIds && courseIds.length > 0) {
-      baseWhere.courseId = { in: courseIds };
+      baseWhere.academic = {
+        is: {
+          ...(baseWhere.academic?.is ?? {}),
+          courseId: { in: courseIds },
+        },
+      };
     }
 
     if (subjectIds && subjectIds.length > 0) {
-      baseWhere.subjectId = { in: subjectIds };
+      baseWhere.academic = {
+        is: {
+          ...(baseWhere.academic?.is ?? {}),
+          subjectId: { in: subjectIds },
+        },
+      };
     }
 
     // Filtro de usuario que subió
@@ -126,18 +148,29 @@ export class SearchService {
 
     // Filtros de tamaño
     if (minSize || maxSize) {
-      baseWhere.size = {};
+      baseWhere.versions = { some: {} };
       if (minSize) {
-        baseWhere.size.gte = minSize;
+        baseWhere.versions.some.size = {
+          ...(baseWhere.versions.some.size ?? {}),
+          gte: minSize,
+        };
       }
       if (maxSize) {
-        baseWhere.size.lte = maxSize;
+        baseWhere.versions.some.size = {
+          ...(baseWhere.versions.some.size ?? {}),
+          lte: maxSize,
+        };
       }
     }
 
     // Filtro de tipo MIME
     if (mimetypes && mimetypes.length > 0) {
-      baseWhere.mimetype = { in: mimetypes };
+      baseWhere.versions = {
+        some: {
+          ...(baseWhere.versions?.some ?? {}),
+          mimetype: { in: mimetypes },
+        },
+      };
     }
 
     // Filtro de visibilidad
@@ -172,12 +205,23 @@ export class SearchService {
     const take = limit;
 
     const docInclude = {
-      category: { select: { id: true, name: true, color: true, icon: true } },
-      section: { select: { id: true, name: true, color: true, icon: true } },
+      category: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          icon: true,
+          section: { select: { id: true, name: true, color: true, icon: true } },
+        },
+      },
       uploadedBy: { select: { id: true, name: true, email: true } },
-      course: { select: { id: true, name: true, code: true } },
-      subject: { select: { id: true, name: true, code: true } },
-      template: { select: { id: true, name: true } },
+      academic: {
+        select: {
+          course: { select: { id: true, name: true, code: true } },
+          subject: { select: { id: true, name: true, code: true } },
+        },
+      },
+      versions: { orderBy: { version: 'desc' as const }, take: 1 },
     };
 
     let documents: any[];
@@ -259,13 +303,17 @@ export class SearchService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: {
+        id: true,
+        departmentId: true,
+        role: { select: { name: true } },
+      },
     });
 
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
-          role: user.role as unknown as UserRole,
+          role: user.role?.name ?? '',
         })
       : null;
 
@@ -361,7 +409,7 @@ export class SearchService {
     });
 
     const isPrivileged =
-      user?.role === UserRole.ADMIN || user?.role === UserRole.RECTOR;
+      user?.role?.name === 'admin' || user?.role?.name === 'rector';
 
     // ADMIN y DIRECTOR ven búsquedas populares globales.
     // Otros roles solo ven las tendencias de sus propias búsquedas pasadas

@@ -1,6 +1,5 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
-import { UserRole } from '../src/auth/role.enum';
 
 const prisma = new PrismaClient();
 
@@ -92,74 +91,74 @@ async function main() {
   const admin = await prisma.user.upsert({
     where: { email: 'admin@colegio.edu' },
     update: {},
-    create: { email: 'admin@colegio.edu', password, name: 'Carlos Administrador', role: UserRole.ADMIN, position: 'Administrador del Sistema' },
+    create: { email: 'admin@colegio.edu', password, name: 'Carlos Administrador', role: { connect: { name: 'admin' } }, position: 'Administrador del Sistema' },
   });
 
   await prisma.user.upsert({
     where: { email: 'rector@colegio.edu' },
     update: {},
-    create: { email: 'rector@colegio.edu', password, name: 'María Elena Rodríguez', role: UserRole.RECTOR, position: 'Rectora General', departmentId: deptDireccion.id, phoneNumber: '0412-5551234' },
+    create: { email: 'rector@colegio.edu', password, name: 'María Elena Rodríguez', role: { connect: { name: 'rector' } }, position: 'Rectora General', department: { connect: { id: deptDireccion.id } }, phoneNumber: '0412-5551234' },
   });
 
   await prisma.user.upsert({
     where: { email: 'vicerrector@colegio.edu' },
     update: {},
-    create: { email: 'vicerrector@colegio.edu', password, name: 'Lucía Fernanda Castillo', role: UserRole.VICERRECTOR, position: 'Vicerrectora', departmentId: deptDireccion.id, phoneNumber: '0412-5551235' },
+    create: { email: 'vicerrector@colegio.edu', password, name: 'Lucía Fernanda Castillo', role: { connect: { name: 'vicerrector' } }, position: 'Vicerrectora', department: { connect: { id: deptDireccion.id } }, phoneNumber: '0412-5551235' },
   });
 
   const coordPrimaria = await prisma.user.upsert({
     where: { email: 'coord.primaria@colegio.edu' },
     update: {},
-    create: { email: 'coord.primaria@colegio.edu', password, name: 'Ana Gabriela López', role: UserRole.COORDINADOR, position: 'Coordinadora de Primaria', departmentId: deptPrimaria.id, phoneNumber: '0414-5552345' },
+    create: { email: 'coord.primaria@colegio.edu', password, name: 'Ana Gabriela López', role: { connect: { name: 'coordinador' } }, position: 'Coordinadora de Primaria', department: { connect: { id: deptPrimaria.id } }, phoneNumber: '0414-5552345' },
   });
 
   const coordSecundaria = await prisma.user.upsert({
     where: { email: 'coord.secundaria@colegio.edu' },
     update: {},
-    create: { email: 'coord.secundaria@colegio.edu', password, name: 'Roberto Alejandro Méndez', role: UserRole.COORDINADOR, position: 'Coordinador de Secundaria', departmentId: deptSecundaria.id, phoneNumber: '0424-5553456' },
+    create: { email: 'coord.secundaria@colegio.edu', password, name: 'Roberto Alejandro Méndez', role: { connect: { name: 'coordinador' } }, position: 'Coordinador de Secundaria', department: { connect: { id: deptSecundaria.id } }, phoneNumber: '0424-5553456' },
   });
 
   await prisma.user.upsert({
     where: { email: 'secretaria@colegio.edu' },
     update: {},
-    create: { email: 'secretaria@colegio.edu', password, name: 'Patricia Isabel Hernández', role: UserRole.SECRETARIO, position: 'Secretaria Académica', departmentId: deptSecretaria.id, phoneNumber: '0412-5556789' },
+    create: { email: 'secretaria@colegio.edu', password, name: 'Patricia Isabel Hernández', role: { connect: { name: 'secretario' } }, position: 'Secretaria Académica', department: { connect: { id: deptSecretaria.id } }, phoneNumber: '0412-5556789' },
   });
 
   // --- Maestros de primaria (un maestro por grado, cubre todas las materias) ---
   const maestro1p = await prisma.user.upsert({
     where: { email: 'maestro.1p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.1p@colegio.edu', password, name: 'Juan Manuel Suárez', role: UserRole.PROFESOR, position: 'Maestra de 1° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.1p@colegio.edu', password, name: 'Juan Manuel Suárez', role: { connect: { name: 'profesor' } }, position: 'Maestra de 1° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestro2p = await prisma.user.upsert({
     where: { email: 'maestro.2p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.2p@colegio.edu', password, name: 'Sofía Andrea Ruiz', role: UserRole.PROFESOR, position: 'Maestra de 2° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.2p@colegio.edu', password, name: 'Sofía Andrea Ruiz', role: { connect: { name: 'profesor' } }, position: 'Maestra de 2° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestro3p = await prisma.user.upsert({
     where: { email: 'maestro.3p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.3p@colegio.edu', password, name: 'Diego Ernesto Vargas', role: UserRole.PROFESOR, position: 'Maestro de 3° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.3p@colegio.edu', password, name: 'Diego Ernesto Vargas', role: { connect: { name: 'profesor' } }, position: 'Maestro de 3° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestro4p = await prisma.user.upsert({
     where: { email: 'maestro.4p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.4p@colegio.edu', password, name: 'Laura Beatriz Morales', role: UserRole.PROFESOR, position: 'Maestra de 4° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.4p@colegio.edu', password, name: 'Laura Beatriz Morales', role: { connect: { name: 'profesor' } }, position: 'Maestra de 4° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestro5p = await prisma.user.upsert({
     where: { email: 'maestro.5p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.5p@colegio.edu', password, name: 'Pablo Alberto Jiménez', role: UserRole.PROFESOR, position: 'Maestro de 5° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.5p@colegio.edu', password, name: 'Pablo Alberto Jiménez', role: { connect: { name: 'profesor' } }, position: 'Maestro de 5° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestro6p = await prisma.user.upsert({
     where: { email: 'maestro.6p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.6p@colegio.edu', password, name: 'Natalia Cecilia Ortega', role: UserRole.PROFESOR, position: 'Maestra de 6° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.6p@colegio.edu', password, name: 'Natalia Cecilia Ortega', role: { connect: { name: 'profesor' } }, position: 'Maestra de 6° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestro7p = await prisma.user.upsert({
     where: { email: 'maestro.7p@colegio.edu' },
     update: {},
-    create: { email: 'maestro.7p@colegio.edu', password, name: 'Fernando José Castro', role: UserRole.PROFESOR, position: 'Maestro de 7° Grado', departmentId: deptPrimaria.id },
+    create: { email: 'maestro.7p@colegio.edu', password, name: 'Fernando José Castro', role: { connect: { name: 'profesor' } }, position: 'Maestro de 7° Grado', department: { connect: { id: deptPrimaria.id } } },
   });
   const maestrosPrimaria = [maestro1p, maestro2p, maestro3p, maestro4p, maestro5p, maestro6p, maestro7p];
 
@@ -167,52 +166,52 @@ async function main() {
   const profMatematica = await prisma.user.upsert({
     where: { email: 'prof.matematica@colegio.edu' },
     update: {},
-    create: { email: 'prof.matematica@colegio.edu', password, name: 'Ricardo Andrés Torres', role: UserRole.PROFESOR, position: 'Profesor de Matemática', departmentId: deptSecundaria.id },
+    create: { email: 'prof.matematica@colegio.edu', password, name: 'Ricardo Andrés Torres', role: { connect: { name: 'profesor' } }, position: 'Profesor de Matemática', department: { connect: { id: deptSecundaria.id } } },
   });
   const profLengua = await prisma.user.upsert({
     where: { email: 'prof.lengua@colegio.edu' },
     update: {},
-    create: { email: 'prof.lengua@colegio.edu', password, name: 'Valentina Isabel Reyes', role: UserRole.PROFESOR, position: 'Profesora de Lengua y Literatura', departmentId: deptSecundaria.id },
+    create: { email: 'prof.lengua@colegio.edu', password, name: 'Valentina Isabel Reyes', role: { connect: { name: 'profesor' } }, position: 'Profesora de Lengua y Literatura', department: { connect: { id: deptSecundaria.id } } },
   });
   const profHistoria = await prisma.user.upsert({
     where: { email: 'prof.historia@colegio.edu' },
     update: {},
-    create: { email: 'prof.historia@colegio.edu', password, name: 'Marcelo Fabián Sosa', role: UserRole.PROFESOR, position: 'Profesor de Historia', departmentId: deptSecundaria.id },
+    create: { email: 'prof.historia@colegio.edu', password, name: 'Marcelo Fabián Sosa', role: { connect: { name: 'profesor' } }, position: 'Profesor de Historia', department: { connect: { id: deptSecundaria.id } } },
   });
   const profCsSociales = await prisma.user.upsert({
     where: { email: 'prof.cs.sociales@colegio.edu' },
     update: {},
-    create: { email: 'prof.cs.sociales@colegio.edu', password, name: 'Elena Patricia Rojas', role: UserRole.PROFESOR, position: 'Profesora de Geografía y Filosofía', departmentId: deptSecundaria.id },
+    create: { email: 'prof.cs.sociales@colegio.edu', password, name: 'Elena Patricia Rojas', role: { connect: { name: 'profesor' } }, position: 'Profesora de Geografía y Filosofía', department: { connect: { id: deptSecundaria.id } } },
   });
   const profBiologia = await prisma.user.upsert({
     where: { email: 'prof.biologia@colegio.edu' },
     update: {},
-    create: { email: 'prof.biologia@colegio.edu', password, name: 'Adrián Gustavo Pérez', role: UserRole.PROFESOR, position: 'Profesor de Cs. Naturales y Biología', departmentId: deptSecundaria.id },
+    create: { email: 'prof.biologia@colegio.edu', password, name: 'Adrián Gustavo Pérez', role: { connect: { name: 'profesor' } }, position: 'Profesor de Cs. Naturales y Biología', department: { connect: { id: deptSecundaria.id } } },
   });
   const profFisica = await prisma.user.upsert({
     where: { email: 'prof.fisica@colegio.edu' },
     update: {},
-    create: { email: 'prof.fisica@colegio.edu', password, name: 'Claudia Fernanda Núñez', role: UserRole.PROFESOR, position: 'Profesora de Física', departmentId: deptSecundaria.id },
+    create: { email: 'prof.fisica@colegio.edu', password, name: 'Claudia Fernanda Núñez', role: { connect: { name: 'profesor' } }, position: 'Profesora de Física', department: { connect: { id: deptSecundaria.id } } },
   });
   const profQuimica = await prisma.user.upsert({
     where: { email: 'prof.quimica@colegio.edu' },
     update: {},
-    create: { email: 'prof.quimica@colegio.edu', password, name: 'Sebastián Horacio Vega', role: UserRole.PROFESOR, position: 'Profesor de Química', departmentId: deptSecundaria.id },
+    create: { email: 'prof.quimica@colegio.edu', password, name: 'Sebastián Horacio Vega', role: { connect: { name: 'profesor' } }, position: 'Profesor de Química', department: { connect: { id: deptSecundaria.id } } },
   });
   const profIngles = await prisma.user.upsert({
     where: { email: 'prof.ingles@colegio.edu' },
     update: {},
-    create: { email: 'prof.ingles@colegio.edu', password, name: 'Jennifer Michelle Roberts', role: UserRole.PROFESOR, position: 'Profesora de Inglés', departmentId: deptSecundaria.id },
+    create: { email: 'prof.ingles@colegio.edu', password, name: 'Jennifer Michelle Roberts', role: { connect: { name: 'profesor' } }, position: 'Profesora de Inglés', department: { connect: { id: deptSecundaria.id } } },
   });
   const profEdFisica = await prisma.user.upsert({
     where: { email: 'prof.ed.fisica@colegio.edu' },
     update: {},
-    create: { email: 'prof.ed.fisica@colegio.edu', password, name: 'Maximiliano Darío Flores', role: UserRole.PROFESOR, position: 'Profesor de Educación Física', departmentId: deptSecundaria.id },
+    create: { email: 'prof.ed.fisica@colegio.edu', password, name: 'Maximiliano Darío Flores', role: { connect: { name: 'profesor' } }, position: 'Profesor de Educación Física', department: { connect: { id: deptSecundaria.id } } },
   });
   const profArte = await prisma.user.upsert({
     where: { email: 'prof.arte@colegio.edu' },
     update: {},
-    create: { email: 'prof.arte@colegio.edu', password, name: 'Verónica Liliana Castro', role: UserRole.PROFESOR, position: 'Profesora de Arte e Informática', departmentId: deptSecundaria.id },
+    create: { email: 'prof.arte@colegio.edu', password, name: 'Verónica Liliana Castro', role: { connect: { name: 'profesor' } }, position: 'Profesora de Arte e Informática', department: { connect: { id: deptSecundaria.id } } },
   });
 
   console.log('✅ 23 usuarios creados (contraseña: Demo123!)\n');
@@ -270,6 +269,16 @@ async function main() {
   // ============================================================
   console.log('🏷️ Creando categorías...');
 
+  const roles = await prisma.role.findMany({
+    select: {
+      id: true,
+      name: true,
+    },
+  });
+  const roleIdByName = new Map(
+    roles.map((role) => [role.name.toLowerCase(), role.id]),
+  );
+
   const categories = [
     {
       name: 'Planificaciones',
@@ -278,7 +287,7 @@ async function main() {
       icon: 'CalendarDays',
       sectionId: sectionAcademica.id,
       requiresCourse: true,
-      allowedRoles: ['profesor', 'coordinador'],
+      roleNames: ['profesor', 'coordinador'],
       prefix: 'PLN',
     },
     {
@@ -288,7 +297,7 @@ async function main() {
       icon: 'Users',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['coordinador', 'secretario', 'rector', 'vicerrector', 'admin'],
+      roleNames: ['coordinador', 'secretario', 'rector', 'vicerrector', 'admin'],
       prefix: 'ACT',
     },
     {
@@ -298,7 +307,7 @@ async function main() {
       icon: 'Award',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['secretario', 'rector', 'vicerrector', 'admin'],
+      roleNames: ['secretario', 'rector', 'vicerrector', 'admin'],
       prefix: 'CST',
     },
     {
@@ -308,7 +317,7 @@ async function main() {
       icon: 'BarChart3',
       sectionId: sectionAcademica.id,
       requiresCourse: false,
-      allowedRoles: ['profesor', 'coordinador', 'rector', 'vicerrector'],
+      roleNames: ['profesor', 'coordinador', 'rector', 'vicerrector'],
       prefix: 'INF',
     },
     {
@@ -318,7 +327,7 @@ async function main() {
       icon: 'FolderKanban',
       sectionId: sectionAdministrativa.id,
       requiresCourse: false,
-      allowedRoles: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector', 'admin'],
+      roleNames: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector', 'admin'],
       prefix: 'ADMD',
     },
     {
@@ -328,7 +337,7 @@ async function main() {
       icon: 'Scale',
       sectionId: sectionInstitucional.id,
       requiresCourse: false,
-      allowedRoles: ['rector', 'admin'],
+      roleNames: ['rector', 'admin'],
       prefix: 'LEG',
     },
     {
@@ -338,21 +347,43 @@ async function main() {
       icon: 'DollarSign',
       sectionId: sectionInstitucional.id,
       requiresCourse: false,
-      allowedRoles: ['secretario', 'rector', 'admin'],
+      roleNames: ['secretario', 'rector', 'admin'],
       prefix: 'FIN',
     },
   ];
 
   for (const category of categories) {
+    const roleIds = category.roleNames
+      .map((roleName) => roleIdByName.get(roleName.toLowerCase()))
+      .filter((roleId): roleId is string => !!roleId);
+
     await prisma.category.upsert({
       where: { name: category.name },
       update: {
         sectionId: category.sectionId,
         requiresCourse: category.requiresCourse,
-        allowedRoles: category.allowedRoles,
         prefix: category.prefix,
+        categoryRoles: {
+          deleteMany: {},
+          create: roleIds.map((roleId) => ({ roleId })),
+        },
+        description: category.description,
+        color: category.color,
+        icon: category.icon,
+        isActive: true,
       },
-      create: category,
+      create: {
+        name: category.name,
+        description: category.description,
+        color: category.color,
+        icon: category.icon,
+        sectionId: category.sectionId,
+        requiresCourse: category.requiresCourse,
+        prefix: category.prefix,
+        categoryRoles: {
+          create: roleIds.map((roleId) => ({ roleId })),
+        },
+      },
     });
   }
 
@@ -2026,166 +2057,177 @@ th{background:#7c3aed;color:#fff;padding:8px}td{padding:7px 8px;border-bottom:1p
   // ============================================================
   console.log('🔄 Creando plantillas de workflow...');
 
-  // (catPlanificaciones, catActas, catConstancias, catFinancieros already declared above)
-
-  // 1. Aprobación Académica
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Aprobación Académica' },
-    update: {
-      sections: { set: [{ id: sectionAcademica.id }] },
-      categoryId: null,
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'vicerrector'],
-    },
-    create: {
+  const workflowTemplates = [
+    {
       name: 'Aprobación Académica',
-      description: 'Flujo de aprobación para documentos académicos: Coordinador → Rector',
-      sections: { connect: [{ id: sectionAcademica.id }] },
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'vicerrector'],
-      stateDefinitions: [
-        { state: 'Revisión del Coordinador', role: 'coordinador', order: 1 },
-        { state: 'Aprobación del Rector',    role: 'rector',      order: 2 },
+      description:
+        'Flujo de aprobación para documentos académicos: Coordinador → Rector',
+      sectionId: sectionAcademica.id,
+      categoryId: null,
+      initiatorRoleNames: ['profesor', 'coordinador', 'vicerrector'],
+      states: [
+        { state: 'Revisión del Coordinador', roleName: 'coordinador', order: 1 },
+        { state: 'Aprobación del Rector', roleName: 'rector', order: 2 },
       ],
       autoAssign: true,
       requiresComment: false,
       isActive: true,
     },
-  });
-
-  // 2. Revisión de Planificación
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Revisión de Planificación' },
-    update: {
-      sections: { set: [{ id: sectionAcademica.id }] },
-      categoryId: catPlanificaciones?.id ?? null,
-      allowedInitiatorRoles: ['profesor'],
-    },
-    create: {
+    {
       name: 'Revisión de Planificación',
-      description: 'Flujo corto para planificaciones de clase: Profesor inicia, Coordinador aprueba',
-      sections: { connect: [{ id: sectionAcademica.id }] },
+      description:
+        'Flujo corto para planificaciones de clase: Profesor inicia, Coordinador aprueba',
+      sectionId: sectionAcademica.id,
       categoryId: catPlanificaciones?.id ?? null,
-      allowedInitiatorRoles: ['profesor'],
-      stateDefinitions: [
-        { state: 'Revisión del Coordinador', role: 'coordinador', order: 1 },
+      initiatorRoleNames: ['profesor'],
+      states: [
+        { state: 'Revisión del Coordinador', roleName: 'coordinador', order: 1 },
       ],
       autoAssign: true,
       requiresComment: false,
       isActive: true,
     },
-  });
-
-  // 3. Aprobación Administrativa
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Aprobación Administrativa' },
-    update: {
-      sections: { set: [{ id: sectionAdministrativa.id }] },
-      categoryId: null,
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector'],
-    },
-    create: {
+    {
       name: 'Aprobación Administrativa',
-      description: 'Flujo de aprobación para documentos administrativos: Rector aprueba',
-      sections: { connect: [{ id: sectionAdministrativa.id }] },
-      allowedInitiatorRoles: ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector'],
-      stateDefinitions: [
-        { state: 'Aprobación del Rector', role: 'rector', order: 1 },
+      description:
+        'Flujo de aprobación para documentos administrativos: Rector aprueba',
+      sectionId: sectionAdministrativa.id,
+      categoryId: null,
+      initiatorRoleNames: [
+        'profesor',
+        'coordinador',
+        'secretario',
+        'rector',
+        'vicerrector',
       ],
+      states: [{ state: 'Aprobación del Rector', roleName: 'rector', order: 1 }],
       autoAssign: true,
       requiresComment: true,
       isActive: true,
     },
-  });
-
-  // 4. Revisión de Acta
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Revisión de Acta' },
-    update: {
-      sections: { set: [{ id: sectionAdministrativa.id }] },
-      categoryId: catActas?.id ?? null,
-      allowedInitiatorRoles: ['coordinador', 'secretario', 'vicerrector'],
-    },
-    create: {
+    {
       name: 'Revisión de Acta',
-      description: 'Flujo específico para actas de reuniones: Coordinador/Secretario inicia, Rector aprueba',
-      sections: { connect: [{ id: sectionAdministrativa.id }] },
+      description:
+        'Flujo específico para actas de reuniones: Coordinador/Secretario inicia, Rector aprueba',
+      sectionId: sectionAdministrativa.id,
       categoryId: catActas?.id ?? null,
-      allowedInitiatorRoles: ['coordinador', 'secretario', 'vicerrector'],
-      stateDefinitions: [
-        { state: 'Aprobación del Rector', role: 'rector', order: 1 },
-      ],
+      initiatorRoleNames: ['coordinador', 'secretario', 'vicerrector'],
+      states: [{ state: 'Aprobación del Rector', roleName: 'rector', order: 1 }],
       autoAssign: true,
       requiresComment: true,
       isActive: true,
     },
-  });
-
-  // 5. Emisión de Constancia
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Emisión de Constancia' },
-    update: {
-      sections: { set: [{ id: sectionAdministrativa.id }] },
-      categoryId: catConstancias?.id ?? null,
-      allowedInitiatorRoles: ['secretario'],
-    },
-    create: {
+    {
       name: 'Emisión de Constancia',
-      description: 'Flujo para constancias y certificados: Secretaria inicia, Rector firma',
-      sections: { connect: [{ id: sectionAdministrativa.id }] },
+      description:
+        'Flujo para constancias y certificados: Secretaria inicia, Rector firma',
+      sectionId: sectionAdministrativa.id,
       categoryId: catConstancias?.id ?? null,
-      allowedInitiatorRoles: ['secretario'],
-      stateDefinitions: [
-        { state: 'Firma del Rector', role: 'rector', order: 1 },
-      ],
+      initiatorRoleNames: ['secretario'],
+      states: [{ state: 'Firma del Rector', roleName: 'rector', order: 1 }],
       autoAssign: true,
       requiresComment: false,
       isActive: true,
     },
-  });
-
-  // 6. Aprobación Institucional
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Aprobación Institucional' },
-    update: {
-      sections: { set: [{ id: sectionInstitucional.id }] },
-      categoryId: null,
-      allowedInitiatorRoles: ['rector', 'vicerrector'],
-    },
-    create: {
+    {
       name: 'Aprobación Institucional',
-      description: 'Flujo para documentos legales e institucionales: Rector revisa y aprueba',
-      sections: { connect: [{ id: sectionInstitucional.id }] },
-      allowedInitiatorRoles: ['rector', 'vicerrector'],
-      stateDefinitions: [
-        { state: 'Revisión del Rector', role: 'rector', order: 1 },
-      ],
+      description:
+        'Flujo para documentos legales e institucionales: Rector revisa y aprueba',
+      sectionId: sectionInstitucional.id,
+      categoryId: null,
+      initiatorRoleNames: ['rector', 'vicerrector'],
+      states: [{ state: 'Revisión del Rector', roleName: 'rector', order: 1 }],
       autoAssign: true,
       requiresComment: true,
       isActive: true,
     },
-  });
-
-  // 7. Revisión Financiera
-  await prisma.workflowTemplate.upsert({
-    where: { name: 'Revisión Financiera' },
-    update: {
-      sections: { set: [{ id: sectionInstitucional.id }] },
-      categoryId: catFinancieros?.id ?? null,
-      allowedInitiatorRoles: ['secretario', 'rector'],
-    },
-    create: {
+    {
       name: 'Revisión Financiera',
-      description: 'Flujo para documentos financieros: Secretaria/Rector inicia, Rector aprueba',
-      sections: { connect: [{ id: sectionInstitucional.id }] },
+      description:
+        'Flujo para documentos financieros: Secretaria/Rector inicia, Rector aprueba',
+      sectionId: sectionInstitucional.id,
       categoryId: catFinancieros?.id ?? null,
-      allowedInitiatorRoles: ['secretario', 'rector'],
-      stateDefinitions: [
-        { state: 'Revisión del Rector', role: 'rector', order: 1 },
-      ],
+      initiatorRoleNames: ['secretario', 'rector'],
+      states: [{ state: 'Revisión del Rector', roleName: 'rector', order: 1 }],
       autoAssign: true,
       requiresComment: true,
       isActive: true,
     },
-  });
+  ];
+
+  for (const template of workflowTemplates) {
+    const initiatorRoleIds = template.initiatorRoleNames
+      .map((roleName) => roleIdByName.get(roleName.toLowerCase()))
+      .filter((roleId): roleId is string => !!roleId);
+
+    const states = template.states
+      .map((state) => ({
+        ...state,
+        roleId: roleIdByName.get(state.roleName.toLowerCase()) ?? null,
+      }))
+      .filter((state) => !!state.roleId) as Array<{
+      state: string;
+      roleName: string;
+      order: number;
+      roleId: string;
+    }>;
+
+    const existingTemplate = await prisma.workflowTemplate.findUnique({
+      where: { name: template.name },
+      select: { id: true },
+    });
+
+    if (existingTemplate) {
+      await prisma.workflowTemplate.update({
+        where: { id: existingTemplate.id },
+        data: {
+          description: template.description,
+          categoryId: template.categoryId,
+          autoAssign: template.autoAssign,
+          requiresComment: template.requiresComment,
+          isActive: template.isActive,
+          sections: { set: [{ id: template.sectionId }] },
+          initiatorRoles: {
+            deleteMany: {},
+            create: initiatorRoleIds.map((roleId) => ({ roleId })),
+          },
+          states: {
+            deleteMany: {},
+            create: states.map((state) => ({
+              state: state.state,
+              roleId: state.roleId,
+              order: state.order,
+              requiresComment: false,
+            })),
+          },
+        },
+      });
+      continue;
+    }
+
+    await prisma.workflowTemplate.create({
+      data: {
+        name: template.name,
+        description: template.description,
+        categoryId: template.categoryId,
+        autoAssign: template.autoAssign,
+        requiresComment: template.requiresComment,
+        isActive: template.isActive,
+        sections: { connect: [{ id: template.sectionId }] },
+        initiatorRoles: {
+          create: initiatorRoleIds.map((roleId) => ({ roleId })),
+        },
+        states: {
+          create: states.map((state) => ({
+            state: state.state,
+            roleId: state.roleId,
+            order: state.order,
+            requiresComment: false,
+          })),
+        },
+      },
+    });
+  }
 
   console.log('✅ 7 plantillas de workflow creadas\n');
 

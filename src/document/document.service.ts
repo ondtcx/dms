@@ -16,7 +16,7 @@ import { QueryDocumentDto } from './dto/query-document.dto';
 import * as fs from 'fs';
 import { extname } from 'path';
 import { promisify } from 'util';
-import { UserRole } from '../auth/role.enum';
+
 import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
 import { randomUUID } from 'crypto';
 import { SettingsService } from '../settings/settings.service';
@@ -38,28 +38,35 @@ export class DocumentService {
   ) {}
 
   async upload(
-    file: Express.Multer.File,
+    file: Express.Multer.File | undefined,
     uploadDocumentDto: UploadDocumentDto,
     userId: string,
   ) {
-    // 0. Validar acceso a la categoría (allowedRoles + requiresCourse)
+    // 0. Validar acceso a la categoría (CategoryRole + requiresCourse)
     if (uploadDocumentDto.categoryId) {
       const category = await this.prisma.category.findUnique({
         where: { id: uploadDocumentDto.categoryId },
-        select: { allowedRoles: true, requiresCourse: true },
+        select: {
+          requiresCourse: true,
+          categoryRoles: {
+            select: {
+              roleId: true,
+            },
+          },
+        },
       });
       if (category) {
-        const allowed = category.allowedRoles as string[];
+        const allowedRoleIds = category.categoryRoles.map((categoryRole) => categoryRole.roleId);
         const user = await this.prisma.user.findUnique({
           where: { id: userId },
           select: { role: true },
         });
-        const isAdmin = user?.role === 'admin';
+        const isAdmin = user?.role?.name === 'admin';
         if (
           !isAdmin &&
-          allowed.length > 0 &&
+          allowedRoleIds.length > 0 &&
           user &&
-          !allowed.includes(user.role)
+          !allowedRoleIds.includes(user.role?.id ?? '')
         ) {
           throw new ForbiddenException(
             'Tu rol no tiene permiso para subir documentos a esta categoría',
@@ -84,23 +91,30 @@ export class DocumentService {
       resolvedAcademicYearId = currentYear?.id ?? null;
     }
 
-    // 2. Generar nombre único y ruta estructurada
-    const uniqueFilename = `${randomUUID()}${extname(file.originalname)}`;
-    const storageLocation = this.storage.generateStructuredPath(
-      userId,
-      uploadDocumentDto.categoryId,
-      uniqueFilename,
-    );
+    // 2. Generar nombre único y ruta estructurada solo si existe archivo adjunto
+    const uniqueFilename = file
+      ? `${randomUUID()}${extname(file.originalname)}`
+      : null;
+    const storageLocation = file && uniqueFilename
+      ? this.storage.generateStructuredPath(
+          userId,
+          uploadDocumentDto.categoryId,
+          uniqueFilename,
+        )
+      : null;
 
-    // 2. Mover archivo de /temp a ubicación estructurada
-    this.storage.moveFile(file.path, storageLocation.path);
+    if (file && storageLocation) {
+      this.storage.moveFile(file.path, storageLocation.path);
+    }
 
     // 3. Calcular checksum del archivo
-    const checksum = await this.storage.calculateFileHash(storageLocation.path);
+    const checksum = storageLocation
+      ? await this.storage.calculateFileHash(storageLocation.path)
+      : null;
 
     // 4. Extraer texto de PDF si es un PDF
     let extractedText: string | null = null;
-    if (file.mimetype === 'application/pdf') {
+    if (file?.mimetype === 'application/pdf' && storageLocation) {
       extractedText = await this.extractTextFromPDF(storageLocation.path);
     }
 
@@ -113,13 +127,29 @@ export class DocumentService {
 
     const document = await this.prisma.document.create({
       data: {
+        title:
+          uploadDocumentDto.title?.trim() ||
+          file?.originalname ||
+          'Documento físico sin archivo adjunto',
         description: uploadDocumentDto.description,
+        documentDate: uploadDocumentDto.documentDate
+          ? new Date(uploadDocumentDto.documentDate)
+          : undefined,
+        sender: uploadDocumentDto.sender,
+        recipient: uploadDocumentDto.recipient,
+        keywords: uploadDocumentDto.keywords,
+        status: uploadDocumentDto.status || 'REGISTRADO',
+        physicalBuilding: uploadDocumentDto.physicalBuilding,
+        physicalOffice: uploadDocumentDto.physicalOffice,
+        physicalArchive: uploadDocumentDto.physicalArchive,
+        physicalBox: uploadDocumentDto.physicalBox,
+        physicalNotes: uploadDocumentDto.physicalNotes,
         categoryId: uploadDocumentDto.categoryId,
         documentTypeId: uploadDocumentDto.documentTypeId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
         checksumSHA256: checksum,
-        currentVersion: 1,
+        currentVersion: file ? 1 : 0,
 
         ...(hasAcademic ? {
           academic: {
@@ -149,20 +179,24 @@ export class DocumentService {
           }
         } : {}),
 
-        versions: {
-          create: [{
-            version: 1,
-            filename: file.originalname,
-            mimetype: file.mimetype,
-            storedName: uniqueFilename,
-            path: storageLocation.path,
-            size: file.size,
-            checksumSHA256: checksum,
-            comment: 'Versión inicial',
-            createdById: userId,
-            source: 'UPLOAD_INICIAL',
-          }]
-        }
+        ...(file && storageLocation && uniqueFilename
+          ? {
+              versions: {
+                create: [{
+                  version: 1,
+                  filename: file.originalname,
+                  mimetype: file.mimetype,
+                  storedName: uniqueFilename,
+                  path: storageLocation.path,
+                  size: file.size,
+                  checksumSHA256: checksum,
+                  comment: 'Versión inicial',
+                  createdById: userId,
+                  source: 'UPLOAD_INICIAL',
+                }],
+              },
+            }
+          : {}),
       },
       include: {
         academic: true,
@@ -191,9 +225,11 @@ export class DocumentService {
     });
 
     // 7. Regenerar thumbnail en background para garantizar que corresponde al archivo actual
-    this.thumbnailService
-      .regenerateThumbnail(storageLocation.path, document.id, file.mimetype)
-      .catch(() => {});
+    if (storageLocation && file) {
+      this.thumbnailService
+        .regenerateThumbnail(storageLocation.path, document.id, file.mimetype)
+        .catch(() => {});
+    }
 
     // 8. Asignar número institucional en background (no bloquea la respuesta)
     this.numberingService
@@ -215,9 +251,13 @@ export class DocumentService {
     return uploadedDocuments;
   }
 
-  async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
+  async findAll(query: QueryDocumentDto, userId: string, userRole: string) {
     const {
       search,
+      status,
+      modality,
+      dateFrom,
+      dateTo,
       categoryId,
       documentTypeId,
       sectionId,
@@ -240,7 +280,7 @@ export class DocumentService {
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
-          role: user.role as unknown as UserRole,
+          role: user.role?.name as unknown as string,
         })
       : null;
 
@@ -264,6 +304,12 @@ export class DocumentService {
       where.AND.push({
         OR: [
           {
+            title: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+          {
             versions: { some: { filename: { contains: search, mode: 'insensitive' } } },
           },
           {
@@ -272,8 +318,60 @@ export class DocumentService {
               mode: 'insensitive',
             },
           },
+          {
+            sender: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+          {
+            recipient: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+          {
+            keywords: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
+          {
+            documentNumber: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          },
         ],
       });
+    }
+
+    if (status) {
+      where.AND.push({ status });
+    }
+
+    if (modality === 'DIGITAL') {
+      where.AND.push({ currentVersion: { gt: 0 } });
+    }
+
+    if (modality === 'PHYSICAL') {
+      where.AND.push({ currentVersion: 0 });
+    }
+
+    if (dateFrom || dateTo) {
+      const dateFilter: any = {};
+
+      if (dateFrom) {
+        dateFilter.gte = new Date(dateFrom);
+      }
+
+      if (dateTo) {
+        const inclusiveEndDate = new Date(dateTo);
+        inclusiveEndDate.setHours(23, 59, 59, 999);
+        dateFilter.lte = inclusiveEndDate;
+      }
+
+      where.AND.push({ documentDate: dateFilter });
     }
 
     if (categoryId) {
@@ -310,7 +408,7 @@ export class DocumentService {
 
     // Filtro por año lectivo — omitido para roles PADRE y ESTUDIANTE
     const skipYearFilter = (
-      [UserRole.PADRE, UserRole.ESTUDIANTE] as string[]
+      ['padre', 'estudiante'] as string[]
     ).includes(userRole as string);
     if (query.academicYearId && !skipYearFilter) {
       where.AND.push({
@@ -391,7 +489,7 @@ export class DocumentService {
     };
   }
 
-  async findOne(id: number, userId: string, userRole: UserRole) {
+  async findOne(id: number, userId: string, userRole: string) {
     // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -401,7 +499,7 @@ export class DocumentService {
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
-          role: user.role as unknown as UserRole,
+          role: user.role?.name as unknown as string,
         })
       : ({ id: -1 } as any);
 
@@ -425,6 +523,7 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+            role: true,
           },
         },
         category: {
@@ -456,15 +555,15 @@ export class DocumentService {
     id: number,
     updateDocumentDto: UpdateDocumentDto,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const document = await this.findOne(id, userId, userRole);
 
     // El dueño, admin, director y vicerrector pueden actualizar cualquier documento
     const canEdit =
-      userRole === UserRole.ADMIN ||
-      userRole === UserRole.RECTOR ||
-      userRole === UserRole.VICERRECTOR ||
+      userRole === 'admin' ||
+      userRole === 'rector' ||
+      userRole === 'vicerrector' ||
       document.uploadedById === userId;
     if (!canEdit) {
       throw new ForbiddenException(
@@ -479,7 +578,22 @@ export class DocumentService {
     const updatedDocument = await this.prisma.document.update({
       where: { id },
       data: {
+        title: updateDocumentDto.title,
         description: updateDocumentDto.description,
+        documentDate: updateDocumentDto.documentDate
+          ? new Date(updateDocumentDto.documentDate)
+          : updateDocumentDto.documentDate === null
+            ? null
+            : undefined,
+        sender: updateDocumentDto.sender,
+        recipient: updateDocumentDto.recipient,
+        keywords: updateDocumentDto.keywords,
+        status: updateDocumentDto.status,
+        physicalBuilding: updateDocumentDto.physicalBuilding,
+        physicalOffice: updateDocumentDto.physicalOffice,
+        physicalArchive: updateDocumentDto.physicalArchive,
+        physicalBox: updateDocumentDto.physicalBox,
+        physicalNotes: updateDocumentDto.physicalNotes,
         categoryId: updateDocumentDto.categoryId,
         documentTypeId: updateDocumentDto.documentTypeId,
         isPublic: updateDocumentDto.isPublic,
@@ -505,6 +619,7 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+            role: true,
           },
         },
         category: {
@@ -528,11 +643,11 @@ export class DocumentService {
     return updatedDocument;
   }
 
-  async remove(id: number, userId: string, userRole: UserRole) {
+  async remove(id: number, userId: string, userRole: string) {
     const document = await this.findOne(id, userId, userRole);
 
     // Solo el dueño o admin pueden eliminar
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    if (userRole !== 'admin' && document.uploadedById !== userId) {
       throw new ForbiddenException(
         'No tienes permiso para eliminar este documento',
       );
@@ -573,7 +688,7 @@ export class DocumentService {
   /**
    * Restaurar documento desde la papelera
    */
-  async restore(id: number, userId: string, userRole: UserRole) {
+  async restore(id: number, userId: string, userRole: string) {
     const document = await this.prisma.document.findUnique({
       where: { id },
     });
@@ -587,7 +702,7 @@ export class DocumentService {
     }
 
     // Solo el dueño o admin pueden restaurar
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    if (userRole !== 'admin' && document.uploadedById !== userId) {
       throw new ForbiddenException(
         'No tienes permiso para restaurar este documento',
       );
@@ -622,7 +737,7 @@ export class DocumentService {
   /**
    * Eliminar permanentemente un documento
    */
-  async permanentDelete(id: number, userId: string, userRole: UserRole) {
+  async permanentDelete(id: number, userId: string, userRole: string) {
     const document = await this.prisma.document.findUnique({
       where: { id },
     });
@@ -632,7 +747,7 @@ export class DocumentService {
     }
 
     // Solo admin puede eliminar permanentemente
-    if (userRole !== UserRole.ADMIN) {
+    if (userRole !== 'admin') {
       throw new ForbiddenException(
         'Solo administradores pueden eliminar permanentemente documentos',
       );
@@ -661,7 +776,7 @@ export class DocumentService {
     return { message: 'Documento eliminado permanentemente' };
   }
 
-  async download(id: number, userId: string, userRole: UserRole) {
+  async download(id: number, userId: string, userRole: string) {
     const document = await this.findOne(id, userId, userRole);
 
     // Verificar que el archivo existe
@@ -702,13 +817,13 @@ export class DocumentService {
     id: number,
     file: Express.Multer.File,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
     comment?: string,
   ) {
     const document = await this.findOne(id, userId, userRole);
 
     // Verificar permiso: dueño, admin, o participante con aprobación pendiente en workflow activo
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    if (userRole !== 'admin' && document.uploadedById !== userId) {
       const hasPendingApproval = await this.prisma.workflowApproval.findFirst({
         where: {
           workflow: {
@@ -780,6 +895,7 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+            role: true,
           },
         },
         category: {
@@ -869,7 +985,7 @@ export class DocumentService {
   /**
    * Obtener todas las versiones de un documento
    */
-  async getVersions(id: number, userId: string, userRole: UserRole) {
+  async getVersions(id: number, userId: string, userRole: string) {
     const document = await this.findOne(id, userId, userRole);
 
     const versions = await this.prisma.documentVersion.findMany({
@@ -880,6 +996,7 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+            role: true,
           },
         },
         approvals: {
@@ -905,12 +1022,12 @@ export class DocumentService {
     documentId: number,
     versionNumber: number,
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const document = await this.findOne(documentId, userId, userRole);
 
     // Solo el dueño o admin pueden restaurar versiones
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    if (userRole !== 'admin' && document.uploadedById !== userId) {
       throw new ForbiddenException(
         'No tienes permiso para restaurar versiones de este documento',
       );
@@ -1005,10 +1122,10 @@ export class DocumentService {
     return updatedDocument;
   }
 
-  async getStats(userId: string, userRole: UserRole) {
+  async getStats(userId: string, userRole: string) {
     const where: any = { deletedAt: null }; // Excluir eliminados
 
-    if (userRole !== UserRole.ADMIN) {
+    if (userRole !== 'admin') {
       where.uploadedById = userId;
     }
 
@@ -1027,10 +1144,10 @@ export class DocumentService {
     };
   }
 
-  async getCategories(userId: string, userRole: UserRole) {
+  async getCategories(userId: string, userRole: string) {
     const where: any = { deletedAt: null }; // Excluir eliminados
 
-    if (userRole !== UserRole.ADMIN) {
+    if (userRole !== 'admin') {
       where.OR = [{ uploadedById: userId }, { isPublic: true }];
     }
 
@@ -1063,7 +1180,7 @@ export class DocumentService {
    */
   async getDocumentsByDate(
     userId: string,
-    userRole: UserRole,
+    userRole: string,
     startDate?: Date,
     endDate?: Date,
     categoryId?: number,
@@ -1074,7 +1191,7 @@ export class DocumentService {
     };
 
     // Permisos: solo documentos propios o públicos si no es admin
-    if (userRole !== UserRole.ADMIN) {
+    if (userRole !== 'admin') {
       where.AND.push({
         OR: [{ uploadedById: userId }, { isPublic: true }],
       });
@@ -1160,7 +1277,7 @@ export class DocumentService {
       limit?: number;
     },
     userId: string,
-    userRole: UserRole,
+    userRole: string,
   ) {
     const { search, categoryId, page = 1, limit = 50 } = query;
 
@@ -1172,7 +1289,7 @@ export class DocumentService {
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
-          role: user.role as unknown as UserRole,
+          role: user.role?.name as unknown as string,
         })
       : null;
 
@@ -1241,7 +1358,7 @@ export class DocumentService {
   /**
    * Estadísticas del archivo histórico: total y distribución por categoría
    */
-  async getArchiveStats(userId: string, userRole: UserRole) {
+  async getArchiveStats(userId: string, userRole: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, role: true, departmentId: true },
@@ -1250,7 +1367,7 @@ export class DocumentService {
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
-          role: user.role as unknown as UserRole,
+          role: user.role?.name as unknown as string,
         })
       : null;
 
@@ -1295,7 +1412,7 @@ export class DocumentService {
   /**
    * Restaurar documento desde el archivo histórico al activo
    */
-  async restoreFromArchive(id: number, userId: string, userRole: UserRole) {
+  async restoreFromArchive(id: number, userId: string, userRole: string) {
     const document = await this.prisma.document.findUnique({ where: { id } });
 
     if (!document) {
@@ -1307,9 +1424,9 @@ export class DocumentService {
     }
 
     const canRestore =
-      userRole === UserRole.ADMIN ||
-      userRole === UserRole.RECTOR ||
-      userRole === UserRole.VICERRECTOR ||
+      userRole === 'admin' ||
+      userRole === 'rector' ||
+      userRole === 'vicerrector' ||
       document.uploadedById === userId;
 
     if (!canRestore) {

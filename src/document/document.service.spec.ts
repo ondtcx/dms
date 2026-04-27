@@ -6,7 +6,7 @@ import { ThumbnailService } from './thumbnail.service';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentNumberingService } from './document-numbering.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
-import { UserRole } from '../auth/role.enum';
+
 
 jest.mock('uuid', () => ({ v4: () => '1234-5678' }));
 
@@ -31,7 +31,11 @@ describe('DocumentService', () => {
               update: jest.fn().mockResolvedValue({ id: 1 }),
               count: jest.fn().mockResolvedValue(0),
             },
-            user: { findUnique: jest.fn().mockResolvedValue({ role: 'admin' }) },
+            user: {
+              findUnique: jest
+                .fn()
+                .mockResolvedValue({ role: { id: 'role-admin', name: 'admin' } }),
+            },
           },
         },
         {
@@ -121,13 +125,55 @@ describe('DocumentService', () => {
         })
       }));
     });
+
+    it('should allow upload when user roleId is mapped in categoryRoles', async () => {
+      const file: any = {
+        originalname: 'test.pdf',
+        mimetype: 'application/pdf',
+        size: 1000,
+        path: '/tmp/test.pdf',
+      };
+
+      jest.spyOn(prisma.category, 'findUnique').mockResolvedValue({
+        requiresCourse: false,
+        categoryRoles: [{ roleId: 'role-teacher' }],
+      } as any);
+      jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+        role: { id: 'role-teacher', name: 'teacher' },
+      } as any);
+
+      await expect(
+        service.upload(file, { description: 'Test', categoryId: 1 } as UploadDocumentDto, 'user123'),
+      ).resolves.toBeDefined();
+    });
+
+    it('should deny upload when user roleId is not mapped in categoryRoles', async () => {
+      const file: any = {
+        originalname: 'test.pdf',
+        mimetype: 'application/pdf',
+        size: 1000,
+        path: '/tmp/test.pdf',
+      };
+
+      jest.spyOn(prisma.category, 'findUnique').mockResolvedValue({
+        requiresCourse: false,
+        categoryRoles: [{ roleId: 'role-coordinator' }],
+      } as any);
+      jest.spyOn(prisma.user, 'findUnique').mockResolvedValue({
+        role: { id: 'role-teacher', name: 'teacher' },
+      } as any);
+
+      await expect(
+        service.upload(file, { description: 'Test', categoryId: 1 } as UploadDocumentDto, 'user123'),
+      ).rejects.toThrow('Tu rol no tiene permiso para subir documentos a esta categoría');
+    });
   });
 
   describe('findAll', () => {
     it('should include nested 1:1 relations in the query', async () => {
       jest.spyOn(prisma.document, 'findMany').mockResolvedValue([{ id: 1 } as any]);
       
-      await service.findAll({ page: 1, limit: 10 } as any, 'user123', UserRole.ADMIN);
+      await service.findAll({ page: 1, limit: 10 } as any, 'user123', 'admin');
 
       expect(prisma.document.findMany).toHaveBeenCalledWith(expect.objectContaining({
         include: expect.objectContaining({
@@ -138,13 +184,49 @@ describe('DocumentService', () => {
         }),
       }));
     });
+
+    it('should apply subtype, status, modality and date range filters', async () => {
+      jest.spyOn(prisma.document, 'findMany').mockResolvedValue([{ id: 1 } as any]);
+
+      await service.findAll(
+        {
+          page: 1,
+          limit: 10,
+          documentTypeId: 4,
+          status: 'REGISTRADO',
+          modality: 'PHYSICAL',
+          dateFrom: '2026-01-01',
+          dateTo: '2026-12-31',
+        } as any,
+        'user123',
+        'admin',
+      );
+
+      expect(prisma.document.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            AND: expect.arrayContaining([
+              { documentTypeId: 4 },
+              { status: 'REGISTRADO' },
+              { currentVersion: 0 },
+              {
+                documentDate: expect.objectContaining({
+                  gte: new Date('2026-01-01'),
+                  lte: expect.any(Date),
+                }),
+              },
+            ]),
+          }),
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {
     it('should include nested 1:1 relations when fetching a specific document', async () => {
       jest.spyOn(prisma.document, 'findFirst').mockResolvedValue({ id: 1, versions: [{}] } as any);
       
-      await service.findOne(1, 'user123', UserRole.ADMIN);
+      await service.findOne(1, 'user123', 'admin');
 
       expect(prisma.document.findFirst).toHaveBeenCalledWith(expect.objectContaining({
         include: expect.objectContaining({
@@ -170,7 +252,7 @@ describe('DocumentService', () => {
         academic: { courseId: 10 },
       };
 
-      await service.update(1, dto as any, 'user123', UserRole.ADMIN);
+      await service.update(1, dto as any, 'user123', 'admin');
 
       expect(prisma.document.update).toHaveBeenCalledWith(expect.objectContaining({
         where: { id: 1 },

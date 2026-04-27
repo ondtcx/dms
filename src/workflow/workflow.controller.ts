@@ -24,13 +24,13 @@ import { InitiateWorkflowDto } from './dto/initiate-workflow.dto';
 import { ApproveWorkflowDto } from './dto/approve-workflow.dto';
 import { MyInitiatedQueryDto } from './dto/my-initiated-query.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('workflows')
 @ApiBearerAuth()
-@UseGuards(AuthGuard, RolesGuard)
+@UseGuards(AuthGuard)
 @Controller('workflows')
 export class WorkflowController {
   constructor(private readonly workflowService: WorkflowService) {}
@@ -38,7 +38,7 @@ export class WorkflowController {
   // ============ Gestión de Templates ============
 
   @Post('templates')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Crear una plantilla de workflow' })
   @ApiResponse({ status: 201, description: 'Plantilla creada exitosamente' })
   @ApiResponse({
@@ -65,7 +65,7 @@ export class WorkflowController {
   }
 
   @Patch('templates/:id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Actualizar una plantilla de workflow' })
   @ApiResponse({ status: 200, description: 'Plantilla actualizada' })
   @ApiResponse({ status: 404, description: 'Plantilla no encontrada' })
@@ -77,7 +77,7 @@ export class WorkflowController {
   }
 
   @Delete('templates/:id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Eliminar una plantilla de workflow' })
   @ApiResponse({ status: 200, description: 'Plantilla eliminada' })
   @ApiResponse({
@@ -91,13 +91,7 @@ export class WorkflowController {
   // ============ Gestión de Workflows ============
 
   @Post('documents/:documentId/initiate')
-  @Roles(
-    UserRole.ADMIN,
-    UserRole.RECTOR,
-    UserRole.COORDINADOR,
-    UserRole.PROFESOR,
-    UserRole.SECRETARIO,
-  )
+  @Permissions('role:admin', 'role:rector', 'role:coordinador', 'role:profesor', 'role:secretario')
   @ApiOperation({ summary: 'Iniciar un workflow para un documento' })
   @ApiResponse({ status: 201, description: 'Workflow iniciado exitosamente' })
   @ApiResponse({

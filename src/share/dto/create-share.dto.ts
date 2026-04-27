@@ -7,7 +7,7 @@ import {
   IsDateString,
   IsEnum,
 } from 'class-validator';
-import { UserRole } from '../../auth/role.enum';
+
 
 export class CreateShareDto {
   @ApiProperty({ description: 'ID del documento a compartir' })
@@ -21,11 +21,10 @@ export class CreateShareDto {
 
   @ApiPropertyOptional({
     description: 'Rol específico (opcional)',
-    enum: UserRole,
   })
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsString()
+  roleId?: string;
 
   @ApiPropertyOptional({ description: 'ID del departamento (opcional)' })
   @IsOptional()

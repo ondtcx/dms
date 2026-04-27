@@ -19,8 +19,8 @@ import { CourseService } from './course.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { QueryCourseDto } from './dto/query-course.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('courses')
 @ApiBearerAuth()
@@ -29,7 +29,7 @@ export class CourseController {
   constructor(private readonly courseService: CourseService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Crear nuevo curso' })
   @ApiResponse({ status: 201, description: 'Curso creado exitosamente' })
   @ApiResponse({
@@ -56,7 +56,7 @@ export class CourseController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Actualizar un curso' })
   @ApiResponse({ status: 200, description: 'Curso actualizado exitosamente' })
   @ApiResponse({ status: 404, description: 'Curso no encontrado' })
@@ -72,7 +72,7 @@ export class CourseController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Eliminar un curso' })
   @ApiResponse({ status: 200, description: 'Curso eliminado exitosamente' })
   @ApiResponse({ status: 404, description: 'Curso no encontrado' })
@@ -96,7 +96,7 @@ export class CourseController {
   }
 
   @Post(':id/assign-teacher')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Asignar un profesor a un curso' })
   @ApiResponse({ status: 201, description: 'Profesor asignado exitosamente' })
   @ApiResponse({
@@ -111,7 +111,7 @@ export class CourseController {
   }
 
   @Delete(':id/teachers/:userId')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @Permissions('role:admin', 'role:rector', 'role:coordinador')
   @ApiOperation({ summary: 'Remover un profesor de un curso' })
   @ApiResponse({
     status: 200,

@@ -18,8 +18,8 @@ import {
 import { CategoryService } from './category.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('categories')
 @Controller('categories')
@@ -28,7 +28,7 @@ export class CategoryController {
   constructor(private readonly categoryService: CategoryService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Crear nueva categoría (Solo ADMIN)',
     description:
@@ -122,7 +122,7 @@ export class CategoryController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Actualizar categoría (Solo ADMIN)',
     description: 'Actualiza los datos de una categoría existente',
@@ -142,7 +142,7 @@ export class CategoryController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @Permissions('role:admin')
   @ApiOperation({
     summary: 'Eliminar categoría (Solo ADMIN)',
     description:

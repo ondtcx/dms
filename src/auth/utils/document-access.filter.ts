@@ -1,9 +1,9 @@
 import { Prisma } from '@prisma/client';
-import { UserRole } from '../role.enum';
+
 
 export type AccessUser = {
   id: string;
-  role: UserRole;
+  role: string;
   departmentId: number | null;
 };
 
@@ -18,7 +18,7 @@ export function buildDocumentAccessFilter(
   user: AccessUser,
 ): Prisma.DocumentWhereInput | null {
   // ADMIN y DIRECTOR ven todo sin restricción
-  if (user.role === UserRole.ADMIN || user.role === UserRole.RECTOR) {
+  if (user.role === 'admin' || user.role === 'rector') {
     return null;
   }
 
@@ -31,7 +31,7 @@ export function buildDocumentAccessFilter(
         canView: true,
         OR: [
           { userId: user.id },
-          { role: user.role },
+          { role: { name: user.role } },
           ...(user.departmentId ? [{ departmentId: user.departmentId }] : []),
         ],
         AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }],
@@ -47,7 +47,7 @@ export function buildDocumentAccessFilter(
   ];
 
   switch (user.role) {
-    case UserRole.COORDINADOR:
+    case 'coordinador':
       return {
         OR: [
           ...baseAccess,
@@ -65,7 +65,7 @@ export function buildDocumentAccessFilter(
         ],
       };
 
-    case UserRole.PROFESOR:
+    case 'profesor':
       return {
         OR: [
           ...baseAccess,
@@ -76,7 +76,7 @@ export function buildDocumentAccessFilter(
         ],
       };
 
-    case UserRole.SECRETARIO:
+    case 'secretario':
       return {
         OR: [
           ...baseAccess,
@@ -91,7 +91,7 @@ export function buildDocumentAccessFilter(
         ],
       };
 
-    case UserRole.ESTUDIANTE:
+    case 'estudiante':
       return {
         OR: [
           { uploadedById: user.id },
@@ -111,7 +111,7 @@ export function buildDocumentAccessFilter(
         ],
       };
 
-    case UserRole.PADRE:
+    case 'padre':
       return {
         OR: [{ isPublic: true }, explicitGrant],
       };

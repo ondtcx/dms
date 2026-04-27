@@ -20,8 +20,8 @@ import { DepartmentService } from './department.service';
 import { CreateDepartmentDto } from './dto/create-department.dto';
 import { UpdateDepartmentDto } from './dto/update-department.dto';
 import { QueryDepartmentDto } from './dto/query-department.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
+import { Permissions } from '../auth/decorators/permissions.decorator';
+
 
 @ApiTags('departments')
 @ApiBearerAuth()
@@ -30,7 +30,7 @@ export class DepartmentController {
   constructor(private readonly departmentService: DepartmentService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Crear nuevo departamento' })
   @ApiResponse({ status: 201, description: 'Departamento creado exitosamente' })
   @ApiResponse({
@@ -67,7 +67,7 @@ export class DepartmentController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Actualizar un departamento' })
   @ApiResponse({
     status: 200,
@@ -86,7 +86,7 @@ export class DepartmentController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Eliminar un departamento' })
   @ApiResponse({
     status: 200,
@@ -113,7 +113,7 @@ export class DepartmentController {
   }
 
   @Post(':id/users')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Asignar un usuario a un departamento' })
   @ApiResponse({ status: 200, description: 'Usuario asignado exitosamente' })
   @ApiResponse({
@@ -128,7 +128,7 @@ export class DepartmentController {
   }
 
   @Delete(':id/users/:userId')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Permissions('role:admin', 'role:rector')
   @ApiOperation({ summary: 'Remover un usuario de un departamento' })
   @ApiResponse({ status: 200, description: 'Usuario removido exitosamente' })
   @ApiResponse({

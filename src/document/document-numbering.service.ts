@@ -1,208 +1,255 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
-/**
- * Genera y asigna códigos de numeración institucional a documentos.
- *
- * Formato: [SECCION]-[CATEGORIA]-[AÑO]-[CORRELATIVO]
- * Ejemplo:  GA-PLN-2026-0042
- *
- * Los prefijos se leen dinámicamente desde Section.prefix / Category.prefix.
- * Si un modelo no tiene prefijo configurado, se deriva automáticamente del nombre.
- */
 @Injectable()
-export class DocumentNumberingService {
+export class DocumentNumberingService implements OnModuleInit {
   private readonly logger = new Logger(DocumentNumberingService.name);
+  private readonly counterScope = 'DOC';
+  private readonly typePrefixes: Record<string, string> = {
+    oficio: 'OFI',
+    'acta de reunion': 'ACT',
+    'constancia de estudios': 'CON',
+    'solicitud de permiso': 'SOL',
+    memorando: 'MEM',
+  };
 
   constructor(private prisma: PrismaService) {}
 
-  /**
-   * Asigna un documentNumber al documento indicado.
-   * Idempotente: si ya tiene número asignado no hace nada.
-   */
-  async assignNumber(
-    documentId: number,
-    categoryId?: number | null,
-  ): Promise<string> {
-    // Verificar si ya tiene número
-    const existing = await this.prisma.document.findUnique({
-      where: { id: documentId },
-      select: { documentNumber: true },
-    });
-
-    if (existing?.documentNumber) {
-      return existing.documentNumber;
+  async onModuleInit() {
+    try {
+      await this.syncExistingNumbers();
+    } catch (error) {
+      this.logger.error('No se pudo sincronizar la numeración documental al iniciar', error);
     }
-
-    const year = new Date().getFullYear();
-    const { sectionPrefix, categoryPrefix } =
-      await this.resolvePrefixes(categoryId);
-    const number = await this.nextNumber(sectionPrefix, categoryPrefix, year);
-    const documentNumber = this.formatNumber(
-      sectionPrefix,
-      categoryPrefix,
-      year,
-      number,
-    );
-
-    await this.prisma.document.update({
-      where: { id: documentId },
-      data: { documentNumber },
-    });
-
-    this.logger.log(`Documento #${documentId} → ${documentNumber}`);
-    return documentNumber;
   }
 
-  /**
-   * Resuelve los prefijos de sección y categoría para un categoryId dado.
-   * Prioridad: campo prefix de la BD → derivación automática del nombre.
-   */
-  async resolvePrefixes(
-    categoryId?: number | null,
-  ): Promise<{ sectionPrefix: string; categoryPrefix: string }> {
-    if (!categoryId) {
-      return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
-    }
-
-    const category = await this.prisma.category.findUnique({
-      where: { id: categoryId },
+  async assignNumber(documentId: number, _categoryId?: number | null): Promise<string> {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
       select: {
-        name: true,
-        prefix: true,
-        section: {
-          select: { name: true, prefix: true },
+        id: true,
+        documentNumber: true,
+        documentDate: true,
+        createdAt: true,
+        documentType: {
+          select: {
+            name: true,
+          },
         },
       },
     });
 
-    if (!category) {
-      return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
+    if (!document) {
+      throw new Error(`Documento ${documentId} no encontrado para asignar número`);
     }
 
-    const sectionPrefix =
-      category.section?.prefix ??
-      this.derivePrefix(category.section?.name) ??
-      'DOC';
-    const categoryPrefix =
-      category.prefix ?? this.derivePrefix(category.name) ?? 'GEN';
+    const prefix = this.resolveTypePrefix(document.documentType?.name);
+    const year = this.resolveYear(document.documentDate, document.createdAt);
 
-    return { sectionPrefix, categoryPrefix };
-  }
-
-  /**
-   * Incrementa atómicamente el contador y retorna el siguiente número.
-   * Usa upsert + update en una transacción para evitar condiciones de carrera.
-   */
-  private async nextNumber(
-    sectionPrefix: string,
-    categoryPrefix: string,
-    year: number,
-  ): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      // Crear el contador si no existe
-      await tx.documentCounter.upsert({
-        where: {
-          sectionPrefix_categoryPrefix_year: {
-            sectionPrefix,
-            categoryPrefix,
-            year,
-          },
-        },
-        create: { sectionPrefix, categoryPrefix, year, lastNumber: 0 },
-        update: {},
+      const current = await tx.document.findUnique({
+        where: { id: documentId },
+        select: { documentNumber: true },
       });
 
-      // Incrementar y obtener el nuevo valor
-      const updated = await tx.documentCounter.update({
-        where: {
-          sectionPrefix_categoryPrefix_year: {
-            sectionPrefix,
-            categoryPrefix,
-            year,
-          },
-        },
-        data: { lastNumber: { increment: 1 } },
-        select: { lastNumber: true },
+      if (current?.documentNumber) {
+        return current.documentNumber;
+      }
+
+      const sequence = await this.nextNumber(tx, prefix, year);
+      const documentNumber = this.formatNumber(prefix, year, sequence);
+
+      await tx.document.update({
+        where: { id: documentId },
+        data: { documentNumber },
       });
 
-      return updated.lastNumber;
+      this.logger.log(`Documento #${documentId} → ${documentNumber}`);
+      return documentNumber;
     });
   }
 
-  /**
-   * Formatea el número final: GA-PLN-2026-0042
-   * El correlativo siempre tiene mínimo 4 dígitos con ceros a la izquierda.
-   */
-  private formatNumber(
-    sectionPrefix: string,
-    categoryPrefix: string,
-    year: number,
-    seq: number,
-  ): string {
-    const padded = seq.toString().padStart(4, '0');
-    return `${sectionPrefix}-${categoryPrefix}-${year}-${padded}`;
-  }
-
-  /**
-   * Deriva un prefijo corto a partir de un nombre.
-   * Toma las letras iniciales de cada palabra (máx. 6 chars, todo mayúsculas).
-   *
-   * Ejemplos:
-   *   "Gestión Académica"        → "GA"
-   *   "Planificaciones"          → "PLN"
-   *   "Actas y Reuniones"        → "AYR"
-   *   "Constancias y Cert."      → "CYC"
-   *   "Informes Académicos"      → "IA"
-   */
-  derivePrefix(name?: string | null): string | null {
-    if (!name) return null;
-
-    // Normalizar: quitar acentos, puntos y caracteres especiales
-    const normalized = name
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '') // quitar diacríticos
-      .replace(/[^a-zA-Z\s]/g, '') // solo letras y espacios
-      .trim();
-
-    const words = normalized.split(/\s+/).filter(Boolean);
-
-    if (words.length === 0) return null;
-
-    // Si es una sola palabra, tomar las primeras 3 consonantes/letras significativas
-    if (words.length === 1) {
-      return words[0].substring(0, 3).toUpperCase();
-    }
-
-    // Si son múltiples palabras, tomar la primera letra de cada una (max 6)
-    return words
-      .map((w) => w[0])
-      .join('')
-      .substring(0, 6)
-      .toUpperCase();
-  }
-
-  /**
-   * Retorna el último número asignado para una combinación dada (sin incrementar).
-   * Útil para mostrar el próximo número en la UI antes de crear el documento.
-   */
-  async previewNextNumber(categoryId?: number | null): Promise<string> {
-    const year = new Date().getFullYear();
-    const { sectionPrefix, categoryPrefix } =
-      await this.resolvePrefixes(categoryId);
+  async previewNextNumber(documentTypeName?: string | null, referenceDate?: Date | null): Promise<string> {
+    const prefix = this.resolveTypePrefix(documentTypeName);
+    const year = this.resolveYear(referenceDate ?? null, null);
 
     const counter = await this.prisma.documentCounter.findUnique({
       where: {
         sectionPrefix_categoryPrefix_year: {
-          sectionPrefix,
-          categoryPrefix,
+          sectionPrefix: prefix,
+          categoryPrefix: this.counterScope,
           year,
         },
       },
       select: { lastNumber: true },
     });
 
-    const next = (counter?.lastNumber ?? 0) + 1;
-    return this.formatNumber(sectionPrefix, categoryPrefix, year, next);
+    return this.formatNumber(prefix, year, (counter?.lastNumber ?? 0) + 1);
+  }
+
+  async syncExistingNumbers(): Promise<void> {
+    const documents = await this.prisma.document.findMany({
+      where: {
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        documentNumber: true,
+        documentDate: true,
+        createdAt: true,
+        documentType: {
+          select: {
+            name: true,
+          },
+        },
+      },
+      orderBy: [
+        { documentDate: 'asc' },
+        { createdAt: 'asc' },
+        { id: 'asc' },
+      ],
+    });
+
+    if (documents.length === 0) {
+      return;
+    }
+
+    const counters = new Map<string, number>();
+    const updates: { id: number; documentNumber: string }[] = [];
+
+    for (const document of documents) {
+      const prefix = this.resolveTypePrefix(document.documentType?.name);
+      const year = this.resolveYear(document.documentDate, document.createdAt);
+      const key = `${prefix}:${year}`;
+      const nextSequence = (counters.get(key) ?? 0) + 1;
+      counters.set(key, nextSequence);
+
+      const expectedNumber = this.formatNumber(prefix, year, nextSequence);
+      if (document.documentNumber !== expectedNumber) {
+        updates.push({ id: document.id, documentNumber: expectedNumber });
+      }
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.documentCounter.deleteMany({
+        where: {
+          categoryPrefix: this.counterScope,
+        },
+      });
+
+      for (const [key, lastNumber] of counters.entries()) {
+        const [sectionPrefix, yearValue] = key.split(':');
+        await tx.documentCounter.create({
+          data: {
+            sectionPrefix,
+            categoryPrefix: this.counterScope,
+            year: Number(yearValue),
+            lastNumber,
+          },
+        });
+      }
+
+      for (const update of updates) {
+        await tx.document.update({
+          where: { id: update.id },
+          data: { documentNumber: update.documentNumber },
+        });
+      }
+    });
+
+    if (updates.length > 0) {
+      this.logger.log(`Numeración documental sincronizada en ${updates.length} documento(s)`);
+    }
+  }
+
+  private async nextNumber(tx: any, prefix: string, year: number): Promise<number> {
+    await tx.documentCounter.upsert({
+      where: {
+        sectionPrefix_categoryPrefix_year: {
+          sectionPrefix: prefix,
+          categoryPrefix: this.counterScope,
+          year,
+        },
+      },
+      create: {
+        sectionPrefix: prefix,
+        categoryPrefix: this.counterScope,
+        year,
+        lastNumber: 0,
+      },
+      update: {},
+    });
+
+    const updatedCounter = await tx.documentCounter.update({
+      where: {
+        sectionPrefix_categoryPrefix_year: {
+          sectionPrefix: prefix,
+          categoryPrefix: this.counterScope,
+          year,
+        },
+      },
+      data: {
+        lastNumber: {
+          increment: 1,
+        },
+      },
+      select: {
+        lastNumber: true,
+      },
+    });
+
+    return updatedCounter.lastNumber;
+  }
+
+  private resolveTypePrefix(documentTypeName?: string | null): string {
+    const normalizedName = this.normalizeName(documentTypeName);
+
+    if (!normalizedName) {
+      return 'DOC';
+    }
+
+    return this.typePrefixes[normalizedName] ?? this.derivePrefix(normalizedName) ?? 'DOC';
+  }
+
+  private resolveYear(documentDate?: Date | null, createdAt?: Date | null): number {
+    return (documentDate ?? createdAt ?? new Date()).getFullYear();
+  }
+
+  private formatNumber(prefix: string, year: number, sequence: number): string {
+    return `${prefix}-${year}-${sequence.toString().padStart(4, '0')}`;
+  }
+
+  private normalizeName(name?: string | null): string | null {
+    if (!name) {
+      return null;
+    }
+
+    const normalized = name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z\s]/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLowerCase();
+
+    return normalized || null;
+  }
+
+  private derivePrefix(normalizedName: string): string | null {
+    const words = normalizedName.split(' ').filter(Boolean);
+
+    if (words.length === 0) {
+      return null;
+    }
+
+    if (words.length === 1) {
+      return words[0].slice(0, 3).toUpperCase();
+    }
+
+    return words
+      .map((word) => word[0])
+      .join('')
+      .slice(0, 3)
+      .toUpperCase();
   }
 }

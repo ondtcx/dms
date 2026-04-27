@@ -18,17 +18,32 @@ generator erd {
   output   = "./ERD.svg" // también puede ser .png o .pdf
 }
 
-enum UserRole {
-  rector // Acceso total a la institución
-  vicerrector // Segundo en mando — acceso rector sin legales/financieros
-  coordinador // Gestión a nivel de departamento
-  profesor // Gestión de cursos y materias
-  secretario // Tareas administrativas
-  padre // Acceso a documentos de hijos
-  estudiante // Acceso a propios documentos
-  moderador // Moderación de contenido
-  admin // Administrador del sistema (mantener compatibilidad)
-  user // Usuario básico (mantener compatibilidad)
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique // ej: "rector", "profesor", "admin"
+  description String?
+  isSystem    Boolean      @default(false) // Roles del sistema que no se pueden borrar
+  permissions Permission[] // Permisos asignados a este rol
+
+  users               User[]
+  documentShares      DocumentShare[]
+  documentPermissions DocumentPermission[]
+
+  categoryRoles                  CategoryRole[]
+  workflowTemplateInitiatorRoles WorkflowTemplateInitiatorRole[]
+  workflowTemplateStates         WorkflowTemplateState[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  action      String  @unique // ej: "users:create", "documents:read:all"
+  description String?
+  roles       Role[]
+
+  createdAt DateTime @default(now())
 }
 
 enum EducationalLevel {
@@ -63,6 +78,12 @@ enum DocumentVersionSource {
   CAMBIOS_SOLICITADOS // Reemplazo en respuesta a un workflow activo
 }
 
+enum PilotDocumentStatus {
+  REGISTRADO
+  EN_REVISION
+  ARCHIVADO
+}
+
 enum NotificationType {
   DOCUMENT_SHARED // Documento compartido
   DOCUMENT_UPLOADED // Documento subido
@@ -95,7 +116,8 @@ model DocumentPermission {
   // Destinatario del permiso (al menos uno debe estar presente)
   userId       String? // Usuario específico
   user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         UserRole? // Rol
+  roleId       String? // Rol
+  role         Role?       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   departmentId Int? // Departamento completo
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
@@ -114,7 +136,7 @@ model DocumentPermission {
 
   @@index([documentId])
   @@index([userId])
-  @@index([role])
+  @@index([roleId])
   @@index([departmentId])
   @@index([expiresAt])
 }
@@ -122,20 +144,20 @@ model DocumentPermission {
 // ============ SISTEMA DE WORKFLOWS Y APROBACIONES ============
 
 model WorkflowTemplate {
-  id                    Int       @id @default(autoincrement())
-  name                  String    @unique // Nombre de la plantilla (ej: "Aprobación de Documentos Administrativos")
-  description           String? // Descripción del workflow
-  categoryId            Int? // Categoría de documentos a la que aplica
-  category              Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sections              Section[] // Secciones a las que aplica (M2M)
-  stateDefinitions      Json // Definición de estados y transiciones [{state: "pending_coord", role: "coordinador", order: 1}]
-  autoAssign            Boolean   @default(true) // Auto-asignar aprobadores según rol
-  requiresComment       Boolean   @default(false) // Requiere comentario al aprobar/rechazar
-  allowedInitiatorRoles Json      @default("[]") // UserRole[] vacío = sin restricción; ADMIN bypasea siempre
-  isActive              Boolean   @default(true)
+  id              Int       @id @default(autoincrement())
+  name            String    @unique // Nombre de la plantilla (ej: "Aprobación de Documentos Administrativos")
+  description     String? // Descripción del workflow
+  categoryId      Int? // Categoría de documentos a la que aplica
+  category        Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sections        Section[] // Secciones a las que aplica (M2M)
+  autoAssign      Boolean   @default(true) // Auto-asignar aprobadores según rol
+  requiresComment Boolean   @default(false) // Requiere comentario al aprobar/rechazar
+  isActive        Boolean   @default(true)
 
   // Relaciones
-  workflows DocumentWorkflow[]
+  workflows      DocumentWorkflow[]
+  initiatorRoles WorkflowTemplateInitiatorRole[]
+  states         WorkflowTemplateState[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -348,15 +370,15 @@ model Department {
 }
 
 model AcademicYear {
-  id        Int        @id @default(autoincrement())
-  name      String     @unique // "2025-2026"
-  startDate DateTime
-  endDate   DateTime
-  isCurrent Boolean    @default(false) // Solo uno puede ser true — reforzado por índice único parcial en la migración
-  isActive  Boolean    @default(true)
+  id                Int                @id @default(autoincrement())
+  name              String             @unique // "2025-2026"
+  startDate         DateTime
+  endDate           DateTime
+  isCurrent         Boolean            @default(false) // Solo uno puede ser true — reforzado por índice único parcial en la migración
+  isActive          Boolean            @default(true)
   documentAcademics DocumentAcademic[]
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([isCurrent])
   @@index([isActive])
@@ -373,10 +395,10 @@ model Course {
   isActive     Boolean          @default(true)
 
   // Relaciones
-  subjects  Subject[]
-  teachers  UserCourse[]
+  subjects          Subject[]
+  teachers          UserCourse[]
   documentAcademics DocumentAcademic[]
-  shares    DocumentShare[]
+  shares            DocumentShare[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -399,7 +421,7 @@ model Subject {
 
   // Relaciones
   documentAcademics DocumentAcademic[]
-  teachers  UserSubject[]
+  teachers          UserSubject[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -441,11 +463,12 @@ model UserSubject {
 // ============ MODELOS PRINCIPALES ============
 
 model User {
-  id       String   @id @default(cuid())
-  email    String   @unique
+  id       String  @id @default(cuid())
+  email    String  @unique
   name     String?
   password String
-  role     UserRole @default(user)
+  roleId   String?
+  role     Role?   @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   // Campos organizacionales
   departmentId Int?
@@ -525,13 +548,13 @@ model Category {
 
   // Control de acceso
   requiresCourse     Boolean @default(false) // Si requiere asignar curso al subir
-  allowedRoles       Json    @default("[]") // UserRole[] vacío = sin restricción
   bypassAcademicYear Boolean @default(false) // Si true, docs de esta categoría ignoran el filtro de año lectivo (ej: Legales, Financieros)
 
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
   documentTemplates DocumentTemplate[] // Plantillas de documento de esta categoría
   documentTypes     DocumentType[] // Subtipos de documento de esta categoría
+  categoryRoles     CategoryRole[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -577,7 +600,18 @@ model Section {
 
 model Document {
   id          Int       @id @default(autoincrement())
+  title       String?
   description String? // Descripción del documento
+  documentDate DateTime?
+  sender      String?
+  recipient   String?
+  keywords    String?
+  status      PilotDocumentStatus @default(REGISTRADO)
+  physicalBuilding String?
+  physicalOffice   String?
+  physicalArchive  String?
+  physicalBox      String?
+  physicalNotes    String? @db.Text
   categoryId  Int? // Relación con categoría (la sección se deriva de category.section)
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
@@ -590,9 +624,9 @@ model Document {
   documentTypeId Int? // Subtipo del documento dentro de su categoría
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
 
-  isPublic     Boolean           @default(false) // Si es público o privado
-  uploadedBy   User              @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
-  uploadedById String
+  isPublic       Boolean           @default(false) // Si es público o privado
+  uploadedBy     User              @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
+  uploadedById   String
   // Versionado
   currentVersion Int               @default(1) // Versión actual del documento
   versions       DocumentVersion[] // Historial de versiones
@@ -641,6 +675,7 @@ model Document {
   @@index([uploadedById])
   @@index([categoryId])
   @@index([documentTypeId])
+  @@index([status])
   @@index([deletedAt]) // Índice para filtrar documentos eliminados
   @@index([archivedAt]) // Índice para filtrar documentos archivados
   @@index([createdAt]) // Índice para ordenar por fecha
@@ -697,30 +732,30 @@ model TransferHistory {
 }
 
 model DocumentTemplate {
-  id              Int             @id @default(autoincrement())
-  name            String          @unique // Nombre de la plantilla (ej: "Acta de Reunión")
-  categoryId      Int? // Categoría a la que pertenece esta plantilla
-  category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  documentTypeId  Int? // Subtipo de documento al que pertenece esta plantilla
-  documentType    DocumentType?   @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
-  description     String? // Descripción de la plantilla
-  fields          Json // Definición de campos del formulario en formato JSON
-  htmlTemplate    String          @db.Text // Plantilla HTML con Handlebars para generar el documento
-  styles          String?         @db.Text // CSS personalizado para el documento
-  outputFormat    String          @default("pdf") // Formato de salida: pdf, docx, html
-  pageSize        String          @default("A4") // Tamaño de página: A4, Letter, Legal
-  orientation     String          @default("portrait") // Orientación: portrait, landscape
-  isActive        Boolean         @default(true) // Si la plantilla está activa
-  isPredefined    Boolean         @default(false) // Si es una plantilla predefinida del sistema
-  previewImageUrl String? // URL de imagen de preview de la plantilla
-  usageCount      Int             @default(0) // Contador de uso de la plantilla
-  variableSchema  Json? // JSON Schema para validación de variables
+  id                   Int                    @id @default(autoincrement())
+  name                 String                 @unique // Nombre de la plantilla (ej: "Acta de Reunión")
+  categoryId           Int? // Categoría a la que pertenece esta plantilla
+  category             Category?              @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  documentTypeId       Int? // Subtipo de documento al que pertenece esta plantilla
+  documentType         DocumentType?          @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
+  description          String? // Descripción de la plantilla
+  fields               Json // Definición de campos del formulario en formato JSON
+  htmlTemplate         String                 @db.Text // Plantilla HTML con Handlebars para generar el documento
+  styles               String?                @db.Text // CSS personalizado para el documento
+  outputFormat         String                 @default("pdf") // Formato de salida: pdf, docx, html
+  pageSize             String                 @default("A4") // Tamaño de página: A4, Letter, Legal
+  orientation          String                 @default("portrait") // Orientación: portrait, landscape
+  isActive             Boolean                @default(true) // Si la plantilla está activa
+  isPredefined         Boolean                @default(false) // Si es una plantilla predefinida del sistema
+  previewImageUrl      String? // URL de imagen de preview de la plantilla
+  usageCount           Int                    @default(0) // Contador de uso de la plantilla
+  variableSchema       Json? // JSON Schema para validación de variables
   documentTemplateData DocumentTemplateData[] // Documentos creados con esta plantilla
-  batches         DocumentBatch[] // Lotes generados con esta plantilla
-  createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  createdById     String
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  batches              DocumentBatch[] // Lotes generados con esta plantilla
+  createdBy            User                   @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  createdById          String
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   @@index([documentTypeId])
   @@index([categoryId])
@@ -731,16 +766,16 @@ model DocumentTemplate {
 
 // Lote de documentos generados desde una plantilla
 model DocumentBatch {
-  id          String           @id @default(cuid())
-  name        String // Nombre descriptivo del lote
-  templateId  Int
-  template    DocumentTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  createdById String
-  createdBy   User             @relation("CreatedBatches", fields: [createdById], references: [id], onDelete: Cascade)
+  id                   String                 @id @default(cuid())
+  name                 String // Nombre descriptivo del lote
+  templateId           Int
+  template             DocumentTemplate       @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  createdById          String
+  createdBy            User                   @relation("CreatedBatches", fields: [createdById], references: [id], onDelete: Cascade)
   documentTemplateData DocumentTemplateData[] // Documentos que forman parte del lote
-  totalCount  Int              @default(0) // Número de documentos generados exitosamente
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  totalCount           Int                    @default(0) // Número de documentos generados exitosamente
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
 
   @@index([createdById])
   @@index([templateId])
@@ -894,7 +929,8 @@ model DocumentShare {
   // Compartir con usuario, rol, departamento o curso específico
   userId       String? // Usuario específico (opcional)
   user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         UserRole? // Rol específico (opcional)
+  roleId       String? // Rol específico (opcional)
+  role         Role?       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   departmentId Int? // Departamento específico (opcional)
   department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   courseId     Int? // Curso específico (opcional)
@@ -932,7 +968,7 @@ model DocumentShare {
 
   @@index([documentId])
   @@index([userId])
-  @@index([role])
+  @@index([roleId])
   @@index([departmentId])
   @@index([courseId])
   @@index([shareToken])
@@ -1003,4 +1039,52 @@ model DocumentTemplateData {
   @@index([documentId])
   @@index([templateId])
   @@index([batchId])
+}
+
+// ============ MIGRATION DOMAIN ROLES ============
+
+model CategoryRole {
+  id         Int      @id @default(autoincrement())
+  categoryId Int
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  roleId     String
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([categoryId, roleId])
+  @@index([categoryId])
+  @@index([roleId])
+}
+
+model WorkflowTemplateInitiatorRole {
+  id                 Int              @id @default(autoincrement())
+  workflowTemplateId Int
+  workflowTemplate   WorkflowTemplate @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
+  roleId             String
+  role               Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([workflowTemplateId, roleId])
+  @@index([workflowTemplateId])
+  @@index([roleId])
+}
+
+model WorkflowTemplateState {
+  id                 Int              @id @default(autoincrement())
+  workflowTemplateId Int
+  workflowTemplate   WorkflowTemplate @relation(fields: [workflowTemplateId], references: [id], onDelete: Cascade)
+  state              String // e.g., "pending_director"
+  roleId             String
+  role               Role             @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  order              Int              @default(0)
+  requiresComment    Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowTemplateId, state])
+  @@index([workflowTemplateId])
+  @@index([roleId])
 }
