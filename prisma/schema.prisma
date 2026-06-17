@@ -501,10 +501,26 @@ model User {
   // Relaciones de lotes de documentos
   createdBatches DocumentBatch[] @relation("CreatedBatches")
 
+  // Relaciones de restablecimiento de contraseña
+  passwordResetTokens PasswordResetToken[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([departmentId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
 }
 
 model Category {

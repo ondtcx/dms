@@ -20,6 +20,9 @@ import { Public } from './decorators/public.decorator';
 import { Roles } from './decorators/roles.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { GenerateResetTokenDto } from './dto/generate-reset-token.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { UserRole } from './role.enum';
 
@@ -124,5 +127,100 @@ export class AuthController {
   })
   getProfile(@CurrentUser() user: any) {
     return this.authService.getProfile(user.id);
+  }
+
+  @Post('admin/generate-reset-token')
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Generar token de restablecimiento de contraseña',
+    description:
+      'Permite a un administrador generar un token de restablecimiento de contraseña para un usuario. El token expira en 24 horas y es de un solo uso.',
+  })
+  @ApiBody({ type: GenerateResetTokenDto })
+  @ApiResponse({
+    status: 201,
+    description: 'Token generado exitosamente',
+    schema: {
+      example: {
+        token: 'a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6',
+        expiresAt: '2026-06-18T23:39:59.000Z',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autenticado',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'No autorizado - Se requiere rol de administrador',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Usuario no encontrado',
+  })
+  async generateResetToken(@Body() dto: GenerateResetTokenDto) {
+    return this.authService.generateResetToken(dto.userId);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Restablecer contraseña con token',
+    description:
+      'Permite restablecer la contraseña utilizando un token de restablecimiento válido y no expirado.',
+  })
+  @ApiBody({ type: ResetPasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Contraseña restablecida exitosamente',
+    schema: {
+      example: {
+        message: 'Contraseña restablecida exitosamente',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Token inválido, expirado o ya utilizado',
+  })
+  async resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.authService.resetPassword(dto.token, dto.newPassword);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Cambiar contraseña',
+    description:
+      'Permite al usuario autenticado cambiar su contraseña proporcionando la contraseña actual y una nueva.',
+  })
+  @ApiBody({ type: ChangePasswordDto })
+  @ApiResponse({
+    status: 200,
+    description: 'Contraseña cambiada exitosamente',
+    schema: {
+      example: {
+        message: 'Contraseña cambiada exitosamente',
+      },
+    },
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'La contraseña actual es incorrecta o la nueva contraseña no cumple los requisitos',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'No autenticado',
+  })
+  async changePassword(
+    @CurrentUser() user: any,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
 }
