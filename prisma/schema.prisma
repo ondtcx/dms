@@ -534,11 +534,6 @@ model Category {
   // Numeración de documentos
   prefix String? // Prefijo para numeración (ej: "PLN", "ACT") — se deriva del nombre si es null
 
-  // Sección a la que pertenece esta categoría (jerarquía Section → Category)
-  // El contexto institucional se hereda de section.context
-  sectionId Int?
-  section   Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
-
   // Control de acceso
   requiresCourse     Boolean @default(false) // Si requiere asignar curso al subir
   allowedRoles       Json    @default("[]") // UserRole[] vacío = sin restricción
@@ -552,7 +547,6 @@ model Category {
   updatedAt         DateTime           @updatedAt
 
   @@index([name])
-  @@index([sectionId])
 }
 
 // Subtipo de documento dentro de una categoría (ej: "Oficio Interno" dentro de "Administrativos")
@@ -584,7 +578,6 @@ model Section {
   prefix      String? @unique // Prefijo para numeración de documentos (ej: "GA", "ADM") — se deriva del nombre si es null
 
   workflowTemplates WorkflowTemplate[] // Templates de workflow que aplican a esta sección (M2M)
-  categories        Category[] // Categorías que pertenecen a esta sección
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -594,7 +587,7 @@ model Section {
 model Document {
   id          Int       @id @default(autoincrement())
   description String? // Descripción del documento
-  categoryId  Int? // Relación con categoría (la sección se deriva de category.section)
+  categoryId  Int? // Relación con categoría
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   // Relaciones 1:1
