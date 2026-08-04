@@ -7,10 +7,8 @@ import {
 } from '@nestjs/common';
 import { UserRole } from '../auth/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
-import { ShareService } from '../share/share.service';
 import { BatchUpdateDto } from './dto/batch-update.dto';
 import { BatchDeleteDto } from './dto/batch-delete.dto';
-import { BatchShareDto } from './dto/batch-share.dto';
 import { BatchExportDto } from './dto/batch-export.dto';
 import archiver from 'archiver';
 import { createReadStream, existsSync } from 'fs';
@@ -21,10 +19,7 @@ import { join } from 'path';
 export class BatchService {
   private readonly logger = new Logger(BatchService.name);
 
-  constructor(
-    private prisma: PrismaService,
-    private shareService: ShareService,
-  ) {}
+  constructor(private prisma: PrismaService) {}
 
   /**
    * Actualización masiva de documentos
@@ -163,52 +158,6 @@ export class BatchService {
         documentIds,
       };
     }
-  }
-
-  /**
-   * Compartir documentos en lote
-   */
-  async batchShare(batchShareDto: BatchShareDto, userId: string) {
-    const { documentIds, ...shareData } = batchShareDto;
-
-    // Verificar que todos los documentos existen
-    const documents = await this.prisma.document.findMany({
-      where: {
-        id: { in: documentIds },
-      },
-      select: {
-        id: true,
-        uploadedById: true,
-      },
-    });
-
-    if (documents.length !== documentIds.length) {
-      throw new NotFoundException('Algunos documentos no fueron encontrados');
-    }
-
-    // Crear shares para cada documento
-    const shares = [];
-    for (const doc of documents) {
-      try {
-        const share = await this.shareService.create(
-          {
-            documentId: doc.id,
-            ...shareData,
-          },
-          userId,
-        );
-        shares.push(share);
-      } catch (error) {
-        console.error(`Error al compartir documento ${doc.id}:`, error.message);
-      }
-    }
-
-    return {
-      success: true,
-      shared: shares.length,
-      documentIds,
-      shares,
-    };
   }
 
   /**
@@ -423,9 +372,6 @@ export class BatchService {
                     name: true,
                     color: true,
                     icon: true,
-                    section: {
-                      select: { id: true, name: true, color: true, icon: true },
-                    },
                   },
                 },
               }

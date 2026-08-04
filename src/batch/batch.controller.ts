@@ -22,7 +22,6 @@ import {
 import { BatchService } from './batch.service';
 import { BatchUpdateDto } from './dto/batch-update.dto';
 import { BatchDeleteDto } from './dto/batch-delete.dto';
-import { BatchShareDto } from './dto/batch-share.dto';
 import { BatchExportDto } from './dto/batch-export.dto';
 import { AuthGuard } from '../auth/guards/auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -93,39 +92,6 @@ export class BatchController {
   })
   batchDelete(@Body() batchDeleteDto: BatchDeleteDto, @Request() req: any) {
     return this.batchService.batchDelete(batchDeleteDto, req.user.id);
-  }
-
-  @Post('share')
-  @ApiOperation({
-    summary: 'Compartir documentos en lote',
-    description: 'Crea shares para múltiples documentos a la vez',
-  })
-  @ApiResponse({
-    status: 201,
-    description: 'Documentos compartidos exitosamente',
-    schema: {
-      example: {
-        success: true,
-        shared: 5,
-        documentIds: [1, 2, 3, 4, 5],
-        shares: [
-          {
-            id: 1,
-            documentId: 1,
-            shareToken: 'uuid-token',
-            canView: true,
-            canDownload: true,
-          },
-        ],
-      },
-    },
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Algunos documentos no encontrados',
-  })
-  batchShare(@Body() batchShareDto: BatchShareDto, @Request() req: any) {
-    return this.batchService.batchShare(batchShareDto, req.user.id);
   }
 
   @Post('export')
