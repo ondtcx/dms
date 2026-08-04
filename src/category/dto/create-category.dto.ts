@@ -4,7 +4,6 @@ import {
   IsNotEmpty,
   IsOptional,
   IsBoolean,
-  IsInt,
   IsArray,
   Matches,
 } from 'class-validator';
@@ -52,14 +51,6 @@ export class CreateCategoryDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
-
-  @ApiPropertyOptional({
-    description: 'ID de la sección a la que pertenece esta categoría',
-    example: 1,
-  })
-  @IsInt()
-  @IsOptional()
-  sectionId?: number;
 
   @ApiPropertyOptional({
     description:

@@ -29,16 +29,6 @@ export class SearchQueryDto {
   categoryIds?: number[];
 
   @ApiPropertyOptional({
-    description: 'IDs de secciones',
-    type: [Number],
-    example: [1],
-  })
-  @IsOptional()
-  @IsArray()
-  @Type(() => Number)
-  sectionIds?: number[];
-
-  @ApiPropertyOptional({
     description: 'IDs de departamentos',
     type: [Number],
     example: [1],

@@ -9,9 +9,6 @@ import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
 
 const CATEGORY_INCLUDE = {
-  section: {
-    select: { id: true, name: true, color: true, icon: true },
-  },
   _count: {
     select: { documents: true, documentTypes: true },
   },

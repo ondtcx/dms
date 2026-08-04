@@ -127,9 +127,6 @@ export class OnlyofficeService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
       },

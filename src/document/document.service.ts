@@ -178,9 +178,6 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
         documentType: {
@@ -220,7 +217,6 @@ export class DocumentService {
       search,
       categoryId,
       documentTypeId,
-      sectionId,
       isPublic,
       includeDeleted,
       onlyMine,
@@ -282,10 +278,6 @@ export class DocumentService {
 
     if (documentTypeId) {
       where.AND.push({ documentTypeId });
-    }
-
-    if (sectionId) {
-      where.AND.push({ category: { sectionId } });
     }
 
     if (isPublic !== undefined) {
@@ -353,9 +345,6 @@ export class DocumentService {
               color: true,
               icon: true,
               bypassAcademicYear: true,
-              section: {
-                select: { id: true, name: true, color: true, icon: true },
-              },
             },
           },
           documentType: {
@@ -433,9 +422,6 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
         documentType: {
@@ -513,9 +499,6 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
         documentType: {
@@ -788,9 +771,6 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
         
@@ -1067,7 +1047,6 @@ export class DocumentService {
     startDate?: Date,
     endDate?: Date,
     categoryId?: number,
-    sectionId?: number,
   ) {
     const where: any = {
       AND: [{ deletedAt: null }],
@@ -1095,10 +1074,6 @@ export class DocumentService {
       where.AND.push({ categoryId });
     }
 
-    if (sectionId) {
-      where.AND.push({ category: { sectionId } });
-    }
-
     const documents = await this.prisma.document.findMany({
       where,
       include: {
@@ -1117,9 +1092,6 @@ export class DocumentService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
         
@@ -1218,9 +1190,6 @@ export class DocumentService {
               name: true,
               color: true,
               icon: true,
-              section: {
-                select: { id: true, name: true, color: true, icon: true },
-              },
             },
           },
           

@@ -5,10 +5,13 @@ import { PrismaService } from '../prisma/prisma.service';
  * Genera y asigna códigos de numeración institucional a documentos.
  *
  * Formato: [SECCION]-[CATEGORIA]-[AÑO]-[CORRELATIVO]
- * Ejemplo:  GA-PLN-2026-0042
+ * Ejemplo:  DOC-PLN-2026-0042
  *
- * Los prefijos se leen dinámicamente desde Section.prefix / Category.prefix.
- * Si un modelo no tiene prefijo configurado, se deriva automáticamente del nombre.
+ * NOTA (migración remove_category_section_fk): Category.section fue removido
+ * del schema, por lo que el prefijo de sección quedó fijo en 'DOC' para todos
+ * los documentos nuevos. Antes se leía dinámicamente desde Section.prefix.
+ * El prefijo de categoría se sigue leyendo de Category.prefix, o se deriva
+ * automáticamente del nombre si no está configurado.
  */
 @Injectable()
 export class DocumentNumberingService {
@@ -70,9 +73,6 @@ export class DocumentNumberingService {
       select: {
         name: true,
         prefix: true,
-        section: {
-          select: { name: true, prefix: true },
-        },
       },
     });
 
@@ -80,10 +80,10 @@ export class DocumentNumberingService {
       return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
     }
 
-    const sectionPrefix =
-      category.section?.prefix ??
-      this.derivePrefix(category.section?.name) ??
-      'DOC';
+    // Category ya no tiene relación con Section (removida en esta migración);
+    // el prefijo de sección queda fijo en 'DOC' hasta que se defina un
+    // reemplazo (ver riesgo reportado en la aplicación de este cambio).
+    const sectionPrefix = 'DOC';
     const categoryPrefix =
       category.prefix ?? this.derivePrefix(category.name) ?? 'GEN';
 

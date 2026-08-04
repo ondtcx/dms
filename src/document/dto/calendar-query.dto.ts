@@ -27,13 +27,4 @@ export class CalendarQueryDto {
   @IsOptional()
   @Type(() => Number)
   categoryId?: number;
-
-  @ApiPropertyOptional({
-    description: 'Filtrar por ID de sección',
-    example: 1,
-  })
-  @IsInt()
-  @IsOptional()
-  @Type(() => Number)
-  sectionId?: number;
 }

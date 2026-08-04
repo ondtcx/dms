@@ -31,7 +31,6 @@ const TEMPLATE_INCLUDE = {
       color: true,
       icon: true,
       allowedRoles: true,
-      section: { select: { id: true, name: true } },
     },
   },
   documentType: {
@@ -453,9 +452,6 @@ export class DocumentTemplateService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
       },
@@ -1125,9 +1121,6 @@ export class DocumentTemplateService {
             name: true,
             color: true,
             icon: true,
-            section: {
-              select: { id: true, name: true, color: true, icon: true },
-            },
           },
         },
       },

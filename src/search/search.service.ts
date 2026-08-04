@@ -14,7 +14,6 @@ export class SearchService {
     const {
       query,
       categoryIds,
-      sectionIds,
       departmentIds,
       courseIds,
       subjectIds,
@@ -80,11 +79,6 @@ export class SearchService {
     // Filtros de categoría
     if (categoryIds && categoryIds.length > 0) {
       baseWhere.categoryId = { in: categoryIds };
-    }
-
-    // Filtros de sección (via categoría — la sección se deriva de category.sectionId)
-    if (sectionIds && sectionIds.length > 0) {
-      baseWhere.category = { sectionId: { in: sectionIds } };
     }
 
     // Filtros organizacionales (acumulado en AND para no pisar otras cláusulas OR)
@@ -303,7 +297,6 @@ export class SearchService {
     // Guardar solo filtros relevantes (omitir paginación)
     const relevantFilters: any = {};
     if (filters.categoryIds) relevantFilters.categoryIds = filters.categoryIds;
-    if (filters.sectionIds) relevantFilters.sectionIds = filters.sectionIds;
     if (filters.departmentIds)
       relevantFilters.departmentIds = filters.departmentIds;
     if (filters.courseIds) relevantFilters.courseIds = filters.courseIds;

@@ -344,7 +344,6 @@ export class DocumentController {
               createdAt: '2026-01-07T10:30:00Z',
               uploadedBy: { name: 'Juan Pérez' },
               category: { name: 'Académico', color: '#3b82f6' },
-              section: { name: 'Calendario', color: '#10b981' },
             },
           ],
         },
@@ -365,7 +364,6 @@ export class DocumentController {
       startDate,
       endDate,
       query.categoryId,
-      query.sectionId,
     );
   }
 

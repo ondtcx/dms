@@ -798,11 +798,13 @@ async function resolvePrefixes(categoryId: number | null): Promise<{ sectionPref
 
   const category = await prisma.category.findUnique({
     where: { id: categoryId },
-    select: { name: true, prefix: true, section: { select: { name: true, prefix: true } } },
+    select: { name: true, prefix: true },
   });
   if (!category) return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
 
-  const sectionPrefix = category.section?.prefix ?? derivePrefix(category.section?.name) ?? 'DOC';
+  // Category.section fue removido del schema; el prefijo de sección queda
+  // fijo en 'DOC' (replica el mismo cambio en DocumentNumberingService).
+  const sectionPrefix = 'DOC';
   const categoryPrefix = category.prefix ?? derivePrefix(category.name) ?? 'GEN';
   return { sectionPrefix, categoryPrefix };
 }
