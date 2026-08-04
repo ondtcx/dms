@@ -1,125 +1,35 @@
 /**
- * Script para generar documentos de ejemplo usando la API.
+ * Script para generar documentos de ejemplo directamente vía PrismaClient.
+ *
+ * A diferencia de la versión anterior, este script NO depende de que el
+ * backend esté corriendo ni de iniciar sesión vía HTTP: crea los registros
+ * de Document / DocumentVersion / DocumentTemplateData directamente en la
+ * base de datos, replicando la lógica de negocio de
+ * DocumentTemplateService.createDocumentFromTemplate() (numeración
+ * institucional vía DocumentNumberingService, versionado inicial) y de
+ * WorkflowService (inicio y aprobación de workflows).
+ *
+ * No genera PDFs reales (eso requiere Puppeteer + Handlebars a través del
+ * contexto completo de Nest) — en su lugar escribe un archivo placeholder
+ * en uploads/ con el mismo nombre/mimetype, de forma que el registro de
+ * DocumentVersion sea consistente y el documento sea navegable/descargable.
  *
  * Requisitos:
- *   1. Backend corriendo en http://localhost:3001
- *   2. Seed base ejecutado (npm run seed)
+ *   1. Seed base ejecutado (npm run seed) — usuarios, secciones, categorías,
+ *      plantillas de documento y plantillas de workflow deben existir.
  *
  * Uso:
  *   npm run seed:documents
+ *
+ * Idempotencia: si un documento con el mismo archivo (filename) ya existe
+ * para el mismo usuario, se reutiliza en lugar de duplicarlo.
  */
 
-const API_URL = 'http://localhost:3001/api';
+import { PrismaClient, DocumentVersionSource, WorkflowStatus, UserRole } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 
-interface LoginResponse {
-  user: { id: string; name: string; role: string };
-  access_token: string;
-}
-
-interface Template {
-  id: number;
-  name: string;
-  type: string;
-}
-
-interface Category {
-  id: number;
-  name: string;
-}
-
-interface Section {
-  id: number;
-  name: string;
-}
-
-// ============================================================
-// Helpers
-// ============================================================
-
-const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-async function login(email: string, retries = 3): Promise<LoginResponse> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: 'Demo123!' }),
-      });
-      if (!res.ok) throw new Error(`Login failed for ${email}: ${res.status}`);
-      return res.json();
-    } catch (e) {
-      if (i < retries - 1) {
-        await delay(1000);
-        continue;
-      }
-      throw e;
-    }
-  }
-  throw new Error(`Login failed for ${email} after ${retries} retries`);
-}
-
-async function apiGet<T>(path: string, token: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
-  return res.json();
-}
-
-async function createFromTemplate(
-  token: string,
-  data: {
-    templateId: number;
-    formData: Record<string, any>;
-    filename: string;
-    description: string;
-    sectionId?: number;
-    isPublic?: boolean;
-  },
-) {
-  const res = await fetch(`${API_URL}/documents/from-template`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(data),
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`Create from template failed: ${res.status} - ${error}`);
-  }
-  return res.json();
-}
-
-async function apiPost(path: string, token: string, body: object): Promise<any> {
-  const res = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const error = await res.text();
-    throw new Error(`POST ${path} failed: ${res.status} - ${error}`);
-  }
-  return res.json();
-}
-
-async function startWorkflow(token: string, documentId: number, templateId: number): Promise<{ id: number }> {
-  return apiPost(`/workflows/documents/${documentId}/initiate`, token, { templateId });
-}
-
-async function approveWorkflow(token: string, workflowId: number, action: string, comment?: string): Promise<void> {
-  await apiPost(`/workflows/${workflowId}/approve`, token, { action, ...(comment ? { comment } : {}) });
-}
-
-async function addComment(token: string, documentId: number, content: string, parentId?: number): Promise<{ id: number }> {
-  return apiPost(`/documents/${documentId}/comments`, token, { content, ...(parentId ? { parentId } : {}) });
-}
+const prisma = new PrismaClient();
 
 // ============================================================
 // Datos de ejemplo para cada plantilla
@@ -863,701 +773,613 @@ function getPresupuestoActividadData() {
 }
 
 // ============================================================
+// Numeración institucional (replica DocumentNumberingService)
+// ============================================================
+
+function derivePrefix(name?: string | null): string | null {
+  if (!name) return null;
+  const normalized = name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z\s]/g, '')
+    .trim();
+  const words = normalized.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return null;
+  if (words.length === 1) return words[0].substring(0, 3).toUpperCase();
+  return words
+    .map((w) => w[0])
+    .join('')
+    .substring(0, 6)
+    .toUpperCase();
+}
+
+async function resolvePrefixes(categoryId: number | null): Promise<{ sectionPrefix: string; categoryPrefix: string }> {
+  if (!categoryId) return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
+
+  const category = await prisma.category.findUnique({
+    where: { id: categoryId },
+    select: { name: true, prefix: true, section: { select: { name: true, prefix: true } } },
+  });
+  if (!category) return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
+
+  const sectionPrefix = category.section?.prefix ?? derivePrefix(category.section?.name) ?? 'DOC';
+  const categoryPrefix = category.prefix ?? derivePrefix(category.name) ?? 'GEN';
+  return { sectionPrefix, categoryPrefix };
+}
+
+function formatDocumentNumber(sectionPrefix: string, categoryPrefix: string, year: number, seq: number): string {
+  return `${sectionPrefix}-${categoryPrefix}-${year}-${seq.toString().padStart(4, '0')}`;
+}
+
+async function assignDocumentNumber(documentId: number, categoryId: number | null): Promise<string> {
+  const existing = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { documentNumber: true },
+  });
+  if (existing?.documentNumber) return existing.documentNumber;
+
+  const year = new Date().getFullYear();
+  const { sectionPrefix, categoryPrefix } = await resolvePrefixes(categoryId);
+
+  const seq = await prisma.$transaction(async (tx) => {
+    await tx.documentCounter.upsert({
+      where: { sectionPrefix_categoryPrefix_year: { sectionPrefix, categoryPrefix, year } },
+      create: { sectionPrefix, categoryPrefix, year, lastNumber: 0 },
+      update: {},
+    });
+    const updated = await tx.documentCounter.update({
+      where: { sectionPrefix_categoryPrefix_year: { sectionPrefix, categoryPrefix, year } },
+      data: { lastNumber: { increment: 1 } },
+      select: { lastNumber: true },
+    });
+    return updated.lastNumber;
+  });
+
+  const documentNumber = formatDocumentNumber(sectionPrefix, categoryPrefix, year, seq);
+  await prisma.document.update({ where: { id: documentId }, data: { documentNumber } });
+  return documentNumber;
+}
+
+// ============================================================
+// Lookups cargados una vez al inicio (reemplazan login() + apiGet())
+// ============================================================
+
+interface LoadedTemplate {
+  id: number;
+  categoryId: number | null;
+}
+
+interface StateDefinition {
+  state: string;
+  role: string;
+  order: number;
+}
+
+interface LoadedWorkflowTemplate {
+  id: number;
+  stateDefinitions: StateDefinition[];
+}
+
+let userIdByEmail: Record<string, string> = {};
+let templateByName: Record<string, LoadedTemplate> = {};
+let workflowTemplateByName: Record<string, LoadedWorkflowTemplate> = {};
+let currentAcademicYearId: number | null = null;
+
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+
+async function loadLookups() {
+  const users = await prisma.user.findMany({ select: { id: true, email: true } });
+  userIdByEmail = Object.fromEntries(users.map((u) => [u.email, u.id]));
+
+  const templates = await prisma.documentTemplate.findMany({
+    select: { id: true, name: true, categoryId: true },
+  });
+  templateByName = Object.fromEntries(templates.map((t) => [t.name, { id: t.id, categoryId: t.categoryId }]));
+
+  const workflowTemplates = await prisma.workflowTemplate.findMany({
+    select: { id: true, name: true, stateDefinitions: true },
+  });
+  workflowTemplateByName = Object.fromEntries(
+    workflowTemplates.map((t) => [
+      t.name,
+      {
+        id: t.id,
+        stateDefinitions: ((t.stateDefinitions as unknown as StateDefinition[]) ?? [])
+          .slice()
+          .sort((a, b) => a.order - b.order),
+      },
+    ]),
+  );
+
+  const academicYear = await prisma.academicYear.findFirst({
+    where: { isCurrent: true, isActive: true },
+    select: { id: true },
+  });
+  currentAcademicYearId = academicYear?.id ?? null;
+
+  if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// ============================================================
+// Creación de documentos
+// (replica DocumentTemplateService.generateAndPersistDocument, sin
+// renderizado real de PDF vía Puppeteer)
+// ============================================================
+
+async function createDocumentFromTemplate(
+  userEmail: string,
+  templateName: string,
+  data: { formData: Record<string, any>; filename: string; description: string },
+): Promise<{ id: number; categoryId: number | null } | null> {
+  const uploadedById = userIdByEmail[userEmail];
+  if (!uploadedById) {
+    console.error(`  ❌ Usuario no encontrado: ${userEmail} — se omite "${data.filename}"`);
+    return null;
+  }
+
+  const template = templateByName[templateName];
+  if (!template) {
+    console.error(`  ❌ Plantilla "${templateName}" no encontrada — se omite "${data.filename}"`);
+    return null;
+  }
+
+  // Idempotencia: si el usuario ya tiene un documento con este archivo,
+  // se reutiliza en vez de duplicarlo en reejecuciones del seed.
+  const existing = await prisma.document.findFirst({
+    where: { uploadedById, deletedAt: null, versions: { some: { filename: data.filename } } },
+    select: { id: true, categoryId: true },
+  });
+  if (existing) {
+    return existing;
+  }
+
+  const mimetype = data.filename.endsWith('.html') ? 'text/html' : 'application/pdf';
+  const storedName = `${Date.now()}-${data.filename}`;
+  const filePath = path.join(UPLOADS_DIR, storedName);
+
+  // Placeholder: este script no invoca Puppeteer/Handlebars (requiere el
+  // contexto completo de Nest). Se escribe un archivo con el mismo nombre
+  // y mimetype para que el registro de DocumentVersion sea consistente.
+  const placeholderContent = Buffer.from(
+    `Documento generado por seed-documents.ts\n\n${data.description}\n\n${JSON.stringify(data.formData, null, 2)}\n`,
+    'utf-8',
+  );
+  fs.writeFileSync(filePath, placeholderContent);
+
+  const document = await prisma.document.create({
+    data: {
+      description: data.description,
+      isPublic: false,
+      uploadedById,
+      categoryId: template.categoryId,
+      versions: {
+        create: {
+          version: 1,
+          filename: data.filename,
+          storedName,
+          mimetype,
+          size: placeholderContent.length,
+          path: filePath,
+          createdById: uploadedById,
+          source: DocumentVersionSource.UPLOAD_INICIAL,
+        },
+      },
+      templateData: {
+        create: { templateId: template.id, formData: data.formData },
+      },
+      ...(currentAcademicYearId ? { academic: { create: { academicYearId: currentAcademicYearId } } } : {}),
+    },
+    select: { id: true, categoryId: true },
+  });
+
+  await assignDocumentNumber(document.id, document.categoryId);
+
+  return document;
+}
+
+// ============================================================
+// Workflows (replica WorkflowService.initiateWorkflow / processApproval)
+// ============================================================
+
+async function startWorkflow(
+  userEmail: string,
+  documentId: number,
+  workflowTemplateName: string,
+): Promise<{ id: number } | null> {
+  const initiatedById = userIdByEmail[userEmail];
+  const template = workflowTemplateByName[workflowTemplateName];
+  if (!initiatedById || !template || !documentId) {
+    console.error(`  ❌ No se pudo iniciar workflow "${workflowTemplateName}" para el documento ${documentId}`);
+    return null;
+  }
+
+  const firstState = template.stateDefinitions[0];
+  if (!firstState) return null;
+
+  const existing = await prisma.documentWorkflow.findUnique({ where: { documentId } });
+  if (existing) return { id: existing.id };
+
+  const workflow = await prisma.documentWorkflow.create({
+    data: {
+      documentId,
+      templateId: template.id,
+      status: WorkflowStatus.IN_PROGRESS,
+      currentState: firstState.state,
+      currentStateOrder: firstState.order,
+      initiatedById,
+    },
+    select: { id: true },
+  });
+
+  const approvers = await prisma.user.findMany({
+    where: { role: firstState.role as UserRole },
+    select: { id: true },
+  });
+  await Promise.all(
+    approvers
+      .filter((u) => u.id !== initiatedById)
+      .map((u) =>
+        prisma.workflowApproval.create({
+          data: {
+            workflowId: workflow.id,
+            state: firstState.state,
+            stateOrder: firstState.order,
+            action: null,
+            userId: u.id,
+            comment: null,
+          },
+        }),
+      ),
+  );
+
+  return workflow;
+}
+
+async function approveWorkflow(
+  userEmail: string,
+  workflowId: number | undefined,
+  action: 'APPROVED' | 'REJECTED' | 'REQUESTED_CHANGES',
+  comment?: string,
+): Promise<void> {
+  const userId = userIdByEmail[userEmail];
+  if (!userId || !workflowId) return;
+
+  const workflow = await prisma.documentWorkflow.findUnique({
+    where: { id: workflowId },
+    include: { template: { select: { stateDefinitions: true } } },
+  });
+  if (!workflow) return;
+
+  const stateDefinitions = ((workflow.template.stateDefinitions as unknown as StateDefinition[]) ?? [])
+    .slice()
+    .sort((a, b) => a.order - b.order);
+
+  let approval = await prisma.workflowApproval.findFirst({
+    where: { workflowId, userId, state: workflow.currentState, action: null },
+  });
+  if (!approval) {
+    approval = await prisma.workflowApproval.create({
+      data: {
+        workflowId,
+        state: workflow.currentState,
+        stateOrder: workflow.currentStateOrder,
+        action: null,
+        userId,
+        comment: null,
+      },
+    });
+  }
+
+  const currentVersion = await prisma.documentVersion.findFirst({
+    where: { documentId: workflow.documentId },
+    orderBy: { version: 'desc' },
+    select: { id: true },
+  });
+
+  await prisma.workflowApproval.update({
+    where: { id: approval.id },
+    data: { action, comment: comment ?? null, documentVersionId: currentVersion?.id ?? null },
+  });
+
+  if (action === 'REJECTED') {
+    await prisma.documentWorkflow.update({
+      where: { id: workflowId },
+      data: { status: WorkflowStatus.REJECTED, completedAt: new Date() },
+    });
+    return;
+  }
+
+  if (action === 'REQUESTED_CHANGES') {
+    await prisma.documentWorkflow.update({
+      where: { id: workflowId },
+      data: { status: WorkflowStatus.CHANGES_REQUESTED },
+    });
+    return;
+  }
+
+  // APPROVED: avanzar al siguiente estado o completar el workflow
+  const nextIndex = stateDefinitions.findIndex((s) => s.order === workflow.currentStateOrder) + 1;
+
+  if (nextIndex >= stateDefinitions.length) {
+    await prisma.documentWorkflow.update({
+      where: { id: workflowId },
+      data: { status: WorkflowStatus.APPROVED, completedAt: new Date() },
+    });
+    return;
+  }
+
+  const nextState = stateDefinitions[nextIndex];
+  const prevState = workflow.currentState;
+
+  await prisma.documentWorkflow.update({
+    where: { id: workflowId },
+    data: { currentState: nextState.state, currentStateOrder: nextState.order },
+  });
+
+  await prisma.workflowApproval.deleteMany({ where: { workflowId, state: prevState, action: null } });
+
+  const approversNext = await prisma.user.findMany({
+    where: { role: nextState.role as UserRole },
+    select: { id: true },
+  });
+  await Promise.all(
+    approversNext
+      .filter((u) => u.id !== workflow.initiatedById)
+      .map((u) =>
+        prisma.workflowApproval.create({
+          data: {
+            workflowId,
+            state: nextState.state,
+            stateOrder: nextState.order,
+            action: null,
+            userId: u.id,
+            comment: null,
+          },
+        }),
+      ),
+  );
+}
+
+// ============================================================
+// Comentarios
+// ============================================================
+
+async function addComment(
+  userEmail: string,
+  documentId: number | undefined,
+  content: string,
+  parentId?: number,
+): Promise<{ id: number } | null> {
+  const userId = userIdByEmail[userEmail];
+  if (!userId || !documentId) return null;
+  return prisma.documentComment.create({
+    data: { documentId, userId, content, parentId: parentId ?? null },
+    select: { id: true },
+  });
+}
+
+// ============================================================
 // Script principal
 // ============================================================
 
 async function main() {
-  console.log('📄 Generando documentos de ejemplo...\n');
-  console.log('Conectando al backend en', API_URL, '...\n');
+  console.log('📄 Generando documentos de ejemplo (PrismaClient, sin servidor HTTP)...\n');
 
-  // Login con cada usuario
-  const sessions: Record<string, { token: string; name: string }> = {};
-  const users = [
-    'admin@colegio.edu',
-    'rector@colegio.edu',
-    'vicerrector@colegio.edu',
-    'coord.primaria@colegio.edu',
-    'coord.secundaria@colegio.edu',
-    'secretaria@colegio.edu',
-    'maestro.1p@colegio.edu',
-    'maestro.2p@colegio.edu',
-    'maestro.3p@colegio.edu',
-    'maestro.4p@colegio.edu',
-    'maestro.5p@colegio.edu',
-    'maestro.6p@colegio.edu',
-    'prof.biologia@colegio.edu',
-    'prof.matematica@colegio.edu',
-    'prof.lengua@colegio.edu',
-  ];
-
-  for (const email of users) {
-    try {
-      const { user, access_token } = await login(email);
-      sessions[email] = { token: access_token, name: user.name };
-      console.log(`  ✅ Login: ${user.name} (${email})`);
-    } catch (e: any) {
-      console.error(`  ❌ Login falló: ${email} - ${e.message}`);
-      return;
-    }
-    await delay(300);
-  }
-
-  // Obtener IDs de templates de documentos
-  const token = sessions['admin@colegio.edu'].token;
-
-  const docTemplatesRes = await apiGet<{ data: { id: number; name: string }[] } | { id: number; name: string }[]>(
-    '/document-templates?limit=50',
-    token,
+  await loadLookups();
+  console.log(
+    `  ${Object.keys(userIdByEmail).length} usuarios, ${Object.keys(templateByName).length} plantillas de documento, ${Object.keys(workflowTemplateByName).length} plantillas de workflow cargadas\n`,
   );
-  const docTemplates = Array.isArray(docTemplatesRes) ? docTemplatesRes : (docTemplatesRes as any).data;
-  const docTemplateByName: Record<string, number> = {};
-  for (const t of docTemplates) {
-    docTemplateByName[t.name] = t.id;
-  }
 
-  const allSectionsRes = await apiGet<{ data: Section[] } | Section[]>('/sections', token);
-  const allSections = Array.isArray(allSectionsRes) ? allSectionsRes : (allSectionsRes as any).data;
-  const secByName: Record<string, number> = {};
-  for (const s of allSections) {
-    secByName[s.name] = s.id;
-  }
-
-  // Obtener IDs de workflow templates
-  const wfTemplatesRaw = await apiGet<any[]>('/workflows/templates', token);
-  const wfByName: Record<string, number> = {};
-  for (const t of wfTemplatesRaw) {
-    wfByName[t.name] = t.id;
-  }
-
-  console.log('\n📝 Creando documentos desde plantillas...\n');
+  console.log('📝 Creando documentos desde plantillas...\n');
 
   let created = 0;
   const docsCreated: Record<string, number> = {};
+  const docsCategory: Record<number, number | null> = {};
+
+  const seedOne = async (
+    templateName: string,
+    userEmail: string,
+    doc: { formData: Record<string, any>; filename: string; description: string },
+  ) => {
+    const result = await createDocumentFromTemplate(userEmail, templateName, doc);
+    if (result) {
+      created++;
+      docsCategory[result.id] = result.categoryId;
+      console.log(`  ✅ ${doc.filename}`);
+    } else {
+      console.error(`  ❌ ${doc.filename}`);
+    }
+    return result;
+  };
 
   // --- Actas de Reunión de Personal (Directora) ---
-  const actaId = docTemplateByName['Acta de Reunión de Personal'];
-  if (!actaId) {
-    console.error('  ❌ Plantilla "Acta de Reunión de Personal" no encontrada');
-  } else {
-    for (const acta of getActaReunionPersonalData()) {
-      try {
-        const doc = await createFromTemplate(sessions['rector@colegio.edu'].token, {
-          templateId: actaId,
-          formData: acta.formData,
-          filename: acta.filename,
-          description: acta.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        if (!docsCreated.actaReunionConsejo) docsCreated.actaReunionConsejo = doc.id;
-        console.log(`  ✅ ${acta.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${acta.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const acta of getActaReunionPersonalData()) {
+    const doc = await seedOne('Acta de Reunión de Personal', 'rector@colegio.edu', acta);
+    if (doc && !docsCreated.actaReunionConsejo) docsCreated.actaReunionConsejo = doc.id;
   }
 
   // --- Constancias de Estudio (Secretaria) ---
-  const constanciaId = docTemplateByName['Constancia de Estudio'];
-  if (!constanciaId) {
-    console.error('  ❌ Plantilla "Constancia de Estudio" no encontrada');
-  } else {
-    for (const constancia of getConstanciaEstudioData()) {
-      try {
-        const doc = await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
-          templateId: constanciaId,
-          formData: constancia.formData,
-          filename: constancia.filename,
-          description: constancia.description,
-          sectionId: secByName['Gestión Institucional'],
-        });
-        if (!docsCreated.constanciaValentina) docsCreated.constanciaValentina = doc.id;
-        else docsCreated.constanciaSantiago = doc.id;
-        console.log(`  ✅ ${constancia.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${constancia.filename}: ${e.message}`);
-      }
-      await delay(500);
+  for (const constancia of getConstanciaEstudioData()) {
+    const doc = await seedOne('Constancia de Estudio', 'secretaria@colegio.edu', constancia);
+    if (doc) {
+      if (!docsCreated.constanciaValentina) docsCreated.constanciaValentina = doc.id;
+      else docsCreated.constanciaSantiago = doc.id;
     }
   }
 
   // --- Constancia de Buena Conducta (Secretaria) ---
-  const conductaId = docTemplateByName['Constancia de Buena Conducta'];
-  if (!conductaId) {
-    console.error('  ❌ Plantilla "Constancia de Buena Conducta" no encontrada');
-  } else {
-    for (const cert of getConstanciaBuenaConductaData()) {
-      try {
-        await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
-          templateId: conductaId,
-          formData: cert.formData,
-          filename: cert.filename,
-          description: cert.description,
-          sectionId: secByName['Gestión Institucional'],
-        });
-        console.log(`  ✅ ${cert.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${cert.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const cert of getConstanciaBuenaConductaData()) {
+    await seedOne('Constancia de Buena Conducta', 'secretaria@colegio.edu', cert);
   }
 
   // --- Memorándums Internos (Directora) ---
-  const memoId = docTemplateByName['Memorándum Interno'];
-  if (!memoId) {
-    console.error('  ❌ Plantilla "Memorándum Interno" no encontrada');
-  } else {
-    for (const memo of getMemorandumInternoData()) {
-      try {
-        await createFromTemplate(sessions['rector@colegio.edu'].token, {
-          templateId: memoId,
-          formData: memo.formData,
-          filename: memo.filename,
-          description: memo.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${memo.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${memo.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const memo of getMemorandumInternoData()) {
+    await seedOne('Memorándum Interno', 'rector@colegio.edu', memo);
   }
 
   // --- Documentos de la Vicerrectora ---
-  if (memoId) {
-    const viceMemoData = {
-      formData: {
-        numero: 'MEM-2026-003',
-        fecha: '2026-03-10',
-        para: 'Coordinadores de Primaria y Secundaria',
-        de: 'Lucía Fernanda Castillo - Vicerrectora',
-        asunto: 'Protocolo de Atención a Estudiantes con Necesidades Educativas Especiales',
-        contenido:
-          'Por instrucciones de la Dirección General, se comunica a los coordinadores de nivel la actualización del protocolo institucional para la atención de estudiantes con necesidades educativas especiales (NEE).\n\nA partir del 17 de marzo de 2026 se implementarán las siguientes disposiciones:\n\n1. Todo docente que identifique a un estudiante con posible NEE debe notificarlo por escrito a su coordinación en un lapso no mayor a 5 días hábiles.\n\n2. La coordinación iniciará el proceso de observación y diagnóstico pedagógico en un período de 10 días hábiles.\n\n3. Los ajustes curriculares requeridos serán gestionados conjuntamente con la Vicerrectoría y los docentes de aula.\n\n4. Se habilitará un expediente digital por cada caso en la sección "Administrativos" del sistema documental.\n\nAgradezco la atención y puntual cumplimiento de estas directrices.',
-      },
-      filename: 'memorandum-protocolo-nee-2026.pdf',
-      description: 'Memorándum — Protocolo de atención a estudiantes con NEE',
-    };
-    try {
-      const viceMemo = await createFromTemplate(sessions['vicerrector@colegio.edu'].token, {
-        templateId: memoId,
-        formData: viceMemoData.formData,
-        filename: viceMemoData.filename,
-        description: viceMemoData.description,
-        sectionId: secByName['Gestión Administrativa'],
-      });
-      docsCreated.vicerrectorMemo = viceMemo.id;
-      console.log(`  ✅ ${viceMemoData.filename}`);
-      created++;
-    } catch (e: any) {
-      console.error(`  ❌ ${viceMemoData.filename}: ${e.message}`);
-    }
-    await delay(500);
-  }
+  const viceMemoData = {
+    formData: {
+      numero: 'MEM-2026-003',
+      fecha: '2026-03-10',
+      para: 'Coordinadores de Primaria y Secundaria',
+      de: 'Lucía Fernanda Castillo - Vicerrectora',
+      asunto: 'Protocolo de Atención a Estudiantes con Necesidades Educativas Especiales',
+      contenido:
+        'Por instrucciones de la Dirección General, se comunica a los coordinadores de nivel la actualización del protocolo institucional para la atención de estudiantes con necesidades educativas especiales (NEE).\n\nA partir del 17 de marzo de 2026 se implementarán las siguientes disposiciones:\n\n1. Todo docente que identifique a un estudiante con posible NEE debe notificarlo por escrito a su coordinación en un lapso no mayor a 5 días hábiles.\n\n2. La coordinación iniciará el proceso de observación y diagnóstico pedagógico en un período de 10 días hábiles.\n\n3. Los ajustes curriculares requeridos serán gestionados conjuntamente con la Vicerrectoría y los docentes de aula.\n\n4. Se habilitará un expediente digital por cada caso en la sección "Administrativos" del sistema documental.\n\nAgradezco la atención y puntual cumplimiento de estas directrices.',
+    },
+    filename: 'memorandum-protocolo-nee-2026.pdf',
+    description: 'Memorándum — Protocolo de atención a estudiantes con NEE',
+  };
+  const viceMemo = await seedOne('Memorándum Interno', 'vicerrector@colegio.edu', viceMemoData);
+  if (viceMemo) docsCreated.vicerrectorMemo = viceMemo.id;
 
-  if (actaId) {
-    const viceActaData = {
-      formData: {
-        numero_acta: 'ACTA-VICE-2026-001',
-        fecha: '2026-03-12',
-        hora_inicio: '09:00',
-        hora_fin: '11:30',
-        lugar: 'Sala de Conferencias — Vicerrectoría',
-        titulo: 'Reunión de Coordinación Pedagógica — Segundo Lapso 2026',
-        tipo_reunion: 'Reunión de Coordinación Pedagógica',
-        presidente: 'Lucía Fernanda Castillo - Vicerrectora',
-        secretario: 'Carlos Alberto Mendoza - Secretario Académico',
-        participantes: 'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
-        asistentes: 'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
-        agenda: '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
-        orden_del_dia: '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
-        desarrollo: 'La Vicerrectora dio inicio a la reunión señalando los avances registrados en el segundo lapso. La Coord. de Primaria presentó los indicadores de rendimiento actualizados, destacando una mejora del 8% en lectura comprensiva. La Coord. de Secundaria informó sobre el plan de tutorías implementado en Matemática y Lengua. Se acordó reforzar el seguimiento individualizado de los 14 estudiantes identificados con bajo rendimiento.',
-        acuerdos: '1. Entregar informe de rendimiento consolidado del segundo lapso antes del 20 de marzo.\n2. Implementar tutorías grupales los miércoles de 2:00 PM a 3:30 PM.\n3. Convocar reunión con representantes de estudiantes en riesgo para el 25 de marzo.\n4. Actualizar el registro de seguimiento en el sistema documental.',
-        proxima_reunion: '26 de marzo de 2026, 9:00 AM',
-      },
-      filename: 'acta-reunion-coordinacion-pedagogica-2026-001.pdf',
-      description: 'Acta de reunión de coordinación pedagógica — presidida por Vicerrectoría',
-    };
-    try {
-      const viceActa = await createFromTemplate(sessions['vicerrector@colegio.edu'].token, {
-        templateId: actaId,
-        formData: viceActaData.formData,
-        filename: viceActaData.filename,
-        description: viceActaData.description,
-        sectionId: secByName['Gestión Administrativa'],
-      });
-      docsCreated.vicerrectorActa = viceActa.id;
-      console.log(`  ✅ ${viceActaData.filename}`);
-      created++;
-    } catch (e: any) {
-      console.error(`  ❌ ${viceActaData.filename}: ${e.message}`);
-    }
-    await delay(500);
-  }
+  const viceActaData = {
+    formData: {
+      numero_acta: 'ACTA-VICE-2026-001',
+      fecha: '2026-03-12',
+      hora_inicio: '09:00',
+      hora_fin: '11:30',
+      lugar: 'Sala de Conferencias — Vicerrectoría',
+      titulo: 'Reunión de Coordinación Pedagógica — Segundo Lapso 2026',
+      tipo_reunion: 'Reunión de Coordinación Pedagógica',
+      presidente: 'Lucía Fernanda Castillo - Vicerrectora',
+      secretario: 'Carlos Alberto Mendoza - Secretario Académico',
+      participantes:
+        'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
+      asistentes:
+        'Coord. Primaria: Andrea Patricia Salcedo\nCoord. Secundaria: Roberto Miguel Paredes\nMaestro 6° Grado: Natalia Cecilia Ortega\nProf. Matemática: Eduardo José Villareal',
+      agenda:
+        '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
+      orden_del_dia:
+        '1. Seguimiento de metas pedagógicas del segundo lapso\n2. Revisión de indicadores de rendimiento por nivel\n3. Plan de tutorías para estudiantes con bajo rendimiento\n4. Próximas actividades institucionales',
+      desarrollo:
+        'La Vicerrectora dio inicio a la reunión señalando los avances registrados en el segundo lapso. La Coord. de Primaria presentó los indicadores de rendimiento actualizados, destacando una mejora del 8% en lectura comprensiva. La Coord. de Secundaria informó sobre el plan de tutorías implementado en Matemática y Lengua. Se acordó reforzar el seguimiento individualizado de los 14 estudiantes identificados con bajo rendimiento.',
+      acuerdos:
+        '1. Entregar informe de rendimiento consolidado del segundo lapso antes del 20 de marzo.\n2. Implementar tutorías grupales los miércoles de 2:00 PM a 3:30 PM.\n3. Convocar reunión con representantes de estudiantes en riesgo para el 25 de marzo.\n4. Actualizar el registro de seguimiento en el sistema documental.',
+      proxima_reunion: '26 de marzo de 2026, 9:00 AM',
+    },
+    filename: 'acta-reunion-coordinacion-pedagogica-2026-001.pdf',
+    description: 'Acta de reunión de coordinación pedagógica — presidida por Vicerrectoría',
+  };
+  const viceActa = await seedOne('Acta de Reunión de Personal', 'vicerrector@colegio.edu', viceActaData);
+  if (viceActa) docsCreated.vicerrectorActa = viceActa.id;
 
   // --- Informe Pedagógico de Grupo (Coordinadora de Primaria) ---
-  const informeId = docTemplateByName['Informe Pedagógico de Grupo'];
-  if (!informeId) {
-    console.error('  ❌ Plantilla "Informe Pedagógico de Grupo" no encontrada');
-  } else {
-    for (const informe of getInformePedagogicoGrupoData()) {
-      try {
-        const doc = await createFromTemplate(sessions['coord.primaria@colegio.edu'].token, {
-          templateId: informeId,
-          formData: informe.formData,
-          filename: informe.filename,
-          description: informe.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        docsCreated.informePedagogico = doc.id;
-        console.log(`  ✅ ${informe.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${informe.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const informe of getInformePedagogicoGrupoData()) {
+    const doc = await seedOne('Informe Pedagógico de Grupo', 'coord.primaria@colegio.edu', informe);
+    if (doc) docsCreated.informePedagogico = doc.id;
   }
 
   // --- Solicitud de Permiso Laboral (Profesora de Biología) ---
-  const permisoId = docTemplateByName['Solicitud de Permiso Laboral'];
-  if (!permisoId) {
-    console.error('  ❌ Plantilla "Solicitud de Permiso Laboral" no encontrada');
-  } else {
-    for (const sol of getSolicitudPermisoLaboralData()) {
-      try {
-        await createFromTemplate(sessions['prof.biologia@colegio.edu'].token, {
-          templateId: permisoId,
-          formData: sol.formData,
-          filename: sol.filename,
-          description: sol.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${sol.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${sol.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const sol of getSolicitudPermisoLaboralData()) {
+    await seedOne('Solicitud de Permiso Laboral', 'prof.biologia@colegio.edu', sol);
   }
 
   // --- Reporte de Incidencia Escolar (Maestro de 1° Grado) ---
-  const reporteId = docTemplateByName['Reporte de Incidencia Escolar'];
-  if (!reporteId) {
-    console.error('  ❌ Plantilla "Reporte de Incidencia Escolar" no encontrada');
-  } else {
-    for (const rep of getReporteIncidenciaData()) {
-      try {
-        await createFromTemplate(sessions['maestro.1p@colegio.edu'].token, {
-          templateId: reporteId,
-          formData: rep.formData,
-          filename: rep.filename,
-          description: rep.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${rep.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${rep.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const rep of getReporteIncidenciaData()) {
+    await seedOne('Reporte de Incidencia Escolar', 'maestro.1p@colegio.edu', rep);
   }
 
   // ── PLANIFICACIONES ──────────────────────────────────────────
 
   // --- Planificación Semanal de Clase (Maestro 3° Grado) ---
-  const planSemanalId = docTemplateByName['Planificación Semanal de Clase'];
-  if (!planSemanalId) {
-    console.error('  ❌ Plantilla "Planificación Semanal de Clase" no encontrada');
-  } else {
-    for (const doc of getPlanificacionSemanalData()) {
-      try {
-        const created_doc = await createFromTemplate(sessions['maestro.3p@colegio.edu'].token, {
-          templateId: planSemanalId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        docsCreated.planificacionSemanal3p = created_doc.id;
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getPlanificacionSemanalData()) {
+    const created_doc = await seedOne('Planificación Semanal de Clase', 'maestro.3p@colegio.edu', doc);
+    if (created_doc) docsCreated.planificacionSemanal3p = created_doc.id;
   }
 
   // --- Proyecto Pedagógico de Aula (Maestro 5° Grado) ---
-  const proyectoId = docTemplateByName['Proyecto Pedagógico de Aula'];
-  if (!proyectoId) {
-    console.error('  ❌ Plantilla "Proyecto Pedagógico de Aula" no encontrada');
-  } else {
-    for (const doc of getProyectoPedagogicoData()) {
-      try {
-        const created_doc = await createFromTemplate(sessions['maestro.5p@colegio.edu'].token, {
-          templateId: proyectoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        docsCreated.proyectoPedagogico = created_doc.id;
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getProyectoPedagogicoData()) {
+    const created_doc = await seedOne('Proyecto Pedagógico de Aula', 'maestro.5p@colegio.edu', doc);
+    if (created_doc) docsCreated.proyectoPedagogico = created_doc.id;
   }
 
   // --- Plan de Evaluación Trimestral (Prof. Matemática) ---
-  const planEvalId = docTemplateByName['Plan de Evaluación Trimestral'];
-  if (!planEvalId) {
-    console.error('  ❌ Plantilla "Plan de Evaluación Trimestral" no encontrada');
-  } else {
-    for (const doc of getPlanEvaluacionData()) {
-      try {
-        const created_doc = await createFromTemplate(sessions['prof.matematica@colegio.edu'].token, {
-          templateId: planEvalId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        docsCreated.planEvaluacion = created_doc.id;
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getPlanEvaluacionData()) {
+    const created_doc = await seedOne('Plan de Evaluación Trimestral', 'prof.matematica@colegio.edu', doc);
+    if (created_doc) docsCreated.planEvaluacion = created_doc.id;
   }
 
   // ── ACTAS Y REUNIONES ─────────────────────────────────────────
 
   // --- Acta de Consejo de Grado (Coord. Secundaria) ---
-  const actaConsejoId = docTemplateByName['Acta de Consejo de Grado'];
-  if (!actaConsejoId) {
-    console.error('  ❌ Plantilla "Acta de Consejo de Grado" no encontrada');
-  } else {
-    for (const doc of getActaConsejoGradoData()) {
-      try {
-        const created_doc = await createFromTemplate(sessions['coord.secundaria@colegio.edu'].token, {
-          templateId: actaConsejoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        docsCreated.actaConsejo = created_doc.id;
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getActaConsejoGradoData()) {
+    const created_doc = await seedOne('Acta de Consejo de Grado', 'coord.secundaria@colegio.edu', doc);
+    if (created_doc) docsCreated.actaConsejo = created_doc.id;
   }
 
-  // --- Acta de Compromiso con Representantes (Maestra 2° Grado) ---
-  const actaCompromisoId = docTemplateByName['Acta de Compromiso con Representantes'];
-  if (!actaCompromisoId) {
-    console.error('  ❌ Plantilla "Acta de Compromiso con Representantes" no encontrada');
-  } else {
-    for (const doc of getActaCompromisoData()) {
-      try {
-        const created_doc = await createFromTemplate(sessions['coord.primaria@colegio.edu'].token, {
-          templateId: actaCompromisoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        docsCreated.actaCompromiso = created_doc.id;
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  // --- Acta de Compromiso con Representantes (Coord. Primaria) ---
+  for (const doc of getActaCompromisoData()) {
+    const created_doc = await seedOne('Acta de Compromiso con Representantes', 'coord.primaria@colegio.edu', doc);
+    if (created_doc) docsCreated.actaCompromiso = created_doc.id;
   }
 
   // ── CONSTANCIAS Y CERTIFICADOS ────────────────────────────────
 
   // --- Certificado de Culminación de Estudios (Secretaria) ---
-  const certificadoId = docTemplateByName['Certificado de Culminación de Estudios'];
-  if (!certificadoId) {
-    console.error('  ❌ Plantilla "Certificado de Culminación de Estudios" no encontrada');
-  } else {
-    for (const doc of getCertificadoCulminacionData()) {
-      try {
-        await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
-          templateId: certificadoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Institucional'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getCertificadoCulminacionData()) {
+    await seedOne('Certificado de Culminación de Estudios', 'secretaria@colegio.edu', doc);
   }
 
   // ── INFORMES ACADÉMICOS ───────────────────────────────────────
 
   // --- Informe de Rendimiento Académico Individual (Prof. Lengua) ---
-  const informeIndId = docTemplateByName['Informe de Rendimiento Académico Individual'];
-  if (!informeIndId) {
-    console.error('  ❌ Plantilla "Informe de Rendimiento Académico Individual" no encontrada');
-  } else {
-    for (const doc of getInformeRendimientoIndividualData()) {
-      try {
-        await createFromTemplate(sessions['prof.lengua@colegio.edu'].token, {
-          templateId: informeIndId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getInformeRendimientoIndividualData()) {
+    await seedOne('Informe de Rendimiento Académico Individual', 'prof.lengua@colegio.edu', doc);
   }
 
   // --- Boletín de Calificaciones (Maestra 4° Grado) ---
-  const boletinId = docTemplateByName['Boletín de Calificaciones'];
-  if (!boletinId) {
-    console.error('  ❌ Plantilla "Boletín de Calificaciones" no encontrada');
-  } else {
-    for (const doc of getBoletinCalificacionesData()) {
-      try {
-        await createFromTemplate(sessions['maestro.4p@colegio.edu'].token, {
-          templateId: boletinId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Académica'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getBoletinCalificacionesData()) {
+    await seedOne('Boletín de Calificaciones', 'maestro.4p@colegio.edu', doc);
   }
 
   // ── ADMINISTRATIVOS ───────────────────────────────────────────
 
   // --- Circular Informativa (Directora) ---
-  const circularId = docTemplateByName['Circular Informativa'];
-  if (!circularId) {
-    console.error('  ❌ Plantilla "Circular Informativa" no encontrada');
-  } else {
-    for (const doc of getCircularInformativaData()) {
-      try {
-        await createFromTemplate(sessions['rector@colegio.edu'].token, {
-          templateId: circularId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getCircularInformativaData()) {
+    await seedOne('Circular Informativa', 'rector@colegio.edu', doc);
   }
 
   // --- Comunicado a Representantes (Maestra 6° Grado) ---
-  const comunicadoId = docTemplateByName['Comunicado a Representantes'];
-  if (!comunicadoId) {
-    console.error('  ❌ Plantilla "Comunicado a Representantes" no encontrada');
-  } else {
-    for (const doc of getComunicadoRepresentantesData()) {
-      try {
-        await createFromTemplate(sessions['maestro.6p@colegio.edu'].token, {
-          templateId: comunicadoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getComunicadoRepresentantesData()) {
+    await seedOne('Comunicado a Representantes', 'maestro.6p@colegio.edu', doc);
   }
 
   // ── OFICIOS ───────────────────────────────────────────────────
 
   // --- Oficio genérico ---
-  const oficioId = docTemplateByName['Oficio'];
-  if (!oficioId) {
-    console.error('  ❌ Plantilla "Oficio" no encontrada');
-  } else {
-    for (const doc of getOficioData()) {
-      try {
-        await createFromTemplate(sessions[doc.user].token, {
-          templateId: oficioId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getOficioData()) {
+    await seedOne('Oficio', doc.user, doc);
   }
 
   // --- Oficio de Designación Docente ---
-  const oficioDesignacionId = docTemplateByName['Oficio de Designación Docente'];
-  if (!oficioDesignacionId) {
-    console.error('  ❌ Plantilla "Oficio de Designación Docente" no encontrada');
-  } else {
-    for (const doc of getOficioDesignacionData()) {
-      try {
-        await createFromTemplate(sessions[doc.user].token, {
-          templateId: oficioDesignacionId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getOficioDesignacionData()) {
+    await seedOne('Oficio de Designación Docente', doc.user, doc);
   }
 
   // --- Oficio de Remisión de Documentos ---
-  const oficioRemisionId = docTemplateByName['Oficio de Remisión de Documentos'];
-  if (!oficioRemisionId) {
-    console.error('  ❌ Plantilla "Oficio de Remisión de Documentos" no encontrada');
-  } else {
-    for (const doc of getOficioRemisionData()) {
-      try {
-        await createFromTemplate(sessions[doc.user].token, {
-          templateId: oficioRemisionId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Administrativa'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getOficioRemisionData()) {
+    await seedOne('Oficio de Remisión de Documentos', doc.user, doc);
   }
 
   // ── LEGALES ───────────────────────────────────────────────────
 
   // --- Contrato de Inscripción Estudiantil (Directora) ---
-  const contratoId = docTemplateByName['Contrato de Inscripción Estudiantil'];
-  if (!contratoId) {
-    console.error('  ❌ Plantilla "Contrato de Inscripción Estudiantil" no encontrada');
-  } else {
-    for (const doc of getContratoInscripcionData()) {
-      try {
-        await createFromTemplate(sessions['rector@colegio.edu'].token, {
-          templateId: contratoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Institucional'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getContratoInscripcionData()) {
+    await seedOne('Contrato de Inscripción Estudiantil', 'rector@colegio.edu', doc);
   }
 
   // ── FINANCIEROS ───────────────────────────────────────────────
 
   // --- Recibo de Pago de Aranceles (Secretaria) ---
-  const reciboId = docTemplateByName['Recibo de Pago de Aranceles'];
-  if (!reciboId) {
-    console.error('  ❌ Plantilla "Recibo de Pago de Aranceles" no encontrada');
-  } else {
-    for (const doc of getReciboArancelesData()) {
-      try {
-        await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
-          templateId: reciboId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Institucional'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  for (const doc of getReciboArancelesData()) {
+    await seedOne('Recibo de Pago de Aranceles', 'secretaria@colegio.edu', doc);
   }
 
-  // --- Presupuesto de Actividad Escolar (Coord. Primaria) ---
-  const presupuestoId = docTemplateByName['Presupuesto de Actividad Escolar'];
-  if (!presupuestoId) {
-    console.error('  ❌ Plantilla "Presupuesto de Actividad Escolar" no encontrada');
-  } else {
-    for (const doc of getPresupuestoActividadData()) {
-      try {
-        await createFromTemplate(sessions['secretaria@colegio.edu'].token, {
-          templateId: presupuestoId,
-          formData: doc.formData,
-          filename: doc.filename,
-          description: doc.description,
-          sectionId: secByName['Gestión Institucional'],
-        });
-        console.log(`  ✅ ${doc.filename}`);
-        created++;
-      } catch (e: any) {
-        console.error(`  ❌ ${doc.filename}: ${e.message}`);
-      }
-      await delay(500);
-    }
+  // --- Presupuesto de Actividad Escolar (Secretaria) ---
+  for (const doc of getPresupuestoActividadData()) {
+    await seedOne('Presupuesto de Actividad Escolar', 'secretaria@colegio.edu', doc);
   }
 
   // ============================================================
@@ -1565,102 +1387,46 @@ async function main() {
   // ============================================================
   console.log('\n📋 Fase 2: Iniciando workflows...');
 
-  const wfRevisionPlan = wfByName['Revisión de Planificación'];
-  const wfAprobacionAcademica = wfByName['Aprobación Académica'];
-  const wfRevisionActa = wfByName['Revisión de Acta'];
-  const wfEmisionConstancia = wfByName['Emisión de Constancia'];
+  const wfRevisionPlan = 'Revisión de Planificación';
+  const wfAprobacionAcademica = 'Aprobación Académica';
+  const wfRevisionActa = 'Revisión de Acta';
+  const wfEmisionConstancia = 'Emisión de Constancia';
 
   // Planificación semanal 3° Grado → pendiente para coordinador de primaria
-  let wfPlanificacion3p: { id: number } | null = null;
-  if (wfRevisionPlan && docsCreated.planificacionSemanal3p) {
-    try {
-      wfPlanificacion3p = await startWorkflow(sessions['maestro.3p@colegio.edu'].token, docsCreated.planificacionSemanal3p, wfRevisionPlan);
-      console.log('  ✅ Workflow iniciado: Planificación Semanal 3° Grado → pendiente coordinador');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Planificación 3°: ${e.message}`);
-    }
-    await delay(400);
-  }
+  const wfPlanificacion3p = await startWorkflow('maestro.3p@colegio.edu', docsCreated.planificacionSemanal3p, wfRevisionPlan);
+  if (wfPlanificacion3p) console.log('  ✅ Workflow iniciado: Planificación Semanal 3° Grado → pendiente coordinador');
 
   // Proyecto Pedagógico → pendiente para coordinador de primaria
-  if (wfRevisionPlan && docsCreated.proyectoPedagogico) {
-    try {
-      await startWorkflow(sessions['maestro.5p@colegio.edu'].token, docsCreated.proyectoPedagogico, wfRevisionPlan);
-      console.log('  ✅ Workflow iniciado: Proyecto Pedagógico → pendiente coordinador');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Proyecto Pedagógico: ${e.message}`);
-    }
-    await delay(400);
+  if (await startWorkflow('maestro.5p@colegio.edu', docsCreated.proyectoPedagogico, wfRevisionPlan)) {
+    console.log('  ✅ Workflow iniciado: Proyecto Pedagógico → pendiente coordinador');
   }
 
   // Acta de Consejo de Grado → pendiente para director
-  if (wfRevisionActa && docsCreated.actaConsejo) {
-    try {
-      await startWorkflow(sessions['coord.secundaria@colegio.edu'].token, docsCreated.actaConsejo, wfRevisionActa);
-      console.log('  ✅ Workflow iniciado: Acta de Consejo de Grado → pendiente director');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Acta Consejo: ${e.message}`);
-    }
-    await delay(400);
+  if (await startWorkflow('coord.secundaria@colegio.edu', docsCreated.actaConsejo, wfRevisionActa)) {
+    console.log('  ✅ Workflow iniciado: Acta de Consejo de Grado → pendiente director');
   }
 
   // Constancia Valentina → pendiente para director
-  if (wfEmisionConstancia && docsCreated.constanciaValentina) {
-    try {
-      await startWorkflow(sessions['secretaria@colegio.edu'].token, docsCreated.constanciaValentina, wfEmisionConstancia);
-      console.log('  ✅ Workflow iniciado: Constancia Valentina → pendiente director');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Constancia Valentina: ${e.message}`);
-    }
-    await delay(400);
+  if (await startWorkflow('secretaria@colegio.edu', docsCreated.constanciaValentina, wfEmisionConstancia)) {
+    console.log('  ✅ Workflow iniciado: Constancia Valentina → pendiente director');
   }
 
   // Plan de Evaluación → flujo multi-paso: coord.secundaria aprobará en Fase 3 → después pendiente director
-  let wfPlanEval: { id: number } | null = null;
-  if (wfAprobacionAcademica && docsCreated.planEvaluacion) {
-    try {
-      wfPlanEval = await startWorkflow(sessions['prof.matematica@colegio.edu'].token, docsCreated.planEvaluacion, wfAprobacionAcademica);
-      console.log('  ✅ Workflow iniciado: Plan de Evaluación → Aprobación Académica (2 pasos)');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Plan Evaluación: ${e.message}`);
-    }
-    await delay(400);
-  }
+  const wfPlanEval = await startWorkflow('prof.matematica@colegio.edu', docsCreated.planEvaluacion, wfAprobacionAcademica);
+  if (wfPlanEval) console.log('  ✅ Workflow iniciado: Plan de Evaluación → Aprobación Académica (2 pasos)');
 
   // Constancia Santiago → secretaria inicia, director aprobará en Fase 3
-  let wfConstanciaSantiago: { id: number } | null = null;
-  if (wfEmisionConstancia && docsCreated.constanciaSantiago) {
-    try {
-      wfConstanciaSantiago = await startWorkflow(sessions['secretaria@colegio.edu'].token, docsCreated.constanciaSantiago, wfEmisionConstancia);
-      console.log('  ✅ Workflow iniciado: Constancia Santiago → para aprobar');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Constancia Santiago: ${e.message}`);
-    }
-    await delay(400);
-  }
+  const wfConstanciaSantiago = await startWorkflow('secretaria@colegio.edu', docsCreated.constanciaSantiago, wfEmisionConstancia);
+  if (wfConstanciaSantiago) console.log('  ✅ Workflow iniciado: Constancia Santiago → para aprobar');
 
   // Acta de coordinación pedagógica → vicerrectora inicia, pendiente para director
-  if (wfRevisionActa && docsCreated.vicerrectorActa) {
-    try {
-      await startWorkflow(sessions['vicerrector@colegio.edu'].token, docsCreated.vicerrectorActa, wfRevisionActa);
-      console.log('  ✅ Workflow iniciado: Acta Coordinación Pedagógica (Vicerrectoría) → pendiente director');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Acta Vicerrectoría: ${e.message}`);
-    }
-    await delay(400);
+  if (await startWorkflow('vicerrector@colegio.edu', docsCreated.vicerrectorActa, wfRevisionActa)) {
+    console.log('  ✅ Workflow iniciado: Acta Coordinación Pedagógica (Vicerrectoría) → pendiente director');
   }
 
   // Acta de Compromiso → coord.primaria inicia, director rechazará en Fase 3
-  let wfActaCompromiso: { id: number } | null = null;
-  if (wfRevisionActa && docsCreated.actaCompromiso) {
-    try {
-      wfActaCompromiso = await startWorkflow(sessions['coord.primaria@colegio.edu'].token, docsCreated.actaCompromiso, wfRevisionActa);
-      console.log('  ✅ Workflow iniciado: Acta de Compromiso → para rechazar');
-    } catch (e: any) {
-      console.error(`  ❌ Workflow Acta Compromiso: ${e.message}`);
-    }
-    await delay(400);
-  }
+  const wfActaCompromiso = await startWorkflow('coord.primaria@colegio.edu', docsCreated.actaCompromiso, wfRevisionActa);
+  if (wfActaCompromiso) console.log('  ✅ Workflow iniciado: Acta de Compromiso → para rechazar');
 
   // ============================================================
   // FASE 3: Procesar aprobaciones
@@ -1669,40 +1435,30 @@ async function main() {
 
   // Plan de Evaluación — coord.secundaria aprueba paso 1 → avanza al director
   if (wfPlanEval) {
-    try {
-      await approveWorkflow(sessions['coord.secundaria@colegio.edu'].token, wfPlanEval.id, 'APPROVED', 'Planificación revisada. Criterios de evaluación correctos y alineados al programa.');
-      console.log('  ✅ Coord. Secundaria aprobó Plan de Evaluación (paso 1/2) → ahora pendiente director');
-    } catch (e: any) {
-      console.error(`  ❌ Aprobación Plan Evaluación paso 1: ${e.message}`);
-    }
-    await delay(400);
+    await approveWorkflow(
+      'coord.secundaria@colegio.edu',
+      wfPlanEval.id,
+      'APPROVED',
+      'Planificación revisada. Criterios de evaluación correctos y alineados al programa.',
+    );
+    console.log('  ✅ Coord. Secundaria aprobó Plan de Evaluación (paso 1/2) → ahora pendiente director');
   }
 
   // Constancia Santiago — director aprueba → APROBADO
   if (wfConstanciaSantiago) {
-    try {
-      await approveWorkflow(sessions['rector@colegio.edu'].token, wfConstanciaSantiago.id, 'APPROVED');
-      console.log('  ✅ Director aprobó Constancia de Santiago → APROBADA');
-    } catch (e: any) {
-      console.error(`  ❌ Aprobación Constancia Santiago: ${e.message}`);
-    }
-    await delay(400);
+    await approveWorkflow('rector@colegio.edu', wfConstanciaSantiago.id, 'APPROVED');
+    console.log('  ✅ Director aprobó Constancia de Santiago → APROBADA');
   }
 
   // Acta de Compromiso — director rechaza con motivo
   if (wfActaCompromiso) {
-    try {
-      await approveWorkflow(
-        sessions['rector@colegio.edu'].token,
-        wfActaCompromiso.id,
-        'REJECTED',
-        'El acta no incluye las firmas originales de los representantes ni del docente. Favor adjuntar la documentación completa escaneada antes de reenviar.',
-      );
-      console.log('  ✅ Director rechazó Acta de Compromiso con motivo → RECHAZADA');
-    } catch (e: any) {
-      console.error(`  ❌ Rechazo Acta Compromiso: ${e.message}`);
-    }
-    await delay(400);
+    await approveWorkflow(
+      'rector@colegio.edu',
+      wfActaCompromiso.id,
+      'REJECTED',
+      'El acta no incluye las firmas originales de los representantes ni del docente. Favor adjuntar la documentación completa escaneada antes de reenviar.',
+    );
+    console.log('  ✅ Director rechazó Acta de Compromiso con motivo → RECHAZADA');
   }
 
   // ============================================================
@@ -1712,72 +1468,52 @@ async function main() {
 
   // Proyecto Pedagógico — coordinadora comenta y maestro responde (threading)
   if (docsCreated.proyectoPedagogico) {
-    try {
-      const comment1 = await addComment(
-        sessions['coord.primaria@colegio.edu'].token,
-        docsCreated.proyectoPedagogico,
-        'Revisar los objetivos específicos de la Unidad 3. La metodología propuesta para Ciencias Naturales requiere mayor detalle en las actividades experimentales y los recursos necesarios.',
-      );
+    const comment1 = await addComment(
+      'coord.primaria@colegio.edu',
+      docsCreated.proyectoPedagogico,
+      'Revisar los objetivos específicos de la Unidad 3. La metodología propuesta para Ciencias Naturales requiere mayor detalle en las actividades experimentales y los recursos necesarios.',
+    );
+    if (comment1) {
       console.log('  ✅ Comentario de Coord. Primaria en Proyecto Pedagógico');
-      await delay(300);
-
       await addComment(
-        sessions['maestro.5p@colegio.edu'].token,
+        'maestro.5p@colegio.edu',
         docsCreated.proyectoPedagogico,
         'Actualizado según las indicaciones. Se incorporaron las actividades de laboratorio con materiales reciclados y se amplió la bibliografía de referencia para cada semana.',
         comment1.id,
       );
       console.log('  ✅ Respuesta del Maestro 5° Grado (reply en thread)');
-    } catch (e: any) {
-      console.error(`  ❌ Comentarios Proyecto Pedagógico: ${e.message}`);
     }
-    await delay(400);
   }
 
   // Acta de Reunión Consejo Docente — director agrega nota
   if (docsCreated.actaReunionConsejo) {
-    try {
-      await addComment(
-        sessions['rector@colegio.edu'].token,
-        docsCreated.actaReunionConsejo,
-        'Confirmar asistencia del representante de 3°C antes de la firma definitiva del acta. Pendiente también el cierre de los acuerdos del punto 4.',
-      );
-      console.log('  ✅ Comentario de Director en Acta de Reunión Consejo Docente');
-    } catch (e: any) {
-      console.error(`  ❌ Comentario Acta Reunión: ${e.message}`);
-    }
-    await delay(400);
+    await addComment(
+      'rector@colegio.edu',
+      docsCreated.actaReunionConsejo,
+      'Confirmar asistencia del representante de 3°C antes de la firma definitiva del acta. Pendiente también el cierre de los acuerdos del punto 4.',
+    );
+    console.log('  ✅ Comentario de Director en Acta de Reunión Consejo Docente');
   }
 
   // Informe Pedagógico — coordinadora agrega observación
   if (docsCreated.informePedagogico) {
-    try {
-      await addComment(
-        sessions['coord.primaria@colegio.edu'].token,
-        docsCreated.informePedagogico,
-        'Excelente informe. Compartir este análisis con los maestros de apoyo para coordinar el plan de intervención de los alumnos identificados con dificultades lectoras.',
-      );
-      console.log('  ✅ Comentario de Coord. Primaria en Informe Pedagógico');
-    } catch (e: any) {
-      console.error(`  ❌ Comentario Informe Pedagógico: ${e.message}`);
-    }
-    await delay(400);
+    await addComment(
+      'coord.primaria@colegio.edu',
+      docsCreated.informePedagogico,
+      'Excelente informe. Compartir este análisis con los maestros de apoyo para coordinar el plan de intervención de los alumnos identificados con dificultades lectoras.',
+    );
+    console.log('  ✅ Comentario de Coord. Primaria en Informe Pedagógico');
   }
 
   // Planificación Semanal — coordinadora solicita cambio
   if (docsCreated.planificacionSemanal3p && wfPlanificacion3p) {
-    try {
-      await approveWorkflow(
-        sessions['coord.primaria@colegio.edu'].token,
-        wfPlanificacion3p.id,
-        'REQUESTED_CHANGES',
-        'Agregar los indicadores de evaluación para cada objetivo y especificar los tiempos estimados por actividad. El resto de la planificación está muy bien estructurada.',
-      );
-      console.log('  ✅ Coord. Primaria solicitó cambios en Planificación Semanal 3° Grado');
-    } catch (e: any) {
-      console.error(`  ❌ Solicitud de cambios Planificación: ${e.message}`);
-    }
-    await delay(400);
+    await approveWorkflow(
+      'coord.primaria@colegio.edu',
+      wfPlanificacion3p.id,
+      'REQUESTED_CHANGES',
+      'Agregar los indicadores de evaluación para cada objetivo y especificar los tiempos estimados por actividad. El resto de la planificación está muy bien estructurada.',
+    );
+    console.log('  ✅ Coord. Primaria solicitó cambios en Planificación Semanal 3° Grado');
   }
 
   console.log(`\n🎉 ${created} documentos generados exitosamente!`);
@@ -1804,8 +1540,11 @@ async function main() {
   console.log('  🔄 Cambios solicitados: Planificación Semanal 3° Grado');
 }
 
-main().catch((e) => {
-  console.error('\n❌ Error:', e.message);
-  console.error('\n¿Está el backend corriendo en', API_URL, '?');
-  process.exit(1);
-});
+main()
+  .catch((e) => {
+    console.error('\n❌ Error:', e instanceof Error ? e.message : e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });
