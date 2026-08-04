@@ -53,10 +53,11 @@ async function migrateStorage() {
   console.log('🚀 Iniciando migración de almacenamiento...\n');
 
   try {
-    // 1. Obtener todos los documentos
+    // 1. Obtener todos los documentos con su versión actual
     const documents = await prisma.document.findMany({
       include: {
         uploadedBy: true,
+        versions: true,
       },
     });
 
@@ -67,17 +68,25 @@ async function migrateStorage() {
     let skipped = 0;
 
     for (const doc of documents) {
+      const currentVersion = doc.versions.find((v) => v.version === doc.currentVersion);
+
       try {
+        if (!currentVersion) {
+          console.log(`⚠️  Sin versión actual (saltando): documento ${doc.id}`);
+          skipped++;
+          continue;
+        }
+
         // Verificar si el archivo existe
-        if (!existsSync(doc.path)) {
-          console.log(`⚠️  Archivo no existe (saltando): ${doc.filename}`);
+        if (!existsSync(currentVersion.path)) {
+          console.log(`⚠️  Archivo no existe (saltando): ${currentVersion.filename}`);
           skipped++;
           continue;
         }
 
         // Verificar si ya está en estructura nueva
-        if (doc.path.includes('/active/') || doc.path.includes('/archive/')) {
-          console.log(`✓  Ya migrado (saltando): ${doc.filename}`);
+        if (currentVersion.path.includes('/active/') || currentVersion.path.includes('/archive/')) {
+          console.log(`✓  Ya migrado (saltando): ${currentVersion.filename}`);
           skipped++;
           continue;
         }
@@ -86,7 +95,7 @@ async function migrateStorage() {
         const newPath = generateStructuredPath(
           doc.uploadedById,
           doc.categoryId,
-          doc.storedName,
+          currentVersion.storedName,
           doc.createdAt,
         );
 
@@ -97,57 +106,38 @@ async function migrateStorage() {
         }
 
         // Copiar archivo a nueva ubicación
-        copyFileSync(doc.path, newPath);
+        copyFileSync(currentVersion.path, newPath);
 
         // Calcular checksum
         const checksum = await calculateFileHash(newPath);
 
-        // Actualizar registro en BD
-        await prisma.document.update({
-          where: { id: doc.id },
+        // Actualizar la versión con la nueva ruta
+        await prisma.documentVersion.update({
+          where: { id: currentVersion.id },
           data: {
             path: newPath,
             checksumSHA256: checksum,
           },
         });
 
-        // Crear versión inicial si no existe
-        const existingVersion = await prisma.documentVersion.findUnique({
-          where: {
-            documentId_version: {
-              documentId: doc.id,
-              version: 1,
-            },
-          },
+        // Actualizar checksum del documento
+        await prisma.document.update({
+          where: { id: doc.id },
+          data: { checksumSHA256: checksum },
         });
-
-        if (!existingVersion) {
-          await prisma.documentVersion.create({
-            data: {
-              documentId: doc.id,
-              version: 1,
-              storedName: doc.storedName,
-              path: newPath,
-              size: doc.size,
-              checksumSHA256: checksum,
-              comment: 'Versión inicial (migración)',
-              createdById: doc.uploadedById,
-            },
-          });
-        }
 
         // Eliminar archivo antiguo
         try {
-          unlinkSync(doc.path);
+          unlinkSync(currentVersion.path);
         } catch (err) {
-          console.warn(`⚠️  No se pudo eliminar archivo antiguo: ${doc.path}`);
+          console.warn(`⚠️  No se pudo eliminar archivo antiguo: ${currentVersion.path}`);
         }
 
         migrated++;
-        console.log(`✅ Migrado [${migrated}/${documents.length}]: ${doc.filename}`);
+        console.log(`✅ Migrado [${migrated}/${documents.length}]: ${currentVersion.filename}`);
       } catch (error) {
         errors++;
-        console.error(`❌ Error en documento ${doc.id} (${doc.filename}):`, error.message);
+        console.error(`❌ Error en documento ${doc.id} (${currentVersion?.filename}):`, error.message);
       }
     }
 
