@@ -1146,20 +1146,6 @@ async function approveWorkflow(
 // Comentarios
 // ============================================================
 
-async function addComment(
-  userEmail: string,
-  documentId: number | undefined,
-  content: string,
-  parentId?: number,
-): Promise<{ id: number } | null> {
-  const userId = userIdByEmail[userEmail];
-  if (!userId || !documentId) return null;
-  return prisma.documentComment.create({
-    data: { documentId, userId, content, parentId: parentId ?? null },
-    select: { id: true },
-  });
-}
-
 // ============================================================
 // Script principal
 // ============================================================
@@ -1467,45 +1453,6 @@ async function main() {
   // FASE 4: Agregar comentarios
   // ============================================================
   console.log('\n💬 Fase 4: Agregando comentarios...');
-
-  // Proyecto Pedagógico — coordinadora comenta y maestro responde (threading)
-  if (docsCreated.proyectoPedagogico) {
-    const comment1 = await addComment(
-      'coord.primaria@colegio.edu',
-      docsCreated.proyectoPedagogico,
-      'Revisar los objetivos específicos de la Unidad 3. La metodología propuesta para Ciencias Naturales requiere mayor detalle en las actividades experimentales y los recursos necesarios.',
-    );
-    if (comment1) {
-      console.log('  ✅ Comentario de Coord. Primaria en Proyecto Pedagógico');
-      await addComment(
-        'maestro.5p@colegio.edu',
-        docsCreated.proyectoPedagogico,
-        'Actualizado según las indicaciones. Se incorporaron las actividades de laboratorio con materiales reciclados y se amplió la bibliografía de referencia para cada semana.',
-        comment1.id,
-      );
-      console.log('  ✅ Respuesta del Maestro 5° Grado (reply en thread)');
-    }
-  }
-
-  // Acta de Reunión Consejo Docente — director agrega nota
-  if (docsCreated.actaReunionConsejo) {
-    await addComment(
-      'rector@colegio.edu',
-      docsCreated.actaReunionConsejo,
-      'Confirmar asistencia del representante de 3°C antes de la firma definitiva del acta. Pendiente también el cierre de los acuerdos del punto 4.',
-    );
-    console.log('  ✅ Comentario de Director en Acta de Reunión Consejo Docente');
-  }
-
-  // Informe Pedagógico — coordinadora agrega observación
-  if (docsCreated.informePedagogico) {
-    await addComment(
-      'coord.primaria@colegio.edu',
-      docsCreated.informePedagogico,
-      'Excelente informe. Compartir este análisis con los maestros de apoyo para coordinar el plan de intervención de los alumnos identificados con dificultades lectoras.',
-    );
-    console.log('  ✅ Comentario de Coord. Primaria en Informe Pedagógico');
-  }
 
   // Planificación Semanal — coordinadora solicita cambio
   if (docsCreated.planificacionSemanal3p && wfPlanificacion3p) {
