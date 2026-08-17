@@ -18,7 +18,7 @@ describe('DocumentController (e2e)', () => {
         findFirst: jest.fn(),
       },
       user: {
-        findUnique: jest.fn().mockResolvedValue({ id: 'user123', role: 'admin', departmentId: null }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'user123', role: 'admin' }),
       },
       category: {
         findUnique: jest.fn(),
@@ -126,5 +126,9 @@ describe('DocumentController (e2e)', () => {
     expect(response.body.academic).toHaveProperty('courseId', 10);
     expect(response.body).toHaveProperty('versions');
     expect(response.body.versions[0]).toHaveProperty('filename', 'test.pdf');
+  });
+
+  it('former department endpoints are absent', async () => {
+    await request(app.getHttpServer()).get('/departments').expect(404);
   });
 });

@@ -3,7 +3,6 @@ import {
   IsOptional,
   IsString,
   IsEnum,
-  IsInt,
   IsBoolean,
   IsDateString,
   ValidateIf,
@@ -13,7 +12,7 @@ import { UserRole } from '../../auth/role.enum';
 export class GrantDocumentPermissionDto {
   @ApiPropertyOptional({
     description:
-      'ID del usuario específico (al menos uno de userId, role, o departmentId debe estar presente)',
+      'ID del usuario específico (al menos uno de userId o role debe estar presente)',
     example: 'cuid123',
   })
   @IsString()
@@ -28,14 +27,6 @@ export class GrantDocumentPermissionDto {
   @IsEnum(UserRole)
   @IsOptional()
   role?: UserRole;
-
-  @ApiPropertyOptional({
-    description: 'ID del departamento al que se otorga el permiso',
-    example: 1,
-  })
-  @IsInt()
-  @IsOptional()
-  departmentId?: number;
 
   @ApiPropertyOptional({
     description: 'Permiso de visualización',

@@ -227,10 +227,9 @@ export class DocumentService {
       excludeComposites,
     } = query;
 
-    // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: { id: true, role: true },
     });
 
     const accessFilter = user
@@ -381,10 +380,9 @@ export class DocumentService {
   }
 
   async findOne(id: number, userId: string, userRole: UserRole) {
-    // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: { id: true, role: true },
     });
 
     const accessFilter = user
@@ -1138,7 +1136,7 @@ export class DocumentService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: { id: true, role: true },
     });
 
     const accessFilter = user
@@ -1213,7 +1211,7 @@ export class DocumentService {
   async getArchiveStats(userId: string, userRole: UserRole) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: { id: true, role: true },
     });
 
     const accessFilter = user

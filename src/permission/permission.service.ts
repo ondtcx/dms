@@ -19,11 +19,11 @@ export class PermissionService {
     grantedById: string,
     grantDto: GrantDocumentPermissionDto,
   ) {
-    const { userId, role, departmentId, ...permissions } = grantDto;
+    const { userId, role, ...permissions } = grantDto;
 
-    if (!userId && !role && !departmentId) {
+    if (!userId && !role) {
       throw new BadRequestException(
-        'Debe proporcionar al menos userId, role o departmentId',
+        'Debe proporcionar al menos userId o role',
       );
     }
 
@@ -54,30 +54,17 @@ export class PermissionService {
       }
     }
 
-    if (departmentId) {
-      const department = await this.prisma.department.findUnique({
-        where: { id: departmentId },
-      });
-      if (!department) {
-        throw new NotFoundException(
-          `Departamento con ID ${departmentId} no encontrado`,
-        );
-      }
-    }
-
     return this.prisma.documentPermission.create({
       data: {
         documentId,
         userId,
         role,
-        departmentId,
         grantedById,
         ...permissions,
         expiresAt: grantDto.expiresAt ? new Date(grantDto.expiresAt) : null,
       },
       include: {
         user: { select: { id: true, name: true, email: true } },
-        department: { select: { id: true, name: true, code: true } },
         grantedBy: { select: { id: true, name: true, email: true } },
       },
     });
@@ -106,7 +93,6 @@ export class PermissionService {
       where: { documentId },
       include: {
         user: { select: { id: true, name: true, email: true } },
-        department: { select: { id: true, name: true, code: true } },
         grantedBy: { select: { id: true, name: true, email: true } },
       },
     });
@@ -131,7 +117,6 @@ export class PermissionService {
             OR: [
               { userId: user.id },
               { role: user.role },
-              ...(user.departmentId ? [{ departmentId: user.departmentId }] : []),
             ],
           },
         },
@@ -181,16 +166,6 @@ export class PermissionService {
           hasAccess = true;
           reasons.push('El documento es público');
         }
-        if (user.departmentId) {
-          if (document.academic?.course?.departmentId === user.departmentId) {
-            hasAccess = true;
-            reasons.push('El documento pertenece a un curso gestionado por el departamento del coordinador');
-          }
-          if (document.uploadedBy?.departmentId === user.departmentId) {
-            hasAccess = true;
-            reasons.push('El documento fue subido por otro miembro de su mismo departamento');
-          }
-        }
         break;
 
       case UserRole.PROFESOR:
@@ -215,10 +190,6 @@ export class PermissionService {
         if (document.isPublic) {
           hasAccess = true;
           reasons.push('El documento es público');
-        }
-        if (user.departmentId && document.uploadedBy?.departmentId === user.departmentId) {
-          hasAccess = true;
-          reasons.push('El documento fue subido por un usuario de su mismo departamento administrativo');
         }
         break;
 

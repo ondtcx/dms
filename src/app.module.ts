@@ -6,7 +6,6 @@ import { AuthModule } from './auth/auth.module';
 import { DocumentModule } from './document/document.module';
 import { DocumentTemplateModule } from './document-template/document-template.module';
 import { CategoryModule } from './category/category.module';
-import { DepartmentModule } from './department/department.module';
 import { PermissionModule } from './permission/permission.module';
 import { SearchModule } from './search/search.module';
 import { BatchModule } from './batch/batch.module';
@@ -36,7 +35,6 @@ import { join } from 'path';
     UserModule,
     AuthModule,
     CategoryModule,
-    DepartmentModule, // Gestión de departamentos
     SearchModule, // Sistema de búsqueda full-text
     BatchModule, // Operaciones en lote
     AcademicYearModule, // Gestión de años lectivos

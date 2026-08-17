@@ -14,7 +14,6 @@ export class SearchService {
     const {
       query,
       categoryIds,
-      departmentIds,
       courseIds,
       subjectIds,
       uploadedById,
@@ -31,10 +30,9 @@ export class SearchService {
       sortOrder = 'desc',
     } = searchDto;
 
-    // Cargar usuario con departmentId para el filtro de acceso
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: { id: true, role: true },
     });
 
     const accessFilter = user
@@ -79,19 +77,6 @@ export class SearchService {
     // Filtros de categoría
     if (categoryIds && categoryIds.length > 0) {
       baseWhere.categoryId = { in: categoryIds };
-    }
-
-    // Filtros organizacionales (acumulado en AND para no pisar otras cláusulas OR)
-    if (departmentIds && departmentIds.length > 0) {
-      baseWhere.AND = [
-        ...(baseWhere.AND ?? []),
-        {
-          OR: [
-            { course: { departmentId: { in: departmentIds } } },
-            { uploadedBy: { departmentId: { in: departmentIds } } },
-          ],
-        },
-      ];
     }
 
     if (courseIds && courseIds.length > 0) {
@@ -253,7 +238,7 @@ export class SearchService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, departmentId: true },
+      select: { id: true, role: true },
     });
 
     const accessFilter = user
@@ -297,8 +282,6 @@ export class SearchService {
     // Guardar solo filtros relevantes (omitir paginación)
     const relevantFilters: any = {};
     if (filters.categoryIds) relevantFilters.categoryIds = filters.categoryIds;
-    if (filters.departmentIds)
-      relevantFilters.departmentIds = filters.departmentIds;
     if (filters.courseIds) relevantFilters.courseIds = filters.courseIds;
     if (filters.subjectIds) relevantFilters.subjectIds = filters.subjectIds;
     if (filters.dateFrom) relevantFilters.dateFrom = filters.dateFrom;
