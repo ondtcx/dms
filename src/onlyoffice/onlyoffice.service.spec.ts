@@ -41,7 +41,7 @@ describe('OnlyofficeService.checkHealth', () => {
 
   it('returns available when the healthcheck responds with 200', async () => {
     config.get.mockReturnValue('http://onlyoffice.test');
-    fetchMock.mockResolvedValue({ ok: true });
+    fetchMock.mockResolvedValue({ ok: true, status: 200 });
 
     await expect(service.checkHealth()).resolves.toEqual({ available: true });
     expect(fetchMock).toHaveBeenCalledWith(
@@ -50,6 +50,13 @@ describe('OnlyofficeService.checkHealth', () => {
         signal: expect.any(AbortSignal),
       },
     );
+  });
+
+  it('returns unavailable for other 2xx statuses (201/204)', async () => {
+    config.get.mockReturnValue('http://onlyoffice.test');
+    fetchMock.mockResolvedValue({ ok: true, status: 204 });
+
+    await expect(service.checkHealth()).resolves.toEqual({ available: false });
   });
 
   it('returns unavailable when the healthcheck responds with a non-200 status', async () => {

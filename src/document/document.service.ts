@@ -1106,14 +1106,15 @@ export class DocumentService {
    * Determina si un mimetype es editable como texto plano por el editor básico
    */
   private isTextEditable(mimetype: string): boolean {
-    if (mimetype.startsWith('text/')) return true;
+    const normalizedMimetype = mimetype.toLowerCase();
+    if (normalizedMimetype.startsWith('text/')) return true;
     const editableMimetypes = [
       'application/json',
       'application/xml',
       'application/javascript',
       'application/csv',
     ];
-    return editableMimetypes.includes(mimetype);
+    return editableMimetypes.includes(normalizedMimetype);
   }
 
   /**

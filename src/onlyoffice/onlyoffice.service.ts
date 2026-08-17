@@ -82,7 +82,7 @@ export class OnlyofficeService {
       const response = await fetch(healthcheckUrl, {
         signal: controller.signal,
       });
-      return { available: response.ok };
+      return { available: response.status === 200 };
     } catch {
       return { available: false };
     } finally {
