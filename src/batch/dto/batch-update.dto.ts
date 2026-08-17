@@ -15,11 +15,6 @@ export class BatchUpdateDto {
   @IsInt()
   categoryId?: number;
 
-  @ApiPropertyOptional({ description: 'Nueva sección ID' })
-  @IsOptional()
-  @IsInt()
-  sectionId?: number;
-
   @ApiPropertyOptional({ description: 'Nuevo curso ID' })
   @IsOptional()
   @IsInt()

@@ -79,14 +79,6 @@ export class CreateBatchFromTemplateDto {
   categoryId?: number;
 
   @ApiProperty({
-    description: 'ID de sección compartida para todos los documentos',
-    required: false,
-  })
-  @IsInt()
-  @IsOptional()
-  sectionId?: number;
-
-  @ApiProperty({
     description: 'Si los documentos generados son públicos',
     default: false,
     required: false,

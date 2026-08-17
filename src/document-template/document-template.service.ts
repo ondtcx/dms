@@ -301,7 +301,6 @@ export class DocumentTemplateService {
       filename?: string;
       description?: string;
       categoryId?: number | null;
-      sectionId?: number | null;
       isPublic?: boolean;
       batchId?: string | null;
     },
@@ -312,7 +311,6 @@ export class DocumentTemplateService {
       filename,
       description,
       categoryId,
-      sectionId,
       isPublic,
       batchId,
     } = row;
@@ -475,7 +473,7 @@ export class DocumentTemplateService {
     userId: string,
     userRole: UserRole,
   ) {
-    const { templateId, formData, filename, description, isPublic, sectionId } =
+    const { templateId, formData, filename, description, isPublic } =
       createDocumentFromTemplateDto;
 
     this.logger.log(`Creating document from template ID: ${templateId}`);
@@ -518,7 +516,6 @@ export class DocumentTemplateService {
         description,
         isPublic,
         categoryId: effectiveCategoryId,
-        sectionId: sectionId ?? null,
       },
       userId,
     );
@@ -533,7 +530,7 @@ export class DocumentTemplateService {
     userId: string,
     userRole: UserRole,
   ) {
-    const { templateId, batchName, rows, sectionId, isPublic } = dto;
+    const { templateId, batchName, rows, isPublic } = dto;
 
     this.logger.log(
       `Creating batch from template ID: ${templateId}, rows: ${rows.length}`,
@@ -600,7 +597,6 @@ export class DocumentTemplateService {
             filename: row.filename,
             description: row.description,
             categoryId: categoryId || null,
-            sectionId: sectionId || null,
             isPublic: isPublic || false,
             batchId: batch.id,
           },
