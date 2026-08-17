@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Body,
   Patch,
   Param,
@@ -39,6 +40,7 @@ import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
+import { SaveContentDto } from './dto/save-content.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
@@ -364,6 +366,27 @@ export class DocumentController {
       startDate,
       endDate,
       query.categoryId,
+    );
+  }
+
+  @Put(':id/content')
+  @ApiOperation({
+    summary: 'Guardar contenido de texto de un documento (editor básico)',
+  })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Contenido guardado exitosamente' })
+  @ApiResponse({ status: 400, description: 'Tipo de archivo no editable' })
+  @ApiResponse({ status: 403, description: 'Sin permiso para editar' })
+  saveTextContent(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SaveContentDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentsService.saveTextContent(
+      id,
+      dto.content,
+      user.id,
+      user.role,
     );
   }
 

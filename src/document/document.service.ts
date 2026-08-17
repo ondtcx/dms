@@ -946,8 +946,14 @@ export class DocumentService {
   ) {
     const document = await this.findOne(id, userId, userRole);
 
-    // Verificar permiso: dueño, admin, o participante con aprobación pendiente en workflow activo
-    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+    // Verificar permiso: dueño, admin, rector, vicerrector o participante con aprobación pendiente en workflow activo
+    const canEdit =
+      userRole === UserRole.ADMIN ||
+      userRole === UserRole.RECTOR ||
+      userRole === UserRole.VICERRECTOR ||
+      document.uploadedById === userId;
+
+    if (!canEdit) {
       const hasPendingApproval = await this.prisma.workflowApproval.findFirst({
         where: {
           workflow: {

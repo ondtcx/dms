@@ -7,8 +7,13 @@ import { SettingsService } from '../settings/settings.service';
 import { DocumentNumberingService } from './document-numbering.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UserRole } from '../auth/role.enum';
+import * as fs from 'fs';
 
 jest.mock('uuid', () => ({ v4: () => '1234-5678' }));
+jest.mock('fs', () => ({
+  ...jest.requireActual('fs'),
+  writeFileSync: jest.fn(),
+}));
 
 describe('DocumentService', () => {
   let service: DocumentService;
@@ -31,6 +36,14 @@ describe('DocumentService', () => {
               update: jest.fn().mockResolvedValue({ id: 1 }),
               count: jest.fn().mockResolvedValue(0),
             },
+            documentVersion: {
+              create: jest.fn(),
+              count: jest.fn().mockResolvedValue(1),
+              findMany: jest.fn().mockResolvedValue([]),
+              delete: jest.fn(),
+            },
+            documentAccess: { create: jest.fn() },
+            workflowApproval: { findFirst: jest.fn().mockResolvedValue(null) },
             user: { findUnique: jest.fn().mockResolvedValue({ role: 'admin' }) },
           },
         },
@@ -39,6 +52,8 @@ describe('DocumentService', () => {
           useValue: {
             generateStructuredPath: jest.fn().mockReturnValue({ path: '/tmp/structured/test.pdf' }),
             moveFile: jest.fn(),
+            deleteFile: jest.fn(),
+            fileExists: jest.fn().mockReturnValue(true),
             calculateFileHash: jest.fn().mockResolvedValue('hash123'),
           },
         },
@@ -46,6 +61,7 @@ describe('DocumentService', () => {
           provide: SettingsService,
           useValue: {
             getSetting: jest.fn().mockResolvedValue({}),
+            getMaxVersionsPerDocument: jest.fn().mockResolvedValue(3),
           },
         },
         {
@@ -184,6 +200,129 @@ describe('DocumentService', () => {
           }
         }),
       }));
+    });
+  });
+
+  describe('saveTextContent', () => {
+    const document = {
+      id: 1,
+      uploadedById: 'user123',
+      categoryId: 2,
+      currentVersion: 4,
+      checksumSHA256: 'old-checksum',
+      createdAt: new Date('2026-01-01'),
+      versions: [{
+        id: 10,
+        filename: 'notes.txt',
+        mimetype: 'text/plain',
+        storedName: 'stored-notes.txt',
+        path: '/uploads/stored-notes.txt',
+        size: 3,
+        checksumSHA256: 'old-checksum',
+      }],
+    };
+
+    beforeEach(() => {
+      jest.spyOn(service, 'findOne').mockResolvedValue(document as any);
+      (fs.writeFileSync as jest.Mock).mockClear();
+      (prisma.document.update as jest.Mock).mockResolvedValue({
+        ...document,
+        currentVersion: 5,
+        checksumSHA256: 'new-checksum',
+      });
+      (prisma.documentVersion.count as jest.Mock).mockResolvedValue(1);
+      (prisma.documentVersion.create as jest.Mock).mockResolvedValue({ id: 11 });
+      (prisma.documentAccess.create as jest.Mock).mockResolvedValue({ id: 12 });
+      (service as any).storage.calculateFileHash.mockResolvedValue('new-checksum');
+    });
+
+    it('saves editable text, versions it, audits it, and regenerates its thumbnail', async () => {
+      const content = 'Updated text';
+
+      await service.saveTextContent(1, content, 'user123', UserRole.USER);
+
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        '/uploads/stored-notes.txt',
+        Buffer.from(content, 'utf-8'),
+      );
+      expect(prisma.document.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 1 },
+        data: { currentVersion: 5, checksumSHA256: 'new-checksum' },
+      }));
+      expect(prisma.documentVersion.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          documentId: 1,
+          version: 5,
+          filename: 'notes.txt',
+          mimetype: 'text/plain',
+          storedName: 'stored-notes.txt',
+          path: '/uploads/stored-notes.txt',
+          size: Buffer.byteLength(content, 'utf-8'),
+          checksumSHA256: 'new-checksum',
+          comment: 'Editado con editor básico',
+          createdById: 'user123',
+          source: 'REEMPLAZO_MANUAL',
+        }),
+      });
+      expect(prisma.documentAccess.create).toHaveBeenCalledWith({
+        data: { documentId: 1, userId: 'user123', action: 'UPDATE' },
+      });
+      expect((service as any).thumbnailService.regenerateThumbnail).toHaveBeenCalledWith(
+        '/uploads/stored-notes.txt', 1, 'text/plain',
+      );
+    });
+
+    it.each([
+      'application/json',
+      'application/xml',
+      'application/javascript',
+      'application/csv',
+    ])('accepts editable MIME type %s', async (mimetype) => {
+      (service as any).findOne.mockResolvedValue({
+        ...document,
+        versions: [{ ...document.versions[0], mimetype }],
+      });
+
+      await expect(service.saveTextContent(1, '{}', 'user123', UserRole.USER))
+        .resolves.toEqual(expect.objectContaining({ currentVersion: 5 }));
+    });
+
+    it('rejects unsupported MIME types without mutating the document', async () => {
+      (service as any).findOne.mockResolvedValue({
+        ...document,
+        versions: [{ ...document.versions[0], mimetype: 'application/pdf' }],
+      });
+
+      await expect(service.saveTextContent(1, 'not editable', 'user123', UserRole.USER))
+        .rejects.toThrow('Este tipo de archivo no se puede editar con el editor básico');
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      expect(prisma.document.update).not.toHaveBeenCalled();
+      expect(prisma.documentVersion.create).not.toHaveBeenCalled();
+      expect(prisma.documentAccess.create).not.toHaveBeenCalled();
+    });
+
+    it('denies users without replacement permission without changing state', async () => {
+      (service as any).findOne.mockResolvedValue({ ...document, uploadedById: 'owner-id' });
+
+      await expect(service.saveTextContent(1, 'forbidden', 'user123', UserRole.USER))
+        .rejects.toThrow('No tienes permiso para editar este documento');
+      expect(fs.writeFileSync).not.toHaveBeenCalled();
+      expect(prisma.document.update).not.toHaveBeenCalled();
+      expect(prisma.documentVersion.create).not.toHaveBeenCalled();
+      expect(prisma.documentAccess.create).not.toHaveBeenCalled();
+    });
+
+    it('applies the configured rolling version window without deleting the active file', async () => {
+      (service as any).settingsService.getMaxVersionsPerDocument.mockResolvedValue(1);
+      (prisma.documentVersion.count as jest.Mock).mockResolvedValue(2);
+      (prisma.documentVersion.findMany as jest.Mock)
+        .mockResolvedValueOnce([{ id: 10, path: '/uploads/stored-notes.txt' }])
+        .mockResolvedValueOnce([{ path: '/uploads/stored-notes.txt' }]);
+
+      await service.saveTextContent(1, 'new content', 'user123', UserRole.USER);
+
+      expect(prisma.documentVersion.delete).toHaveBeenCalledWith({ where: { id: 10 } });
+      expect((service as any).storage.deleteFile).not.toHaveBeenCalled();
     });
   });
 });
