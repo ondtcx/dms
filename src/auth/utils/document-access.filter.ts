@@ -4,7 +4,6 @@ import { UserRole } from '../role.enum';
 export type AccessUser = {
   id: string;
   role: UserRole;
-  departmentId: number | null;
 };
 
 /**
@@ -32,7 +31,6 @@ export function buildDocumentAccessFilter(
         OR: [
           { userId: user.id },
           { role: user.role },
-          ...(user.departmentId ? [{ departmentId: user.departmentId }] : []),
         ],
         AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }],
       },
@@ -51,17 +49,6 @@ export function buildDocumentAccessFilter(
       return {
         OR: [
           ...baseAccess,
-          // Documentos de cursos en su departamento
-          ...(user.departmentId
-            ? [
-                {
-                  academic: { course: { departmentId: user.departmentId } },
-                } as Prisma.DocumentWhereInput,
-                {
-                  uploadedBy: { departmentId: user.departmentId },
-                } as Prisma.DocumentWhereInput,
-              ]
-            : []),
         ],
       };
 
@@ -80,14 +67,6 @@ export function buildDocumentAccessFilter(
       return {
         OR: [
           ...baseAccess,
-          // Documentos subidos por usuarios de su departamento
-          ...(user.departmentId
-            ? [
-                {
-                  uploadedBy: { departmentId: user.departmentId },
-                } as Prisma.DocumentWhereInput,
-              ]
-            : []),
         ],
       };
 
