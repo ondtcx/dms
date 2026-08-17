@@ -5,7 +5,7 @@ import { UserRole } from '../src/auth/role.enum';
 const prisma = new PrismaClient();
 
 const users = [
-  ['admin@colegio.edu', 'Carlos Administrador', UserRole.ADMIN, 'Administrador del Sistema'],
+  ['admin@colegio.edu', 'Anderson Cuarán', UserRole.ADMIN, 'Administrador del Sistema'],
   ['rector@colegio.edu', 'María Elena Rodríguez', UserRole.RECTOR, 'Rectora General'],
   ['vicerrector@colegio.edu', 'Lucía Fernanda Castillo', UserRole.VICERRECTOR, 'Vicerrectora'],
   ['coord.primaria@colegio.edu', 'Ana Gabriela López', UserRole.COORDINADOR, 'Coordinadora de Primaria'],
