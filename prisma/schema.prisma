@@ -96,8 +96,6 @@ model DocumentPermission {
   userId       String? // Usuario específico
   user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   role         UserRole? // Rol
-  departmentId Int? // Departamento completo
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
 
   // Permisos específicos
   canView   Boolean @default(true)
@@ -115,7 +113,6 @@ model DocumentPermission {
   @@index([documentId])
   @@index([userId])
   @@index([role])
-  @@index([departmentId])
   @@index([expiresAt])
 }
 
@@ -323,30 +320,6 @@ model CommentReaction {
 
 // ============ ESTRUCTURA ORGANIZACIONAL ============
 
-model Department {
-  id          Int     @id @default(autoincrement())
-  name        String  @unique
-  code        String  @unique
-  description String?
-  color       String? @default("#3b82f6")
-  icon        String? @default("Building")
-  isActive    Boolean @default(true)
-
-  // Relaciones
-  users               User[]
-  courses             Course[]
-  documentPermissions DocumentPermission[]
-  documentShares      DocumentShare[]
-  transfersReceived   TransferHistory[]    @relation("toDepartment")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([code])
-  @@index([name])
-  @@index([isActive])
-}
-
 model AcademicYear {
   id        Int        @id @default(autoincrement())
   name      String     @unique // "2025-2026"
@@ -367,8 +340,6 @@ model Course {
   name         String
   code         String           @unique
   level        EducationalLevel
-  departmentId Int?
-  department   Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   academicYear String
   isActive     Boolean          @default(true)
 
@@ -383,7 +354,6 @@ model Course {
 
   @@unique([code, academicYear])
   @@index([level])
-  @@index([departmentId])
   @@index([academicYear])
   @@index([isActive])
 }
@@ -448,8 +418,6 @@ model User {
   role     UserRole @default(user)
 
   // Campos organizacionales
-  departmentId Int?
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   phoneNumber  String?
   position     String?
 
@@ -507,7 +475,6 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([departmentId])
 }
 
 model PasswordResetToken {
@@ -688,10 +655,8 @@ model TransferHistory {
   document       Document       @relation(fields: [documentId], references: [id], onDelete: Cascade)
   fromUserId     String // Usuario que transfirió
   fromUser       User           @relation("TransferFromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUserId       String? // Usuario que recibió (opcional si se transfiere a departamento)
+  toUserId       String? // Usuario que recibió
   toUser         User?          @relation("TransferToUser", fields: [toUserId], references: [id], onDelete: Cascade)
-  toDepartmentId Int?
-  toDepartment   Department?    @relation("toDepartment", fields: [toDepartmentId], references: [id], onDelete: SetNull)
   status         TransferStatus @default(PENDING)
   completedAt    DateTime? // Fecha de completado
   canceledAt     DateTime? // Fecha de cancelación
@@ -900,12 +865,10 @@ model DocumentShare {
   documentId Int // Documento que se comparte
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
-  // Compartir con usuario, rol, departamento o curso específico
+  // Compartir con usuario, rol o curso específico
   userId       String? // Usuario específico (opcional)
   user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   role         UserRole? // Rol específico (opcional)
-  departmentId Int? // Departamento específico (opcional)
-  department   Department? @relation(fields: [departmentId], references: [id], onDelete: Cascade)
   courseId     Int? // Curso específico (opcional)
   course       Course?     @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
@@ -942,7 +905,6 @@ model DocumentShare {
   @@index([documentId])
   @@index([userId])
   @@index([role])
-  @@index([departmentId])
   @@index([courseId])
   @@index([shareToken])
   @@index([sharedById])
