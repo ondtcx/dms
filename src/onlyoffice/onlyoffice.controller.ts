@@ -49,6 +49,12 @@ export class OnlyofficeController {
     return this.onlyofficeService.createBlankDocument(dto, user.sub);
   }
 
+  @Get('health')
+  @ApiOperation({ summary: 'Verificar disponibilidad del editor OnlyOffice' })
+  async checkHealth() {
+    return this.onlyofficeService.checkHealth();
+  }
+
   @Get('config/:documentId')
   async getEditorConfig(
     @Param('documentId', ParseIntPipe) documentId: number,
@@ -60,9 +66,17 @@ export class OnlyofficeController {
       user.sub,
       user.role,
     );
-    const fileType = extname(document.versions?.[0]?.filename || '').replace('.', '');
+    const fileType = extname(document.versions?.[0]?.filename || '').replace(
+      '.',
+      '',
+    );
     return this.onlyofficeService.generateEditorConfig(
-      { id: document.id, title: document.versions?.[0]?.filename, fileType, callbackHost: '' },
+      {
+        id: document.id,
+        title: document.versions?.[0]?.filename,
+        fileType,
+        callbackHost: '',
+      },
       { id: user.sub, name: user.name },
     );
   }

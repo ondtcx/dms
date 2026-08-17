@@ -58,6 +58,38 @@ export class OnlyofficeService {
     return config;
   }
 
+  async checkHealth(): Promise<{ available: boolean }> {
+    const onlyofficeUrl = this.config.get<string>('ONLYOFFICE_URL');
+    if (!onlyofficeUrl?.trim()) {
+      return { available: false };
+    }
+
+    let healthcheckUrl: string;
+    try {
+      const parsedUrl = new URL(onlyofficeUrl);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        return { available: false };
+      }
+      healthcheckUrl = `${onlyofficeUrl.replace(/\/+$/, '')}/healthcheck`;
+    } catch {
+      return { available: false };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3000);
+
+    try {
+      const response = await fetch(healthcheckUrl, {
+        signal: controller.signal,
+      });
+      return { available: response.ok };
+    } catch {
+      return { available: false };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async createBlankDocument(dto: CreateBlankDocumentDto, userId: string) {
     const { title, fileType, categoryId, courseId, documentTypeId } = dto;
     const filename = `${title}.${fileType}`;
@@ -106,16 +138,20 @@ export class OnlyofficeService {
             comment: 'Created in editor',
             createdById: userId,
             source: 'UPLOAD_INICIAL',
-          }
+          },
         },
-        ...((courseId !== undefined || currentYear?.id) ? {
-          academic: {
-            create: {
-              ...(courseId !== undefined ? { courseId } : {}),
-              ...(currentYear?.id ? { academicYearId: currentYear.id } : {})
+        ...(courseId !== undefined || currentYear?.id
+          ? {
+              academic: {
+                create: {
+                  ...(courseId !== undefined ? { courseId } : {}),
+                  ...(currentYear?.id
+                    ? { academicYearId: currentYear.id }
+                    : {}),
+                },
+              },
             }
-          }
-        } : {})
+          : {}),
       },
       include: {
         uploadedBy: {
@@ -131,8 +167,6 @@ export class OnlyofficeService {
         },
       },
     });
-
-
 
     // Generate thumbnail in background
     this.thumbnailService
