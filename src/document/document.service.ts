@@ -106,7 +106,8 @@ export class DocumentService {
 
     // 5. Crear registro en BD
     const academicData = uploadDocumentDto.academic || {};
-    const hasAcademic = academicData.courseId || academicData.subjectId || resolvedAcademicYearId;
+    const hasAcademic =
+      academicData.courseId || academicData.subjectId || resolvedAcademicYearId;
     const templateData = uploadDocumentDto.templateData;
     const searchData = uploadDocumentDto.search || {};
     const hasSearch = searchData.extractedText || extractedText;
@@ -121,48 +122,56 @@ export class DocumentService {
         checksumSHA256: checksum,
         currentVersion: 1,
 
-        ...(hasAcademic ? {
-          academic: {
-            create: {
-              courseId: academicData.courseId,
-              subjectId: academicData.subjectId,
-              academicYearId: resolvedAcademicYearId,
+        ...(hasAcademic
+          ? {
+              academic: {
+                create: {
+                  courseId: academicData.courseId,
+                  subjectId: academicData.subjectId,
+                  academicYearId: resolvedAcademicYearId,
+                },
+              },
             }
-          }
-        } : {}),
+          : {}),
 
-        ...(templateData ? {
-          templateData: {
-            create: {
-              templateId: templateData.templateId,
-              formData: templateData.formData,
-              batchId: templateData.batchId,
+        ...(templateData
+          ? {
+              templateData: {
+                create: {
+                  templateId: templateData.templateId,
+                  formData: templateData.formData,
+                  batchId: templateData.batchId,
+                },
+              },
             }
-          }
-        } : {}),
+          : {}),
 
-        ...(hasSearch ? {
-          search: {
-            create: {
-              extractedText: extractedText || searchData.extractedText,
+        ...(hasSearch
+          ? {
+              search: {
+                create: {
+                  extractedText: extractedText || searchData.extractedText,
+                },
+              },
             }
-          }
-        } : {}),
+          : {}),
 
         versions: {
-          create: [{
-            version: 1,
-            filename: file.originalname,
-            mimetype: file.mimetype,
-            storedName: uniqueFilename,
-            path: storageLocation.path,
-            size: file.size,
-            checksumSHA256: checksum,
-            comment: 'Versión inicial',
-            createdById: userId,
-            source: 'UPLOAD_INICIAL',
-          }]
-        }
+          create: [
+            {
+              version: 1,
+              filename: file.originalname,
+              mimetype: file.mimetype,
+              storedName: uniqueFilename,
+              path: storageLocation.path,
+              size: file.size,
+              checksumSHA256: checksum,
+              comment: 'Versión inicial',
+              createdById: userId,
+              source: 'UPLOAD_INICIAL',
+            },
+          ],
+        },
       },
       include: {
         academic: true,
@@ -183,7 +192,6 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
-        
       },
     });
 
@@ -259,7 +267,9 @@ export class DocumentService {
       where.AND.push({
         OR: [
           {
-            versions: { some: { filename: { contains: search, mode: 'insensitive' } } },
+            versions: {
+              some: { filename: { contains: search, mode: 'insensitive' } },
+            },
           },
           {
             description: {
@@ -288,7 +298,9 @@ export class DocumentService {
     }
 
     if (excludeBatched) {
-      where.AND.push({ OR: [{ templateData: null }, { templateData: { batchId: null } }] });
+      where.AND.push({
+        OR: [{ templateData: null }, { templateData: { batchId: null } }],
+      });
     }
 
     if (batchId) {
@@ -306,7 +318,9 @@ export class DocumentService {
     if (query.academicYearId && !skipYearFilter) {
       where.AND.push({
         OR: [
-          { academic: { academicYearId: query.academicYearId } }, { academic: null }, { academic: { academicYearId: null } },
+          { academic: { academicYearId: query.academicYearId } },
+          { academic: null },
+          { academic: { academicYearId: null } },
           { category: { bypassAcademicYear: true } },
         ],
       });
@@ -327,7 +341,16 @@ export class DocumentService {
           academic: true,
           search: true,
           templateData: {
-            include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+            include: {
+              template: {
+                select: {
+                  id: true,
+                  name: true,
+                  documentType: { select: { id: true, name: true } },
+                },
+              },
+              batch: { select: { id: true, name: true } },
+            },
           },
           versions: { orderBy: { version: 'desc' }, take: 1 },
           uploadedBy: {
@@ -349,7 +372,7 @@ export class DocumentService {
           documentType: {
             select: { id: true, name: true },
           },
-          
+
           workflow: {
             select: {
               id: true,
@@ -357,7 +380,6 @@ export class DocumentService {
               currentState: true,
             },
           },
-          
         },
         orderBy: {
           createdAt: 'desc',
@@ -404,7 +426,16 @@ export class DocumentService {
         academic: true,
         search: true,
         templateData: {
-          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+          include: {
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
+            batch: { select: { id: true, name: true } },
+          },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
@@ -425,7 +456,6 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
-        
       },
     });
 
@@ -459,7 +489,7 @@ export class DocumentService {
     const academicData = updateDocumentDto.academic;
     const templateData = updateDocumentDto.templateData;
     const searchData = updateDocumentDto.search;
-    
+
     const updatedDocument = await this.prisma.document.update({
       where: { id },
       data: {
@@ -467,21 +497,67 @@ export class DocumentService {
         categoryId: updateDocumentDto.categoryId,
         documentTypeId: updateDocumentDto.documentTypeId,
         isPublic: updateDocumentDto.isPublic,
-        ...(academicData ? {
-          academic: { upsert: { create: { courseId: academicData.courseId, subjectId: academicData.subjectId, academicYearId: academicData.academicYearId }, update: { courseId: academicData.courseId, subjectId: academicData.subjectId, academicYearId: academicData.academicYearId } } }
-        } : {}),
-        ...(templateData ? {
-          templateData: { upsert: { create: { templateId: templateData.templateId, formData: templateData.formData, batchId: templateData.batchId }, update: { templateId: templateData.templateId, formData: templateData.formData, batchId: templateData.batchId } } }
-        } : {}),
-        ...(searchData ? {
-          search: { upsert: { create: { extractedText: searchData.extractedText }, update: { extractedText: searchData.extractedText } } }
-        } : {}),
+        ...(academicData
+          ? {
+              academic: {
+                upsert: {
+                  create: {
+                    courseId: academicData.courseId,
+                    subjectId: academicData.subjectId,
+                    academicYearId: academicData.academicYearId,
+                  },
+                  update: {
+                    courseId: academicData.courseId,
+                    subjectId: academicData.subjectId,
+                    academicYearId: academicData.academicYearId,
+                  },
+                },
+              },
+            }
+          : {}),
+        ...(templateData
+          ? {
+              templateData: {
+                upsert: {
+                  create: {
+                    templateId: templateData.templateId,
+                    formData: templateData.formData,
+                    batchId: templateData.batchId,
+                  },
+                  update: {
+                    templateId: templateData.templateId,
+                    formData: templateData.formData,
+                    batchId: templateData.batchId,
+                  },
+                },
+              },
+            }
+          : {}),
+        ...(searchData
+          ? {
+              search: {
+                upsert: {
+                  create: { extractedText: searchData.extractedText },
+                  update: { extractedText: searchData.extractedText },
+                },
+              },
+            }
+          : {}),
       },
       include: {
         academic: true,
         search: true,
         templateData: {
-          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+          include: {
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
+            batch: { select: { id: true, name: true } },
+          },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
@@ -502,7 +578,6 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
-        
       },
     });
 
@@ -536,7 +611,7 @@ export class DocumentService {
     });
     await this.prisma.documentVersion.update({
       where: { id: (document as any).versions[0].id },
-      data: { path: trashPath }
+      data: { path: trashPath },
     });
 
     // Registrar auditoría
@@ -582,7 +657,10 @@ export class DocumentService {
     );
 
     // Restaurar archivo desde trash
-    this.storage.restoreFromTrash((document as any).versions[0].path, storageLocation.path);
+    this.storage.restoreFromTrash(
+      (document as any).versions[0].path,
+      storageLocation.path,
+    );
 
     // Actualizar BD
     await this.prisma.document.update({
@@ -594,7 +672,7 @@ export class DocumentService {
     });
     await this.prisma.documentVersion.update({
       where: { id: (document as any).versions[0].id },
-      data: { path: storageLocation.path }
+      data: { path: storageLocation.path },
     });
 
     return { message: 'Documento restaurado exitosamente' };
@@ -720,7 +798,10 @@ export class DocumentService {
     );
 
     // Copiar archivo actual a versiones (no mover, copiar)
-    this.storage.copyFile((document as any).versions[0].path, versionLocation.path);
+    this.storage.copyFile(
+      (document as any).versions[0].path,
+      versionLocation.path,
+    );
 
     // 2. Generar nueva versión
     const newVersion = document.currentVersion + 1;
@@ -753,7 +834,16 @@ export class DocumentService {
         academic: true,
         search: true,
         templateData: {
-          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+          include: {
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
+            batch: { select: { id: true, name: true } },
+          },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
@@ -771,7 +861,6 @@ export class DocumentService {
             icon: true,
           },
         },
-        
       },
     });
 
@@ -842,6 +931,183 @@ export class DocumentService {
     });
 
     return updatedDocument;
+  }
+
+  /**
+   * Guarda el contenido de texto de un documento usando el editor básico.
+   * Sobrescribe el archivo actual y crea una nueva versión (mismo patrón que el
+   * callback de OnlyOffice, pero actualizando también el checksum del documento).
+   */
+  async saveTextContent(
+    id: number,
+    content: string,
+    userId: string,
+    userRole: UserRole,
+  ) {
+    const document = await this.findOne(id, userId, userRole);
+
+    // Verificar permiso: dueño, admin, o participante con aprobación pendiente en workflow activo
+    if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
+      const hasPendingApproval = await this.prisma.workflowApproval.findFirst({
+        where: {
+          workflow: {
+            documentId: id,
+            status: {
+              in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING],
+            },
+          },
+          userId,
+          action: null,
+        },
+      });
+
+      if (!hasPendingApproval) {
+        throw new ForbiddenException(
+          'No tienes permiso para editar este documento',
+        );
+      }
+    }
+
+    const currentVersion = (document as any).versions[0];
+    if (!this.isTextEditable(currentVersion.mimetype)) {
+      throw new BadRequestException(
+        'Este tipo de archivo no se puede editar con el editor básico',
+      );
+    }
+
+    // 1. Sobrescribir el archivo actual con el nuevo contenido
+    fs.writeFileSync(currentVersion.path, Buffer.from(content, 'utf-8'));
+
+    // 2. Recalcular checksum y nueva versión
+    const newChecksum = await this.storage.calculateFileHash(
+      currentVersion.path,
+    );
+    const newVersion = document.currentVersion + 1;
+
+    // 3. Actualizar documento en BD (checksum incluido: el download verifica
+    //    integridad contra document.checksumSHA256)
+    const updatedDocument = await this.prisma.document.update({
+      where: { id },
+      data: {
+        checksumSHA256: newChecksum,
+        currentVersion: newVersion,
+      },
+      include: {
+        academic: true,
+        search: true,
+        templateData: {
+          include: {
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
+            batch: { select: { id: true, name: true } },
+          },
+        },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+          },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+          },
+        },
+        documentType: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+
+    // 4. Crear registro de nueva versión (misma ruta física: el archivo se sobrescribió in-place)
+    await this.prisma.documentVersion.create({
+      data: {
+        documentId: id,
+        version: newVersion,
+        filename: currentVersion.filename,
+        mimetype: currentVersion.mimetype,
+        storedName: currentVersion.storedName,
+        path: currentVersion.path,
+        size: Buffer.byteLength(content, 'utf-8'),
+        checksumSHA256: newChecksum,
+        comment: 'Editado con editor básico',
+        createdById: userId,
+        source: 'REEMPLAZO_MANUAL',
+      },
+    });
+
+    // 5. Rolling window: recortar versiones antiguas si se supera el límite.
+    //    El editor básico reutiliza la misma ruta física en cada guardado, así que
+    //    NUNCA se borra el archivo de una ruta que siga referenciada por una versión
+    //    que se conserva (borrarlo rompería el documento actual).
+    const maxVersions = await this.settingsService.getMaxVersionsPerDocument();
+    const versionCount = await this.prisma.documentVersion.count({
+      where: { documentId: id },
+    });
+    if (versionCount > maxVersions) {
+      const versionsToDelete = await this.prisma.documentVersion.findMany({
+        where: { documentId: id },
+        orderBy: { version: 'asc' },
+        take: versionCount - maxVersions,
+      });
+      const keptPaths = await this.prisma.documentVersion.findMany({
+        where: {
+          documentId: id,
+          id: { notIn: versionsToDelete.map((v) => v.id) },
+        },
+        select: { path: true },
+      });
+      const pathsInUse = new Set(keptPaths.map((v) => v.path));
+      for (const old of versionsToDelete) {
+        if (!pathsInUse.has(old.path)) {
+          try {
+            if (this.storage.fileExists(old.path))
+              this.storage.deleteFile(old.path);
+          } catch (_) {}
+        }
+        await this.prisma.documentVersion.delete({ where: { id: old.id } });
+      }
+    }
+
+    // 6. Registrar auditoría
+    await this.prisma.documentAccess.create({
+      data: {
+        documentId: id,
+        userId: userId,
+        action: 'UPDATE',
+      },
+    });
+
+    // 7. Regenerar thumbnail en background
+    this.thumbnailService
+      .regenerateThumbnail(currentVersion.path, id, currentVersion.mimetype)
+      .catch(() => {});
+
+    return updatedDocument;
+  }
+
+  /**
+   * Determina si un mimetype es editable como texto plano por el editor básico
+   */
+  private isTextEditable(mimetype: string): boolean {
+    if (mimetype.startsWith('text/')) return true;
+    const editableMimetypes = [
+      'application/json',
+      'application/xml',
+      'application/javascript',
+      'application/csv',
+    ];
+    return editableMimetypes.includes(mimetype);
   }
 
   /**
@@ -939,7 +1205,10 @@ export class DocumentService {
       new Date(document.createdAt),
     );
 
-    this.storage.copyFile((document as any).versions[0].path, currentVersionLocation.path);
+    this.storage.copyFile(
+      (document as any).versions[0].path,
+      currentVersionLocation.path,
+    );
 
     // 2. Copiar archivo de la versión solicitada a ubicación principal
     const newFilename = `${randomUUID()}${extname(version.storedName)}`;
@@ -1078,7 +1347,16 @@ export class DocumentService {
         academic: true,
         search: true,
         templateData: {
-          include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+          include: {
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
+              },
+            },
+            batch: { select: { id: true, name: true } },
+          },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
         uploadedBy: {
@@ -1092,7 +1370,6 @@ export class DocumentService {
             icon: true,
           },
         },
-        
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -1176,7 +1453,16 @@ export class DocumentService {
           academic: true,
           search: true,
           templateData: {
-            include: { template: { select: { id: true, name: true, documentType: { select: { id: true, name: true } } } }, batch: { select: { id: true, name: true } } }
+            include: {
+              template: {
+                select: {
+                  id: true,
+                  name: true,
+                  documentType: { select: { id: true, name: true } },
+                },
+              },
+              batch: { select: { id: true, name: true } },
+            },
           },
           versions: { orderBy: { version: 'desc' }, take: 1 },
           uploadedBy: {
@@ -1190,7 +1476,6 @@ export class DocumentService {
               icon: true,
             },
           },
-          
         },
         orderBy: { archivedAt: 'desc' },
         skip,
@@ -1291,7 +1576,10 @@ export class DocumentService {
       (document as any).versions[0].storedName,
     );
 
-    this.storage.moveFile((document as any).versions[0].path, storageLocation.path);
+    this.storage.moveFile(
+      (document as any).versions[0].path,
+      storageLocation.path,
+    );
 
     await this.prisma.document.update({
       where: { id },
@@ -1299,7 +1587,7 @@ export class DocumentService {
     });
     await this.prisma.documentVersion.update({
       where: { id: (document as any).versions[0].id },
-      data: { path: storageLocation.path }
+      data: { path: storageLocation.path },
     });
 
     return { message: 'Documento restaurado al archivo activo exitosamente' };
