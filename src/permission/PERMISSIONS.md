@@ -4,6 +4,8 @@
 
 El sistema usa **ReBAC (Relationship-Based Access Control)**: el acceso a los documentos se determina por las relaciones naturales del usuario dentro de la institución educativa, no por tablas de permisos configurables.
 
+Las vías de acceso vigentes son: documento propio, documento público, relación de profesor con un curso o materia, y grants explícitos dirigidos a un usuario o rol.
+
 ### Qué se eliminó y por qué
 
 | Componente eliminado | Motivo |
@@ -35,9 +37,9 @@ El filtro se construye en `src/auth/utils/document-access.filter.ts` y se aplica
 |-----|---------------------|--------------------|
 | **ADMIN** | Todo, sin restricción | — |
 | **DIRECTOR** | Todo, sin restricción | — |
-| **COORDINADOR** | Propios + públicos + cursos de su departamento + docs subidos por usuarios de su departamento + grants explícitos | `User.departmentId` → `Course.departmentId` |
+| **COORDINADOR** | Propios + públicos + grants explícitos | — |
 | **PROFESOR** | Propios + públicos + cursos que imparte + materias que imparte + grants explícitos | `UserCourse`, `UserSubject` |
-| **SECRETARIO** | Propios + públicos + docs subidos por usuarios de su departamento + grants explícitos | `User.departmentId` |
+| **SECRETARIO** | Propios + públicos + grants explícitos | — |
 | **ESTUDIANTE** | Propios + docs **públicos** de cursos/materias en los que está inscrito + grants explícitos | `UserCourse`, `UserSubject` |
 | **PADRE** | Docs públicos + grants explícitos | — |
 | **MODERADOR / USER** | Propios + públicos + grants explícitos | — |
@@ -48,7 +50,7 @@ El filtro se construye en `src/auth/utils/document-access.filter.ts` y se aplica
 
 ## 3. `DocumentPermission` — Grants explícitos
 
-Permite otorgar acceso a un documento específico **fuera** de las relaciones naturales. Por ejemplo: compartir un acta de dirección con un profesor de otro departamento.
+Permite otorgar acceso a un documento específico **fuera** de las relaciones naturales. Los grants explícitos se dirigen a un usuario concreto o a un rol completo.
 
 ### Modelo
 
@@ -57,7 +59,6 @@ model DocumentPermission {
   documentId   Int
   userId       String?     // Usuario específico (o null)
   role         UserRole?   // Rol completo (o null)
-  departmentId Int?        // Departamento completo (o null)
   canView      Boolean     @default(true)
   canEdit      Boolean     @default(false)
   canDelete    Boolean     @default(false)
@@ -67,7 +68,7 @@ model DocumentPermission {
 }
 ```
 
-Al menos uno de `userId`, `role` o `departmentId` debe estar presente.
+Al menos uno de `userId` o `role` debe estar presente.
 
 ### Jerarquía de prioridad al evaluar acceso
 
@@ -90,7 +91,6 @@ Otorga permiso sobre el documento con ID `:id`.
 {
   "userId": "clxyz...",         // opcional — usuario específico
   "role": "profesor",           // opcional — todos los usuarios con ese rol
-  "departmentId": 3,            // opcional — todo el departamento
   "canView": true,
   "canEdit": false,
   "canDelete": false,
@@ -127,7 +127,7 @@ Revoca el permiso con ID `:id` (ID del registro `DocumentPermission`, no del doc
 ### `GET /permissions/documents/:id`
 Lista todos los `DocumentPermission` del documento con ID `:id`.
 
-**Respuesta 200:** array de permisos con datos del usuario, departamento y quien otorgó el acceso.
+**Respuesta 200:** array de permisos con datos del usuario y de quien otorgó el acceso.
 
 ---
 
