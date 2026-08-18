@@ -96,8 +96,8 @@ export class OnlyofficeService {
     const uniqueFilename = `${randomUUID()}.${fileType}`;
     const mimetype = this.getMimetype(fileType);
 
-    // Build blank OOXML content and write to temp
-    const content = this.buildBlankOoxml(fileType);
+    // Build blank content and write to temp
+    const content = this.buildBlankContent(fileType);
     const buffer = Buffer.from(content);
     const tempPath = join('./uploads/temp', uniqueFilename);
     fs.writeFileSync(tempPath, buffer);
@@ -202,8 +202,19 @@ export class OnlyofficeService {
       docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      txt: 'text/plain',
+      md: 'text/markdown',
     };
     return map[fileType] ?? 'application/octet-stream';
+  }
+
+  private buildBlankContent(
+    fileType: CreateBlankDocumentDto['fileType'],
+  ): Buffer {
+    if (fileType === 'txt' || fileType === 'md') {
+      return Buffer.from('', 'utf-8');
+    }
+    return this.buildBlankOoxml(fileType);
   }
 
   private buildBlankOoxml(fileType: 'docx' | 'xlsx' | 'pptx'): Buffer {

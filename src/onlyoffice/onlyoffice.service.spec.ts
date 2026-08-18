@@ -1,5 +1,9 @@
+import * as fs from 'fs';
 import { ConfigService } from '@nestjs/config';
 import { OnlyofficeService } from './onlyoffice.service';
+import { CreateBlankDocumentDto } from './dto/create-blank-document.dto';
+
+jest.mock('fs');
 
 describe('OnlyofficeService.checkHealth', () => {
   let service: OnlyofficeService;
@@ -93,4 +97,92 @@ describe('OnlyofficeService.checkHealth', () => {
     expect(result).toEqual({ available: false });
     expect(result).not.toHaveProperty('error');
   });
+});
+
+describe('OnlyofficeService.createBlankDocument', () => {
+  let service: OnlyofficeService;
+  let storage: {
+    generateStructuredPath: jest.Mock;
+    moveFile: jest.Mock;
+    calculateFileHash: jest.Mock;
+  };
+  let prisma: {
+    academicYear: { findFirst: jest.Mock };
+    document: { create: jest.Mock };
+  };
+  let thumbnailService: { regenerateThumbnail: jest.Mock };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    storage = {
+      generateStructuredPath: jest.fn(() => ({
+        path: '/uploads/structured/archivo.txt',
+      })),
+      moveFile: jest.fn(),
+      calculateFileHash: jest.fn(async () => 'checksum-test'),
+    };
+    prisma = {
+      academicYear: { findFirst: jest.fn(async () => null) },
+      document: { create: jest.fn(async () => ({ id: 42 })) },
+    };
+    thumbnailService = { regenerateThumbnail: jest.fn(async () => undefined) };
+    service = new OnlyofficeService(
+      {} as ConfigService,
+      storage as never,
+      prisma as never,
+      thumbnailService as never,
+    );
+  });
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it.each([
+    ['txt', 'text/plain', 'Notas.txt', '.txt'],
+    ['md', 'text/markdown', 'Notas.md', '.md'],
+  ] as const)(
+    'creates a blank .%s document with %s mimetype',
+    async (fileType, mimetype, filename, extension) => {
+      storage.generateStructuredPath.mockReturnValue({
+        path: `/uploads/structured/${filename}`,
+      });
+
+      const dto = { title: 'Notas', fileType } as CreateBlankDocumentDto;
+      const result = await service.createBlankDocument(dto, 'user-1');
+
+      expect(fs.writeFileSync).toHaveBeenCalledWith(
+        expect.stringMatching(
+          new RegExp(`^uploads\\/temp\\/[0-9a-f-]{36}\\${extension}$`),
+        ),
+        Buffer.alloc(0),
+      );
+      expect(storage.generateStructuredPath).toHaveBeenCalledWith(
+        'user-1',
+        null,
+        expect.stringMatching(new RegExp(`^[0-9a-f-]{36}\\${extension}$`)),
+      );
+      expect(storage.moveFile).toHaveBeenCalledWith(
+        expect.stringMatching(
+          new RegExp(`^uploads\\/temp\\/[0-9a-f-]{36}\\${extension}$`),
+        ),
+        `/uploads/structured/${filename}`,
+      );
+      expect(storage.calculateFileHash).toHaveBeenCalledWith(
+        `/uploads/structured/${filename}`,
+      );
+
+      const version =
+        prisma.document.create.mock.calls[0][0].data.versions.create;
+      expect(version.filename).toBe(filename);
+      expect(version.mimetype).toBe(mimetype);
+      expect(version.storedName).toMatch(
+        new RegExp(`^[0-9a-f-]{36}\\${extension}$`),
+      );
+      expect(version.size).toBe(0);
+      expect(version.comment).toBe('Created in editor');
+      expect(version.source).toBe('UPLOAD_INICIAL');
+      expect(result.id).toBe(42);
+    },
+  );
 });

@@ -14,10 +14,10 @@ export class CreateBlankDocumentDto {
   @ApiProperty({
     description: 'Tipo de archivo a crear',
     example: 'docx',
-    enum: ['docx', 'xlsx', 'pptx'],
+    enum: ['docx', 'xlsx', 'pptx', 'txt', 'md'],
   })
-  @IsIn(['docx', 'xlsx', 'pptx'])
-  fileType: 'docx' | 'xlsx' | 'pptx';
+  @IsIn(['docx', 'xlsx', 'pptx', 'txt', 'md'])
+  fileType: 'docx' | 'xlsx' | 'pptx' | 'txt' | 'md';
 
   @ApiPropertyOptional({ description: 'ID de la categoría', example: 1 })
   @IsInt()
