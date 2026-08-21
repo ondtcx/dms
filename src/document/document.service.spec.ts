@@ -41,6 +41,7 @@ describe('DocumentService', () => {
               count: jest.fn().mockResolvedValue(1),
               findMany: jest.fn().mockResolvedValue([]),
               delete: jest.fn(),
+              aggregate: jest.fn().mockResolvedValue({ _sum: { size: 0 } }),
             },
             documentAccess: { create: jest.fn() },
             workflowApproval: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -323,6 +324,74 @@ describe('DocumentService', () => {
 
       expect(prisma.documentVersion.delete).toHaveBeenCalledWith({ where: { id: 10 } });
       expect((service as any).storage.deleteFile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getStats', () => {
+    it('non-admin: scopes document count and size sum to the user', async () => {
+      (prisma.document.count as jest.Mock).mockResolvedValue(36);
+      (prisma.documentVersion.aggregate as jest.Mock).mockResolvedValue({
+        _sum: { size: 1_048_576 },
+      });
+
+      await service.getStats('user123', UserRole.USER);
+
+      expect(prisma.document.count).toHaveBeenCalledWith({
+        where: { deletedAt: null, uploadedById: 'user123' },
+      });
+      expect(prisma.documentVersion.aggregate).toHaveBeenCalledWith({
+        where: {
+          document: { deletedAt: null, uploadedById: 'user123' },
+        },
+        _sum: { size: true },
+      });
+    });
+
+    it('returns total size and formatted MB for a known byte sum', async () => {
+      (prisma.document.count as jest.Mock).mockResolvedValue(36);
+      (prisma.documentVersion.aggregate as jest.Mock).mockResolvedValue({
+        _sum: { size: 1_048_576 },
+      });
+
+      const stats = await service.getStats('user123', UserRole.USER);
+
+      expect(stats).toEqual({
+        totalDocuments: 36,
+        totalSize: 1_048_576,
+        totalSizeMB: '1.00',
+      });
+    });
+
+    it('admin: omits uploadedById from both scopes', async () => {
+      (prisma.document.count as jest.Mock).mockResolvedValue(10);
+      (prisma.documentVersion.aggregate as jest.Mock).mockResolvedValue({
+        _sum: { size: 512 },
+      });
+
+      await service.getStats('admin1', UserRole.ADMIN);
+
+      expect(prisma.document.count).toHaveBeenCalledWith({
+        where: { deletedAt: null },
+      });
+      expect(prisma.documentVersion.aggregate).toHaveBeenCalledWith({
+        where: { document: { deletedAt: null } },
+        _sum: { size: true },
+      });
+    });
+
+    it('handles a null size sum as 0 bytes', async () => {
+      (prisma.document.count as jest.Mock).mockResolvedValue(0);
+      (prisma.documentVersion.aggregate as jest.Mock).mockResolvedValue({
+        _sum: { size: null },
+      });
+
+      const stats = await service.getStats('user123', UserRole.USER);
+
+      expect(stats).toEqual({
+        totalDocuments: 0,
+        totalSize: 0,
+        totalSizeMB: '0.00',
+      });
     });
   });
 });

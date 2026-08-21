@@ -1266,18 +1266,25 @@ export class DocumentService {
       where.uploadedById = userId;
     }
 
-    const [totalDocuments, totalSize] = await Promise.all([
+    const [totalDocuments, totalSizeAgg] = await Promise.all([
       this.prisma.document.count({ where }),
-      this.prisma.document.aggregate({
-        where,
-        _sum: { currentVersion: true },
+      this.prisma.documentVersion.aggregate({
+        where: {
+          document: {
+            deletedAt: null,
+            ...(userRole !== UserRole.ADMIN ? { uploadedById: userId } : {}),
+          },
+        },
+        _sum: { size: true },
       }),
     ]);
 
+    const totalSize = totalSizeAgg._sum.size ?? 0;
+
     return {
       totalDocuments,
-      totalSize: 0, // Migrated to DocumentVersion
-      totalSizeMB: '0.00',
+      totalSize,
+      totalSizeMB: (totalSize / (1024 * 1024)).toFixed(2),
     };
   }
 
