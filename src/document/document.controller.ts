@@ -468,11 +468,11 @@ export class DocumentController {
     let thumbnailPath = this.thumbnailService.getThumbnailPath(id);
 
     if (thumbnailPath) {
-      // Verificar que el thumbnail no sea anterior al documento (puede quedar de un seed/reset anterior)
+      // Verificar que el thumbnail no sea anterior a la versión actual (puede quedar de un seed/reset anterior)
       const stats = await fsPromises.stat(thumbnailPath);
       const thumbMtime = stats.mtime;
-      const docCreatedAt = new Date(doc.createdAt);
-      if (thumbMtime < docCreatedAt) {
+      const versionCreatedAt = new Date(doc.versions[0].createdAt);
+      if (thumbMtime < versionCreatedAt) {
         thumbnailPath = await this.thumbnailService.regenerateThumbnail(
           doc.versions[0].path,
           id,
