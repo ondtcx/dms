@@ -1,6 +1,7 @@
 import {
   getUnmappedLegacyRoles,
   buildRoleGrantFilter,
+  resolveRoleGrantFields,
   resolveEffectiveRoleKeys,
   roleGrantMatchesUser,
 } from './compatibility-resolver';
@@ -47,5 +48,10 @@ describe('compatibility resolver', () => {
     expect(buildRoleGrantFilter('user-2', null, [])).toEqual({
       OR: [{ userId: 'user-2' }],
     });
+  });
+
+  it('dual-writes a catalog role legacy identity only when the mapping exists', () => {
+    expect(resolveRoleGrantFields('admin', 9, 'admin')).toEqual({ role: 'admin', roleId: 9 });
+    expect(resolveRoleGrantFields('editor', 10, null)).toEqual({ role: null, roleId: 10 });
   });
 });

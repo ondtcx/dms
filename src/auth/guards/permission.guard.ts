@@ -11,15 +11,23 @@ export class PermissionGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext) {
-    const permission = this.reflector.getAllAndOverride<string>(PERMISSION_KEY, [
+    const required = this.reflector.getAllAndOverride<string | string[]>(PERMISSION_KEY, [
       context.getHandler(),
       context.getClass(),
     ]);
-    if (!permission) return true;
+    if (!required) return true;
+    const permissions = Array.isArray(required) ? required : [required];
     const user = context.switchToHttp().getRequest().user;
-    if (!user?.id || !(await this.authorization.hasPermission(user.id, permission))) {
+    if (!user?.id || !(await this.hasAnyPermission(user.id, permissions))) {
       throw new ForbiddenException('Insufficient permissions');
     }
     return true;
+  }
+
+  private async hasAnyPermission(userId: string, permissions: string[]) {
+    for (const permission of permissions) {
+      if (await this.authorization.hasPermission(userId, permission)) return true;
+    }
+    return false;
   }
 }

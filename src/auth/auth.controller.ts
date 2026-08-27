@@ -113,11 +113,16 @@ export class AuthController {
     description: 'Perfil obtenido exitosamente',
     schema: {
       example: {
-        id: 1,
-        email: 'admin@example.com',
-        name: 'Administrador',
-        role: 'admin',
-        createdAt: '2024-01-01T00:00:00.000Z',
+        user: {
+          id: 1,
+          email: 'admin@example.com',
+          name: 'Administrador',
+          role: 'admin',
+          createdAt: '2024-01-01T00:00:00.000Z',
+        },
+        roles: ['admin'],
+        permissions: ['roles.manage'],
+        authRevision: 4,
       },
     },
   })

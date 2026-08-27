@@ -9,6 +9,26 @@ import { CreateUserDto } from './dto/create-user.dto';
 import bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
 
+const userProjection = {
+  id: true,
+  email: true,
+  name: true,
+  role: true,
+  authRevision: true,
+  phoneNumber: true,
+  position: true,
+  createdAt: true,
+  updatedAt: true,
+  roleAssignments: {
+    select: { role: { select: { id: true, key: true, label: true, isActive: true } } },
+  },
+} as const;
+
+function toUserProjection<T extends { roleAssignments?: { role: unknown }[] }>(user: T) {
+  const { roleAssignments, ...projection } = user;
+  return { ...projection, catalogRoles: (roleAssignments ?? []).map(({ role }) => role) };
+}
+
 @Injectable()
 export class UserService {
   constructor(private prisma: PrismaService) {}
@@ -37,19 +57,8 @@ export class UserService {
   }
 
   async findAll(): Promise<Omit<User, 'password'>[]> {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        authRevision: true,
-        phoneNumber: true,
-        position: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const users = await this.prisma.user.findMany({ select: userProjection });
+    return users.map(toUserProjection) as Omit<User, 'password'>[];
   }
 
   async findAllForSelection(
@@ -66,29 +75,16 @@ export class UserService {
   }
 
   async findById(id: string): Promise<Omit<User, 'password'>> {
-    const userFound = await this.prisma.user.findUnique({
-      where: { id: id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        authRevision: true,
-        phoneNumber: true,
-        position: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    const userFound = await this.prisma.user.findUnique({ where: { id }, select: userProjection });
 
     if (!userFound) {
       throw new NotFoundException('User not found');
     }
 
-    return userFound;
+    return toUserProjection(userFound) as Omit<User, 'password'>;
   }
 
-  async findByEmail(email: string): Promise<User> {
+  async findByEmail(email: string): Promise<any> {
     const userFound = await this.prisma.user.findUnique({
       where: { email: email },
       select: {
@@ -102,6 +98,9 @@ export class UserService {
         createdAt: true,
         updatedAt: true,
         password: true,
+        roleAssignments: {
+          select: { role: { select: { id: true, key: true, label: true, isActive: true } } },
+        },
       },
     });
 
@@ -109,7 +108,7 @@ export class UserService {
       throw new NotFoundException('User not found');
     }
 
-    return userFound;
+    return toUserProjection(userFound);
   }
 
   async update(

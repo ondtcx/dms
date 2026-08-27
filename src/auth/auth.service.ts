@@ -13,7 +13,9 @@ import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { UserRole } from './role.enum';
-import { AuthorizationService } from './compatibility/authorization.service';
+import { AuthorizationProfile, AuthorizationService } from './compatibility/authorization.service';
+
+export type AuthenticatedProfile = AuthorizationProfile;
 
 @Injectable()
 export class AuthService {
@@ -59,7 +61,7 @@ export class AuthService {
       sub: user.id,
       role: user.role,
       name: user.name,
-      authRevision: user.authRevision,
+      authRevision: authorization.authRevision,
     };
     const { password, ...result } = user;
 
@@ -68,12 +70,22 @@ export class AuthService {
       access_token: await this.jwtService.signAsync(payload),
       roles: authorization.roles,
       permissions: authorization.permissions,
-      authRevision: user.authRevision,
+      authRevision: authorization.authRevision,
     };
   }
 
-  async getProfile(userId: string): Promise<Omit<User, 'password'>> {
-    return this.userService.findById(userId);
+  async getProfile(userId: string): Promise<AuthenticatedProfile> {
+    const [profileUser, authorization] = await Promise.all([
+      this.userService.findById(userId),
+      this.authorization.getAuthorization(userId),
+    ]);
+
+    return {
+      user: profileUser,
+      roles: authorization.roles,
+      permissions: authorization.permissions,
+      authRevision: authorization.authRevision,
+    };
   }
 
   async generateResetToken(userId: string): Promise<{ token: string; expiresAt: string }> {

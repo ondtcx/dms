@@ -9,6 +9,14 @@ export type RoleGrant = {
   roleKey?: string | null;
 };
 
+export function resolveRoleGrantFields(
+  roleKey: string,
+  roleId: number,
+  legacyRole: string | null | undefined,
+): { role: string | null; roleId: number } {
+  return { role: legacyRole ?? (LEGACY_ROLE_KEYS[roleKey] ? roleKey : null), roleId };
+}
+
 export const LEGACY_ROLE_KEYS: Readonly<Record<string, string>> = {
   rector: 'rector',
   vicerrector: 'vicerrector',

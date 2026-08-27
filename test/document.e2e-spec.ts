@@ -9,6 +9,7 @@ describe('DocumentController (e2e)', () => {
   let app: INestApplication;
   let prismaService: PrismaService;
   let jwtToken: string;
+  let jwtService: JwtService;
 
   beforeAll(async () => {
     const mockPrismaService = {
@@ -36,7 +37,7 @@ describe('DocumentController (e2e)', () => {
     await app.init();
     
     prismaService = moduleFixture.get<PrismaService>(PrismaService);
-    const jwtService = moduleFixture.get<JwtService>(JwtService);
+    jwtService = moduleFixture.get<JwtService>(JwtService);
     jwtToken = jwtService.sign({ sub: 'user123', email: 'test@example.com', role: 'admin' });
   });
 
@@ -99,6 +100,17 @@ describe('DocumentController (e2e)', () => {
     expect(response.body.data[0].academic).toHaveProperty('courseId', 10);
     expect(response.body.data[0]).toHaveProperty('versions');
     expect(response.body.data[0].versions[0]).toHaveProperty('filename', 'test.pdf');
+  });
+
+  it('accepts a claimless legacy JWT and resolves the current user projection', async () => {
+    const legacyToken = jwtService.sign({ sub: 'user123', role: 'admin' });
+
+    await request(app.getHttpServer())
+      .get('/documents')
+      .set('Authorization', `Bearer ${legacyToken}`)
+      .expect(200);
+
+    expect(prismaService.user.findUnique).toHaveBeenCalled();
   });
 
   it('/documents/:id (GET)', async () => {

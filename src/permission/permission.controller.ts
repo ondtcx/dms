@@ -22,6 +22,7 @@ import { AuthGuard } from '../auth/guards/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/role.enum';
+import { RequirePermission } from '../auth/decorators/permission.decorator';
 
 @ApiTags('permissions')
 @ApiBearerAuth()
@@ -29,6 +30,13 @@ import { UserRole } from '../auth/role.enum';
 @Controller('permissions')
 export class PermissionController {
   constructor(private readonly permissionService: PermissionService) {}
+
+  @Get('catalog')
+  @RequirePermission('roles.manage')
+  @ApiOperation({ summary: 'Listar permisos activos del catálogo' })
+  getCatalog() {
+    return this.permissionService.getCatalog();
+  }
 
   // ============ Permisos de Documentos ============
 
@@ -50,6 +58,17 @@ export class PermissionController {
       req.user.id,
       grantDto,
     );
+  }
+
+  @Post('documents/:id/share')
+  @Roles(UserRole.ADMIN, UserRole.RECTOR, UserRole.COORDINADOR)
+  @ApiOperation({ summary: 'Compartir un documento preservando roles legacy y catalogados' })
+  createDocumentShare(
+    @Param('id', ParseIntPipe) documentId: number,
+    @Request() req,
+    @Body() shareDto: Record<string, unknown>,
+  ) {
+    return this.permissionService.createDocumentShare(documentId, req.user.id, shareDto);
   }
 
   @Delete('documents/permissions/:id')

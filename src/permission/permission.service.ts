@@ -7,11 +7,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GrantDocumentPermissionDto } from './dto/grant-document-permission.dto';
 import { ExplainPermissionDto } from './dto/explain-permission.dto';
 import { UserRole } from '../auth/role.enum';
-import { buildRoleGrantFilter } from '../role/compatibility-resolver';
+import { buildRoleGrantFilter, resolveRoleGrantFields } from '../role/compatibility-resolver';
+import { randomUUID } from 'crypto';
+import { PermissionCatalogItemDto } from './dto/permission-catalog-item.dto';
 
 @Injectable()
 export class PermissionService {
   constructor(private prisma: PrismaService) {}
+
+  getCatalog(): Promise<PermissionCatalogItemDto[]> {
+    return this.prisma.permission.findMany({
+      where: { isActive: true },
+      select: { id: true, key: true, label: true, isActive: true },
+      orderBy: { key: 'asc' },
+    });
+  }
 
   // ============ Permisos Específicos de Documentos ============
 
@@ -51,7 +61,7 @@ export class PermissionService {
     const catalogRole = roleKey || role
       ? await this.prisma.role.findUnique({
           where: roleKey ? { key: roleKey } : { legacyRole: role },
-          select: { id: true, isActive: true },
+          select: { id: true, isActive: true, legacyRole: true },
         })
       : null;
     if (roleKey && (!catalogRole || !catalogRole.isActive)) {
@@ -65,19 +75,56 @@ export class PermissionService {
       }
     }
 
+    const grantFields = catalogRole
+      ? resolveRoleGrantFields(roleKey ?? role, catalogRole.id, catalogRole.legacyRole)
+      : { role: role ?? null, roleId: null };
+
     return this.prisma.documentPermission.create({
       data: {
         documentId,
         userId,
-        role: role ?? null,
-        roleId: catalogRole?.id ?? null,
+        ...grantFields,
         grantedById,
         ...permissions,
         expiresAt: grantDto.expiresAt ? new Date(grantDto.expiresAt) : null,
-      },
+      } as any,
       include: {
         user: { select: { id: true, name: true, email: true } },
         grantedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async createDocumentShare(documentId: number, sharedById: string, shareDto: any) {
+    const { role, roleKey, ...shareData } = shareDto;
+    const document = await this.prisma.document.findUnique({ where: { id: documentId } });
+    if (!document) throw new NotFoundException(`Documento con ID ${documentId} no encontrado`);
+
+    const sharedBy = await this.prisma.user.findUnique({ where: { id: sharedById } });
+    if (!sharedBy) throw new NotFoundException(`Usuario con ID ${sharedById} no encontrado`);
+
+    const catalogRole = roleKey || role
+      ? await this.prisma.role.findUnique({
+          where: roleKey ? { key: roleKey } : { legacyRole: role },
+          select: { id: true, isActive: true, legacyRole: true },
+        })
+      : null;
+    if ((roleKey || role) && (!catalogRole || !catalogRole.isActive)) {
+      throw new BadRequestException('El rol no existe o está inactivo');
+    }
+
+    const grantFields = catalogRole
+      ? resolveRoleGrantFields(roleKey ?? role, catalogRole.id, catalogRole.legacyRole)
+      : { role: null, roleId: null };
+
+    return this.prisma.documentShare.create({
+      data: {
+        documentId,
+        sharedById,
+        shareToken: randomUUID(),
+        ...shareData,
+        ...grantFields,
+        expiresAt: shareDto.expiresAt ? new Date(shareDto.expiresAt) : null,
       },
     });
   }

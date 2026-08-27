@@ -19,10 +19,8 @@ import {
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { Roles } from '../auth/decorators/roles.decorator';
-import { UserRole } from '../auth/role.enum';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { RequirePermission } from '../auth/decorators/permission.decorator';
+import { RequireAnyPermission, RequirePermission } from '../auth/decorators/permission.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -32,7 +30,7 @@ export class UserController {
   //@Public()
   @Get()
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @RequireAnyPermission('users.manage', 'roles.manage')
   @ApiOperation({
     summary: 'Listar todos los usuarios (Solo ADMIN)',
     description: 'Obtiene una lista de todos los usuarios registrados',
@@ -117,7 +115,7 @@ export class UserController {
 
   @Get(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @RequireAnyPermission('users.manage', 'roles.manage')
   @ApiOperation({
     summary: 'Obtener usuario por ID (Solo ADMIN)',
     description: 'Obtiene la información detallada de un usuario específico',

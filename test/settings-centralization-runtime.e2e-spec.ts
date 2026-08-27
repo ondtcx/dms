@@ -178,6 +178,10 @@ describe('Settings centralization runtime compatibility (e2e)', () => {
 
   it('allows one administrator to lose a role while another remains', async () => {
     const adminRole = await prisma.role.findUniqueOrThrow({ where: { key: 'admin' } });
+    const permission = await prisma.permission.findUniqueOrThrow({ where: { key: 'roles.manage' } });
+    const recoveryRole = await prisma.role.create({
+      data: { key: `runtime-recovery-${randomUUID()}`, label: 'Runtime recovery authority' },
+    });
     const secondAdmin = await prisma.user.create({
       data: {
         email: `runtime-admin-${randomUUID()}@example.com`,
@@ -188,15 +192,25 @@ describe('Settings centralization runtime compatibility (e2e)', () => {
     });
 
     try {
+      await prisma.role.update({ where: { id: adminRole.id }, data: { isActive: true } });
+      await prisma.rolePermission.upsert({
+        where: { roleId_permissionId: { roleId: recoveryRole.id, permissionId: permission.id } },
+        update: {},
+        create: { roleId: recoveryRole.id, permissionId: permission.id },
+      });
+      await prisma.userRoleAssignment.create({ data: { userId: secondAdmin.id, roleId: recoveryRole.id } });
       const response = await request(app.getHttpServer())
         .patch(`/roles/${adminRole.id}`)
-        .set('Authorization', `Bearer ${adminToken}`)
+        .set('Authorization', `Bearer ${await login('admin@colegio.edu')}`)
         .send({ isActive: false })
         .expect(200);
 
       expect(response.body.isActive).toBe(false);
     } finally {
       await prisma.role.update({ where: { id: adminRole.id }, data: { isActive: true } });
+      await prisma.userRoleAssignment.deleteMany({ where: { userId: secondAdmin.id, roleId: recoveryRole.id } });
+      await prisma.rolePermission.deleteMany({ where: { roleId: recoveryRole.id } });
+      await prisma.role.delete({ where: { id: recoveryRole.id } });
       await prisma.user.delete({ where: { id: secondAdmin.id } });
     }
   });
@@ -216,10 +230,11 @@ describe('Settings centralization runtime compatibility (e2e)', () => {
       .send({ name: 'Authorized before revocation' })
       .expect(200);
 
-    const user = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    await prisma.rolePermission.delete({ where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } } });
-    await prisma.role.update({ where: { id: role.id }, data: { isActive: false } });
-    await prisma.user.update({ where: { id: userId }, data: { authRevision: { increment: 1 } } });
+    await request(app.getHttpServer())
+      .patch(`/roles/${role.id}`)
+      .set('Authorization', `Bearer ${await login('admin@colegio.edu')}`)
+      .send({ permissionKeys: [] })
+      .expect(200);
 
     try {
       await request(app.getHttpServer())
@@ -229,8 +244,56 @@ describe('Settings centralization runtime compatibility (e2e)', () => {
         .expect(401);
     } finally {
       await prisma.documentTemplate.update({ where: { id: templateId }, data: { name: originalName } });
-      await prisma.user.update({ where: { id: userId }, data: { authRevision: user.authRevision } });
     }
+  });
+
+  it('rejects protected operations when the catalog role is inactive', async () => {
+    const permission = await prisma.permission.findUniqueOrThrow({ where: { key: 'templates.manage' } });
+    const role = await prisma.role.create({ data: { key: `inactive-${randomUUID()}`, label: 'Inactive role' } });
+    runtimeRoleIds.push(role.id);
+    const originalName = (await prisma.documentTemplate.findUniqueOrThrow({ where: { id: templateId } })).name;
+    const authorizedName = `Authorized while role active ${randomUUID()}`;
+
+    await prisma.rolePermission.create({ data: { roleId: role.id, permissionId: permission.id } });
+    await prisma.userRoleAssignment.create({ data: { userId, roleId: role.id } });
+    const assignedToken = await login('maestro.1p@colegio.edu');
+    await request(app.getHttpServer())
+      .patch(`/document-templates/${templateId}`)
+      .set('Authorization', `Bearer ${assignedToken}`)
+      .send({ name: authorizedName })
+      .expect(200);
+
+    await request(app.getHttpServer())
+      .post(`/roles/${role.id}/deactivate`)
+      .set('Authorization', `Bearer ${await login('admin@colegio.edu')}`)
+      .expect(201);
+
+    const freshToken = await login('maestro.1p@colegio.edu');
+    await request(app.getHttpServer())
+      .patch(`/document-templates/${templateId}`)
+      .set('Authorization', `Bearer ${freshToken}`)
+      .send({ name: `Must remain unchanged after inactive role ${randomUUID()}` })
+      .expect(403);
+
+    await prisma.documentTemplate.update({ where: { id: templateId }, data: { name: originalName } });
+  });
+
+  it('returns matching current authorization from login and profile', async () => {
+    const loginResponse = await request(app.getHttpServer())
+      .post('/auth/login')
+      .send({ email: 'admin@colegio.edu', password: 'Demo123!' })
+      .expect(200);
+    const profileResponse = await request(app.getHttpServer())
+      .get('/auth/profile')
+      .set('Authorization', `Bearer ${loginResponse.body.access_token}`)
+      .expect(200);
+
+    expect({
+      user: loginResponse.body.user,
+      roles: loginResponse.body.roles,
+      permissions: loginResponse.body.permissions,
+      authRevision: loginResponse.body.authRevision,
+    }).toEqual(profileResponse.body);
   });
 
   it('resolves legacy and catalog role document records through HTTP', async () => {
@@ -274,6 +337,12 @@ describe('Settings centralization runtime compatibility (e2e)', () => {
     await expect(explain(catalogDocument.id)).resolves.toMatchObject({ body: { hasAccess: true } });
     await expect(explain(legacyShareDocument.id)).resolves.toMatchObject({ body: { hasAccess: true } });
     await expect(explain(catalogShareDocument.id)).resolves.toMatchObject({ body: { hasAccess: true } });
+
+    await prisma.userRoleAssignment.delete({ where: { userId_roleId: { userId, roleId: role.id } } });
+    await expect(explain(legacyDocument.id)).resolves.toMatchObject({ body: { hasAccess: true } });
+    await expect(explain(catalogDocument.id)).resolves.toMatchObject({ body: { hasAccess: false } });
+    await expect(explain(legacyShareDocument.id)).resolves.toMatchObject({ body: { hasAccess: true } });
+    await expect(explain(catalogShareDocument.id)).resolves.toMatchObject({ body: { hasAccess: false } });
 
     await prisma.document.deleteMany({
       where: { id: { in: [legacyDocument.id, catalogDocument.id, legacyShareDocument.id, catalogShareDocument.id] } },

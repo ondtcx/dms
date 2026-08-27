@@ -55,11 +55,11 @@ export class AuthGuard implements CanActivate {
       }
 
       request['user'] = {
-        id: payload.sub, // Mapea sub -> id
+        ...payload,
+        id: payload.sub,
         email: currentUser.email,
         role: currentUser.role,
         authRevision: currentUser.authRevision,
-        ...payload, // Mantén otros campos si los hay
       };
     } catch {
       throw new UnauthorizedException(
