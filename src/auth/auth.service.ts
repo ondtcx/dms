@@ -13,6 +13,7 @@ import { LoginDto } from './dto/login.dto';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { UserRole } from './role.enum';
+import { AuthorizationService } from './compatibility/authorization.service';
 
 @Injectable()
 export class AuthService {
@@ -20,6 +21,7 @@ export class AuthService {
     private readonly userService: UserService,
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
+    private readonly authorization: AuthorizationService,
   ) {}
 
   async register(
@@ -30,7 +32,7 @@ export class AuthService {
       role: UserRole.USER, // Siempre USER
     });
 
-    const payload = { email: user.email, sub: user.id, role: user.role };
+    const payload = { email: user.email, sub: user.id, role: user.role, authRevision: user.authRevision };
 
     return {
       user,
@@ -41,6 +43,9 @@ export class AuthService {
   async login(loginDto: LoginDto): Promise<{
     user: Omit<User, 'password'>;
     access_token: string;
+    roles: string[];
+    permissions: string[];
+    authRevision: number;
   }> {
     const user = await this.userService.findByEmail(loginDto.email);
 
@@ -48,17 +53,22 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    const authorization = await this.authorization.getAuthorization(user.id);
     const payload = {
       email: user.email,
       sub: user.id,
       role: user.role,
       name: user.name,
+      authRevision: user.authRevision,
     };
     const { password, ...result } = user;
 
     return {
       user: result,
       access_token: await this.jwtService.signAsync(payload),
+      roles: authorization.roles,
+      permissions: authorization.permissions,
+      authRevision: user.authRevision,
     };
   }
 

@@ -41,4 +41,27 @@ describe('buildDocumentAccessFilter', () => {
       ]),
     );
   });
+
+  it('matches active catalog role grants and shares alongside legacy grants', () => {
+    const filter = buildDocumentAccessFilter({
+      id: 'editor-id',
+      role: UserRole.USER,
+      assignments: [{ id: 12, key: 'editor', isActive: true }],
+    });
+
+    expect(JSON.stringify(filter)).toContain('roleId');
+    expect(JSON.stringify(filter)).toContain('shares');
+    expect(JSON.stringify(filter)).toContain('permissions');
+    expect(JSON.stringify(filter)).toContain('12');
+  });
+
+  it('does not include inactive catalog assignments in document access', () => {
+    const filter = buildDocumentAccessFilter({
+      id: 'editor-id',
+      role: UserRole.USER,
+      assignments: [{ id: 13, key: 'editor', isActive: false }],
+    });
+
+    expect(JSON.stringify(filter)).not.toContain('13');
+  });
 });

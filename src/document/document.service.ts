@@ -237,13 +237,21 @@ export class DocumentService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true },
+      select: {
+        id: true,
+        role: true,
+        roleAssignments: {
+          where: { role: { isActive: true } },
+          select: { role: { select: { id: true, key: true, isActive: true } } },
+        },
+      },
     });
 
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
           role: user.role as unknown as UserRole,
+          assignments: (user.roleAssignments ?? []).map(({ role }) => role),
         })
       : null;
 
@@ -404,13 +412,21 @@ export class DocumentService {
   async findOne(id: number, userId: string, userRole: UserRole) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true },
+      select: {
+        id: true,
+        role: true,
+        roleAssignments: {
+          where: { role: { isActive: true } },
+          select: { role: { select: { id: true, key: true, isActive: true } } },
+        },
+      },
     });
 
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
           role: user.role as unknown as UserRole,
+          assignments: (user.roleAssignments ?? []).map(({ role }) => role),
         })
       : ({ id: -1 } as any);
 
@@ -684,6 +700,7 @@ export class DocumentService {
   async permanentDelete(id: number, userId: string, userRole: UserRole) {
     const document = await this.prisma.document.findUnique({
       where: { id },
+      include: { versions: true },
     });
 
     if (!document) {
@@ -1285,6 +1302,89 @@ export class DocumentService {
       totalDocuments,
       totalSize,
       totalSizeMB: (totalSize / (1024 * 1024)).toFixed(2),
+    };
+  }
+
+  /**
+   * Returns the bounded, authorization-safe data used by the dashboard tray.
+   * Pending work deliberately means visible active DRAFT documents only; the
+   * existing detail/editor routes remain the final action authorization boundary.
+   */
+  async getDashboardSummary(
+    userId: string,
+    userRole: UserRole,
+    limit = 5,
+  ) {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5) {
+      throw new BadRequestException('El límite del resumen debe estar entre 1 y 5');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, role: true },
+    });
+    const accessFilter = buildDocumentAccessFilter({
+      id: user?.id ?? userId,
+      role: (user?.role as UserRole) ?? userRole,
+    });
+
+    const activeScope: any[] = [
+      { deletedAt: null },
+      { archivedAt: null },
+      ...(accessFilter ? [accessFilter] : []),
+    ];
+    const pendingWhere = {
+      AND: [
+        ...activeScope,
+        { workflow: { is: { status: WorkflowStatus.DRAFT } } },
+      ],
+    };
+    const recentWhere = { AND: activeScope };
+    const rowQuery: any = {
+      take: limit + 1,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        description: true,
+        documentNumber: true,
+        createdAt: true,
+        updatedAt: true,
+        uploadedBy: {
+          select: { id: true, name: true, email: true },
+        },
+        category: {
+          select: { id: true, name: true, color: true, icon: true },
+        },
+        versions: {
+          orderBy: { version: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            version: true,
+            filename: true,
+            mimetype: true,
+            size: true,
+          },
+        },
+        workflow: {
+          select: { id: true, status: true, currentState: true },
+        },
+      },
+    };
+
+    const [pendingCount, pendingRows, recentRows] = await Promise.all([
+      this.prisma.document.count({ where: pendingWhere }),
+      this.prisma.document.findMany({ where: pendingWhere, ...rowQuery }),
+      this.prisma.document.findMany({ where: recentWhere, ...rowQuery }),
+    ]);
+
+    return {
+      pendingOfficializationCount: pendingCount,
+      pendingOfficialization: pendingRows.slice(0, limit),
+      pendingHasMore: pendingRows.length > limit,
+      recent: recentRows.slice(0, limit),
+      recentHasMore: recentRows.length > limit,
+      generatedAt: new Date().toISOString(),
     };
   }
 

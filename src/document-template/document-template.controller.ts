@@ -30,6 +30,7 @@ import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { createReadStream, existsSync } from 'fs';
 import { join } from 'path';
+import { RequirePermission } from '../auth/decorators/permission.decorator';
 
 @ApiTags('document-templates')
 @Controller('document-templates')
@@ -40,6 +41,7 @@ export class DocumentTemplateController {
   ) {}
 
   @Post()
+  @RequirePermission('templates.manage')
   @ApiOperation({
     summary: 'Crear una nueva plantilla de documento',
     description:
@@ -364,6 +366,7 @@ export class DocumentTemplateController {
   }
 
   @Patch(':id')
+  @RequirePermission('templates.manage')
   @ApiOperation({
     summary: 'Actualizar una plantilla',
     description:
@@ -464,6 +467,7 @@ export class DocumentTemplateController {
   }
 
   @Delete(':id')
+  @RequirePermission('templates.manage')
   @ApiOperation({
     summary: 'Eliminar una plantilla',
     description:
@@ -583,6 +587,7 @@ export class DocumentTemplateController {
   }
 
   @Post(':id/duplicate')
+  @RequirePermission('templates.manage')
   @ApiOperation({
     summary: 'Duplicar una plantilla existente',
     description:

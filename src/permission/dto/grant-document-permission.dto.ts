@@ -28,6 +28,11 @@ export class GrantDocumentPermissionDto {
   @IsOptional()
   role?: UserRole;
 
+  @ApiPropertyOptional({ description: 'Clave del rol catalogado', example: 'editor' })
+  @IsString()
+  @IsOptional()
+  roleKey?: string;
+
   @ApiPropertyOptional({
     description: 'Permiso de visualización',
     example: true,

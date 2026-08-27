@@ -70,6 +70,21 @@ const templateData = [
   ['Recibo de Pago de Aranceles', 'Recibo de Pago', 'Financieros'], ['Presupuesto de Actividad Escolar', 'Presupuesto de Actividad', 'Financieros'],
 ] as const;
 
+const catalogRoles = Object.values(UserRole).map((key) => ({
+  key,
+  label: key.charAt(0).toUpperCase() + key.slice(1),
+  legacyRole: key,
+  isSystem: true,
+}));
+
+const catalogPermissions = [
+  ['users.manage', 'Gestionar usuarios'],
+  ['categories.manage', 'Gestionar categorías'],
+  ['document-types.manage', 'Gestionar tipos de documento'],
+  ['templates.manage', 'Gestionar plantillas'],
+  ['roles.manage', 'Gestionar roles y permisos'],
+] as const;
+
 async function main() {
   const password = await bcrypt.hash('Demo123!', 10);
   const createdUsers: Record<string, string> = {};
@@ -82,6 +97,44 @@ async function main() {
       select: { id: true, email: true },
     });
     createdUsers[user.email] = user.id;
+  }
+
+  const roles: Record<string, number> = {};
+  for (const role of catalogRoles) {
+    const savedRole = await prisma.role.upsert({
+      where: { key: role.key },
+      update: { label: role.label, legacyRole: role.legacyRole, isActive: true, isSystem: role.isSystem },
+      create: role,
+      select: { id: true, key: true },
+    });
+    roles[savedRole.key] = savedRole.id;
+  }
+
+  const permissions: Record<string, number> = {};
+  for (const [key, label] of catalogPermissions) {
+    const permission = await prisma.permission.upsert({
+      where: { key },
+      update: { label, isActive: true },
+      create: { key, label },
+      select: { id: true, key: true },
+    });
+    permissions[permission.key] = permission.id;
+  }
+
+  for (const [email, , role] of users) {
+    await prisma.userRoleAssignment.upsert({
+      where: { userId_roleId: { userId: createdUsers[email], roleId: roles[role] } },
+      update: {},
+      create: { userId: createdUsers[email], roleId: roles[role] },
+    });
+  }
+
+  for (const permissionId of Object.values(permissions)) {
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: roles[UserRole.ADMIN], permissionId } },
+      update: {},
+      create: { roleId: roles[UserRole.ADMIN], permissionId },
+    });
   }
 
   const categories: Record<string, number> = {};

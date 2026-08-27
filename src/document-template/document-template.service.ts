@@ -252,13 +252,6 @@ export class DocumentTemplateService {
   ) {
     const template = await this.findOne(id, userId, userRole);
 
-    // Solo el creador o admin pueden actualizar
-    if (userRole !== UserRole.ADMIN && template.createdById !== userId) {
-      throw new ForbiddenException(
-        'No tienes permiso para actualizar esta plantilla',
-      );
-    }
-
     const updatedTemplate = await this.prisma.documentTemplate.update({
       where: { id },
       data: updateDocumentTemplateDto,
@@ -275,13 +268,6 @@ export class DocumentTemplateService {
 
   async remove(id: number, userId: string, userRole: UserRole) {
     const template = await this.findOne(id, userId, userRole);
-
-    // Solo el creador o admin pueden eliminar
-    if (userRole !== UserRole.ADMIN && template.createdById !== userId) {
-      throw new ForbiddenException(
-        'No tienes permiso para eliminar esta plantilla',
-      );
-    }
 
     await this.prisma.documentTemplate.delete({
       where: { id },

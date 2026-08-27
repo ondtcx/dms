@@ -394,4 +394,86 @@ describe('DocumentService', () => {
       });
     });
   });
+
+  describe('getDashboardSummary', () => {
+    it('uses one active ReBAC DRAFT predicate for count and pending rows', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user123',
+        role: UserRole.USER,
+      });
+      (prisma.document.count as jest.Mock).mockResolvedValue(6);
+      (prisma.document.findMany as jest.Mock)
+        .mockResolvedValueOnce([{ id: 1 }, { id: 2 }])
+        .mockResolvedValueOnce([{ id: 3 }]);
+
+      const summary = await service.getDashboardSummary('user123', UserRole.USER);
+
+      const countWhere = (prisma.document.count as jest.Mock).mock.calls[0][0].where;
+      const pendingWhere = (prisma.document.findMany as jest.Mock).mock.calls[0][0].where;
+
+      expect(pendingWhere).toEqual(expect.objectContaining({
+        AND: expect.arrayContaining([
+          { deletedAt: null },
+          { archivedAt: null },
+          { workflow: { is: { status: 'DRAFT' } } },
+          expect.objectContaining({ OR: expect.any(Array) }),
+        ]),
+      }));
+      expect(countWhere).toEqual(pendingWhere);
+      expect(summary).toEqual(expect.objectContaining({
+        pendingOfficializationCount: 6,
+        pendingOfficialization: [{ id: 1 }, { id: 2 }],
+        pendingHasMore: false,
+        recent: [{ id: 3 }],
+        recentHasMore: false,
+        generatedAt: expect.any(String),
+      }));
+    });
+
+    it('keeps privileged roles ReBAC-visible while excluding archived and deleted rows', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'rector1',
+        role: UserRole.RECTOR,
+      });
+
+      await service.getDashboardSummary('rector1', UserRole.RECTOR);
+
+      const pendingWhere = (prisma.document.findMany as jest.Mock).mock.calls[0][0].where;
+      expect(pendingWhere).toEqual({
+        AND: [
+          { deletedAt: null },
+          { archivedAt: null },
+          { workflow: { is: { status: 'DRAFT' } } },
+        ],
+      });
+    });
+
+    it('fetches six rows to expose hasMore and orders both lists by updatedAt then id', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'user123',
+        role: UserRole.USER,
+      });
+      await service.getDashboardSummary('user123', UserRole.USER);
+
+      for (const call of (prisma.document.findMany as jest.Mock).mock.calls) {
+        expect(call[0]).toEqual(expect.objectContaining({
+          take: 6,
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+          select: expect.objectContaining({
+            documentNumber: true,
+            versions: expect.any(Object),
+            uploadedBy: expect.any(Object),
+            category: expect.any(Object),
+            workflow: expect.any(Object),
+          }),
+        }));
+      }
+    });
+
+    it('rejects limits outside the fixed five-row contract', async () => {
+      await expect(
+        service.getDashboardSummary('user123', UserRole.USER, 6),
+      ).rejects.toThrow('El límite del resumen debe estar entre 1 y 5');
+    });
+  });
 });

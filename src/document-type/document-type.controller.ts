@@ -22,6 +22,7 @@ import { CreateDocumentTypeDto } from './dto/create-document-type.dto';
 import { UpdateDocumentTypeDto } from './dto/update-document-type.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/role.enum';
+import { RequirePermission } from '../auth/decorators/permission.decorator';
 
 @ApiTags('document-types')
 @ApiBearerAuth('JWT-auth')
@@ -30,7 +31,7 @@ export class DocumentTypeController {
   constructor(private readonly documentTypeService: DocumentTypeService) {}
 
   @Post()
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @RequirePermission('document-types.manage')
   @ApiOperation({ summary: 'Crear un nuevo subtipo de documento' })
   @ApiResponse({ status: 201, description: 'Subtipo creado correctamente' })
   @ApiResponse({
@@ -81,7 +82,7 @@ export class DocumentTypeController {
   }
 
   @Patch(':id')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @RequirePermission('document-types.manage')
   @ApiOperation({ summary: 'Actualizar un subtipo de documento' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
@@ -97,7 +98,7 @@ export class DocumentTypeController {
   }
 
   @Delete(':id')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('document-types.manage')
   @ApiOperation({ summary: 'Eliminar un subtipo de documento' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({ status: 200, description: 'Subtipo eliminado correctamente' })

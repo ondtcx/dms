@@ -1,9 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { UserRole } from '../role.enum';
+import { buildRoleGrantFilter, RoleAssignment } from '../../role/compatibility-resolver';
 
 export type AccessUser = {
   id: string;
   role: UserRole;
+  assignments?: RoleAssignment[];
 };
 
 /**
@@ -22,16 +24,25 @@ export function buildDocumentAccessFilter(
   }
 
   const now = new Date();
+  const roleGrantFilter = buildRoleGrantFilter(user.id, user.role, user.assignments ?? []);
 
   // Grant explícito vía DocumentPermission (reutilizado en todos los roles)
   const explicitGrant: Prisma.DocumentWhereInput = {
     permissions: {
       some: {
         canView: true,
-        OR: [
-          { userId: user.id },
-          { role: user.role },
-        ],
+        ...roleGrantFilter,
+        AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }],
+      },
+    },
+  };
+
+  const shareGrant: Prisma.DocumentWhereInput = {
+    shares: {
+      some: {
+        ...roleGrantFilter,
+        canView: true,
+        revokedAt: null,
         AND: [{ OR: [{ expiresAt: null }, { expiresAt: { gte: now } }] }],
       },
     },
@@ -42,6 +53,7 @@ export function buildDocumentAccessFilter(
     { uploadedById: user.id },
     { isPublic: true },
     explicitGrant,
+    shareGrant,
   ];
 
   switch (user.role) {

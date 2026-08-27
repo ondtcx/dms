@@ -22,6 +22,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { UserRole } from '../auth/role.enum';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermission } from '../auth/decorators/permission.decorator';
 
 @ApiTags('users')
 @Controller('users')
@@ -145,7 +146,7 @@ export class UserController {
 
   @Post()
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @ApiOperation({
     summary: 'Crear nuevo usuario (Solo ADMIN)',
     description: 'Crea un nuevo usuario en el sistema',
@@ -164,7 +165,7 @@ export class UserController {
 
   @Patch(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @ApiOperation({
     summary: 'Actualizar usuario (Solo ADMIN)',
     description: 'Actualiza la información de un usuario existente',
@@ -196,7 +197,7 @@ export class UserController {
 
   @Delete(':id')
   @ApiBearerAuth('JWT-auth')
-  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Eliminar usuario (Solo ADMIN)',

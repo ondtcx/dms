@@ -19,10 +19,12 @@ import { AcademicYearModule } from './academic-year/academic-year.module';
 import { DocumentTypeModule } from './document-type/document-type.module';
 import { DocumentCompositionModule } from './document-composition/document-composition.module';
 import { join } from 'path';
+import catalogAuthorizationConfig from './config/catalog-authorization.config';
+import { RoleModule } from './role/role.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, load: [catalogAuthorizationConfig] }),
     // Servir archivos estáticos — process.cwd() siempre apunta al directorio
     // raíz del proyecto (dms-backend/) sin importar si corre desde src/ o dist/
     ServeStaticModule.forRoot({
@@ -44,6 +46,7 @@ import { join } from 'path';
     DocumentCompositionModule,
     OnlyofficeModule, // Integración con OnlyOffice
     SettingsModule, // Configuración del sistema
+    RoleModule,
   ],
   controllers: [AppController],
   providers: [AppService],

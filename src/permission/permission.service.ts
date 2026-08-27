@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GrantDocumentPermissionDto } from './dto/grant-document-permission.dto';
 import { ExplainPermissionDto } from './dto/explain-permission.dto';
 import { UserRole } from '../auth/role.enum';
+import { buildRoleGrantFilter } from '../role/compatibility-resolver';
 
 @Injectable()
 export class PermissionService {
@@ -19,9 +20,9 @@ export class PermissionService {
     grantedById: string,
     grantDto: GrantDocumentPermissionDto,
   ) {
-    const { userId, role, ...permissions } = grantDto;
+    const { userId, role, roleKey, ...permissions } = grantDto;
 
-    if (!userId && !role) {
+    if (!userId && !role && !roleKey) {
       throw new BadRequestException(
         'Debe proporcionar al menos userId o role',
       );
@@ -47,6 +48,16 @@ export class PermissionService {
       );
     }
 
+    const catalogRole = roleKey || role
+      ? await this.prisma.role.findUnique({
+          where: roleKey ? { key: roleKey } : { legacyRole: role },
+          select: { id: true, isActive: true },
+        })
+      : null;
+    if (roleKey && (!catalogRole || !catalogRole.isActive)) {
+      throw new BadRequestException('El rol catalogado no existe o está inactivo');
+    }
+
     if (userId) {
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (!user) {
@@ -58,7 +69,8 @@ export class PermissionService {
       data: {
         documentId,
         userId,
-        role,
+        role: role ?? null,
+        roleId: catalogRole?.id ?? null,
         grantedById,
         ...permissions,
         expiresAt: grantDto.expiresAt ? new Date(grantDto.expiresAt) : null,
@@ -103,6 +115,14 @@ export class PermissionService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
+      select: {
+        id: true,
+        role: true,
+        roleAssignments: {
+          where: { role: { isActive: true } },
+          select: { role: { select: { id: true, key: true, isActive: true } } },
+        },
+      },
     });
 
     if (!user) {
@@ -114,11 +134,19 @@ export class PermissionService {
       include: {
         shares: {
           where: {
-            OR: [
-              { userId: user.id },
-              { role: user.role },
-            ],
+            ...buildRoleGrantFilter(
+              user.id,
+              user.role,
+              (user.roleAssignments ?? []).map(({ role }) => role),
+            ),
           },
+        },
+        permissions: {
+          where: buildRoleGrantFilter(
+            user.id,
+            user.role,
+            (user.roleAssignments ?? []).map(({ role }) => role),
+          ),
         },
         uploadedBy: true,
         academic: {
@@ -151,7 +179,7 @@ export class PermissionService {
     }
 
     const now = new Date();
-    const validPermissions = document.shares.filter(
+    const validPermissions = [...document.permissions, ...document.shares].filter(
       (p) => p.canView && (!p.expiresAt || p.expiresAt >= now),
     );
 

@@ -82,6 +82,56 @@ enum NotificationStatus {
 
 // ============ SISTEMA DE PERMISOS ============
 
+model Role {
+  id            Int                  @id @default(autoincrement())
+  key           String               @unique
+  label         String
+  isActive      Boolean              @default(true)
+  isSystem      Boolean              @default(false)
+  legacyRole    UserRole?             @unique
+  permissions   RolePermission[]
+  assignments   UserRoleAssignment[]
+  documentPermissions DocumentPermission[]
+  documentShares DocumentShare[]
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@index([isActive])
+}
+
+model Permission {
+  id          Int              @id @default(autoincrement())
+  key         String           @unique
+  label       String
+  isActive    Boolean          @default(true)
+  roles       RolePermission[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([isActive])
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRoleAssignment {
+  userId     String
+  roleId     Int
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt  DateTime   @default(now())
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
 model DocumentPermission {
   id         Int      @id @default(autoincrement())
   documentId Int // Documento al que aplica el permiso
@@ -90,7 +140,9 @@ model DocumentPermission {
   // Destinatario del permiso (al menos uno debe estar presente)
   userId       String? // Usuario específico
   user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role         UserRole? // Rol
+   role         UserRole? // Rol
+   roleId       Int?
+   roleCatalog  Role?       @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
   // Permisos específicos
   canView   Boolean @default(true)
@@ -107,7 +159,8 @@ model DocumentPermission {
 
   @@index([documentId])
   @@index([userId])
-  @@index([role])
+   @@index([role])
+   @@index([roleId])
   @@index([expiresAt])
 }
 
@@ -411,6 +464,7 @@ model User {
   name     String?
   password String
   role     UserRole @default(user)
+  authRevision Int   @default(0)
 
   // Campos organizacionales
   phoneNumber  String?
@@ -456,6 +510,7 @@ model User {
   sharedByMe     DocumentShare[] @relation("SharedByUser") // Shares creados por el usuario
   revokedByMe    DocumentShare[] @relation("RevokedByUser") // Shares revocados por el usuario
   shareAccesses  ShareAccess[] // Accesos del usuario a shares
+  roleAssignments UserRoleAssignment[]
 
   // Relaciones de transferencias
   transfersFrom TransferHistory[] @relation("TransferFromUser") // Transferencias iniciadas por el usuario
@@ -864,6 +919,8 @@ model DocumentShare {
   userId       String? // Usuario específico (opcional)
   user         User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
   role         UserRole? // Rol específico (opcional)
+  roleId       Int?
+  roleCatalog  Role?       @relation(fields: [roleId], references: [id], onDelete: SetNull)
   courseId     Int? // Curso específico (opcional)
   course       Course?     @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
@@ -900,6 +957,7 @@ model DocumentShare {
   @@index([documentId])
   @@index([userId])
   @@index([role])
+  @@index([roleId])
   @@index([courseId])
   @@index([shareToken])
   @@index([sharedById])

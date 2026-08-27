@@ -9,6 +9,7 @@ import { Request } from 'express';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -16,6 +17,7 @@ export class AuthGuard implements CanActivate {
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
     private readonly config: ConfigService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -43,10 +45,20 @@ export class AuthGuard implements CanActivate {
         secret: this.config.get('JWT_SECRET'),
       });
 
+      const currentUser = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { authRevision: true, role: true, email: true, name: true },
+      });
+      if (!currentUser) throw new UnauthorizedException('User no longer exists');
+      if (payload.authRevision !== undefined && payload.authRevision !== currentUser.authRevision) {
+        throw new UnauthorizedException('Authorization state is outdated');
+      }
+
       request['user'] = {
         id: payload.sub, // Mapea sub -> id
-        email: payload.email,
-        role: payload.role,
+        email: currentUser.email,
+        role: currentUser.role,
+        authRevision: currentUser.authRevision,
         ...payload, // Mantén otros campos si los hay
       };
     } catch {

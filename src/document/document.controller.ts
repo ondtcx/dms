@@ -45,12 +45,14 @@ import { CalendarQueryDto } from './dto/calendar-query.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../auth/role.enum';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { multerConfig, allFilesFilter } from './config/multer.config';
 import { CreateDocumentFromTemplateDto } from '../document-template/dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from '../document-template/dto/update-document-from-template.dto';
 import { CreateBatchFromTemplateDto } from '../document-template/dto/create-batch-from-template.dto';
 import { DocumentTemplateService } from '../document-template/document-template.service';
 import { SettingsService } from '../settings/settings.service';
+import { RequirePermission } from '../auth/decorators/permission.decorator';
 
 @ApiTags('documents')
 @Controller('documents')
@@ -64,6 +66,7 @@ export class DocumentController {
   ) {}
 
   @Post('from-template')
+  @RequirePermission('templates.manage')
   @ApiOperation({
     summary: 'Crear documento desde una plantilla',
     description:
@@ -187,6 +190,7 @@ export class DocumentController {
   }
 
   @Post('batch-from-template')
+  @RequirePermission('templates.manage')
   @ApiOperation({ summary: 'Generar documentos en lote desde una plantilla' })
   @ApiResponse({ status: 201, description: 'Lote creado exitosamente' })
   @ApiResponse({
@@ -290,6 +294,32 @@ export class DocumentController {
   @ApiResponse({ status: 200, description: 'Estadísticas' })
   getStats(@CurrentUser() user: any) {
     return this.documentsService.getStats(user.id, user.role);
+  }
+
+  @Get('dashboard-summary')
+  @UseGuards(AuthGuard)
+  @ApiOperation({
+    summary: 'Obtener resumen autorizado para el inicio del dashboard',
+    description:
+      'Devuelve hasta cinco documentos DRAFT activos y visibles, su conteo autoritativo y documentos recientes. El límite es fijo para preservar una respuesta acotada.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen de documentos del dashboard',
+    schema: {
+      example: {
+        pendingOfficializationCount: 2,
+        pendingOfficialization: [],
+        pendingHasMore: false,
+        recent: [],
+        recentHasMore: false,
+        generatedAt: '2026-08-20T12:00:00.000Z',
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Autenticación requerida' })
+  getDashboardSummary(@CurrentUser() user: any) {
+    return this.documentsService.getDashboardSummary(user.id, user.role);
   }
 
   @Get('archive/stats')
@@ -505,6 +535,7 @@ export class DocumentController {
   }
 
   @Patch(':id/from-template')
+  @RequirePermission('templates.manage')
   @ApiOperation({
     summary: 'Regenerar documento desde formulario de plantilla',
   })

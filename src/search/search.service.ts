@@ -32,13 +32,21 @@ export class SearchService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, role: true },
+      select: {
+        id: true,
+        role: true,
+        roleAssignments: {
+          where: { role: { isActive: true } },
+          select: { role: { select: { id: true, key: true, isActive: true } } },
+        },
+      },
     });
 
     const accessFilter = user
       ? buildDocumentAccessFilter({
           ...user,
           role: user.role as unknown as UserRole,
+          assignments: (user.roleAssignments ?? []).map(({ role }) => role),
         })
       : null;
 
