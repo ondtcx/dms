@@ -493,6 +493,13 @@ export class DocumentController {
   ): Promise<StreamableFile> {
     // Verificar que el usuario tenga acceso al documento
     const doc = await this.documentsService.findOne(id, user.id, user.role);
+    const currentVersion = doc.versions?.[0];
+
+    if (!currentVersion?.path || !currentVersion.mimetype || !currentVersion.createdAt) {
+      throw new NotFoundException(
+        'Thumbnail no disponible: el documento no tiene una versión válida',
+      );
+    }
 
     // Obtener o generar thumbnail
     let thumbnailPath = this.thumbnailService.getThumbnailPath(id);
@@ -501,20 +508,20 @@ export class DocumentController {
       // Verificar que el thumbnail no sea anterior a la versión actual (puede quedar de un seed/reset anterior)
       const stats = await fsPromises.stat(thumbnailPath);
       const thumbMtime = stats.mtime;
-      const versionCreatedAt = new Date(doc.versions[0].createdAt);
+      const versionCreatedAt = new Date(currentVersion.createdAt);
       if (thumbMtime < versionCreatedAt) {
         thumbnailPath = await this.thumbnailService.regenerateThumbnail(
-          doc.versions[0].path,
+          currentVersion.path,
           id,
-          doc.versions[0].mimetype,
+          currentVersion.mimetype,
         );
       }
     } else {
       // Generar thumbnail si no existe
       thumbnailPath = await this.thumbnailService.generateThumbnail(
-        doc.versions[0].path,
+        currentVersion.path,
         id,
-        doc.versions[0].mimetype,
+        currentVersion.mimetype,
       );
     }
 
