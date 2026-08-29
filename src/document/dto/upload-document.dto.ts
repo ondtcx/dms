@@ -49,6 +49,12 @@ export class DocumentSearchDto {
 }
 
 export class UploadDocumentDto {
+  @ApiPropertyOptional({ description: 'ID del directorio lógico de destino', example: 4 })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (value !== undefined && value !== null && value !== '' ? parseInt(value, 10) : undefined))
+  directoryId?: number;
+
   @ApiPropertyOptional({ description: 'Descripción del documento', example: 'Contrato de servicio 2024' })
   @IsString()
   @IsOptional()

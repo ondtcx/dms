@@ -125,6 +125,7 @@ export class OnlyofficeService {
         documentTypeId: documentTypeId ?? null,
         isPublic: false,
         uploadedById: userId,
+        directoryId: null,
         currentVersion: 1,
         versions: {
           create: {

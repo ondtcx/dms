@@ -1,10 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { DocumentService } from './document.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ThumbnailService } from './thumbnail.service';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentNumberingService } from './document-numbering.service';
+import { DirectoryService } from '../directory/directory.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UserRole } from '../auth/role.enum';
 import * as fs from 'fs';
@@ -35,7 +37,9 @@ describe('DocumentService', () => {
               findFirst: jest.fn().mockResolvedValue({ id: 1, versions: [{}] }),
               update: jest.fn().mockResolvedValue({ id: 1 }),
               count: jest.fn().mockResolvedValue(0),
+              delete: jest.fn().mockResolvedValue({ id: 1 }),
             },
+            directory: { findUnique: jest.fn().mockResolvedValue({ id: 7 }) },
             documentVersion: {
               create: jest.fn(),
               count: jest.fn().mockResolvedValue(1),
@@ -47,6 +51,10 @@ describe('DocumentService', () => {
             workflowApproval: { findFirst: jest.fn().mockResolvedValue(null) },
             user: { findUnique: jest.fn().mockResolvedValue({ role: 'admin' }) },
           },
+        },
+        {
+          provide: DirectoryService,
+          useValue: { assertDiscoverable: jest.fn().mockResolvedValue({ id: 7 }) },
         },
         {
           provide: StorageService,
@@ -138,6 +146,57 @@ describe('DocumentService', () => {
         })
       }));
     });
+
+    it('assigns uploads to a discoverable logical directory', async () => {
+      await service.upload({ originalname: 'test.txt', mimetype: 'text/plain', size: 4, path: '/tmp/test.txt' } as any,
+        { directoryId: 7 } as UploadDocumentDto, 'user123');
+
+      expect((prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data.directoryId).toBe(7);
+    });
+
+    it('rejects an unavailable upload destination before moving the staged file', async () => {
+      (service as any).directoryService.assertDiscoverable.mockRejectedValue(new Error('hidden'));
+
+      await expect(service.upload({ path: '/tmp/test.txt', originalname: 'test.txt', size: 1, mimetype: 'text/plain' } as any,
+        { directoryId: 9 } as UploadDocumentDto, 'user123')).rejects.toThrow('hidden');
+      expect((service as any).storage.moveFile).not.toHaveBeenCalled();
+    });
+
+    it('removes the finalized file when document persistence fails', async () => {
+      (prisma.document.create as jest.Mock).mockRejectedValueOnce(new Error('database unavailable'));
+
+      await expect(service.upload({ path: '/tmp/test.txt', originalname: 'test.txt', size: 1, mimetype: 'text/plain' } as any,
+        {} as UploadDocumentDto, 'user123')).rejects.toThrow('database unavailable');
+      expect((service as any).storage.deleteFile).toHaveBeenCalledWith('/tmp/structured/test.pdf');
+    });
+
+    it('removes the finalized file when hash preparation fails', async () => {
+      (service as any).storage.calculateFileHash.mockRejectedValueOnce(new Error('hash unavailable'));
+
+      await expect(service.upload({ path: '/tmp/test.txt', originalname: 'test.txt', size: 1, mimetype: 'text/plain' } as any,
+        {} as UploadDocumentDto, 'user123')).rejects.toThrow('hash unavailable');
+      expect((service as any).storage.deleteFile).toHaveBeenCalledWith('/tmp/structured/test.pdf');
+      expect(prisma.document.create).not.toHaveBeenCalled();
+    });
+
+    it('compensates persisted documents and finalized files when a later upload fails', async () => {
+      const upload = jest.spyOn(service, 'upload')
+        .mockResolvedValueOnce({
+          id: 1,
+          versions: [{ path: '/tmp/structured/first.txt' }],
+        } as any)
+        .mockRejectedValueOnce(new Error('second upload failed'));
+
+      await expect(service.uploadMultiple(
+        [{ path: '/tmp/first.txt' }, { path: '/tmp/second.txt' }] as any,
+        {} as UploadDocumentDto,
+        'user123',
+      )).rejects.toThrow('second upload failed');
+
+      expect(upload).toHaveBeenCalledTimes(2);
+      expect(prisma.document.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+      expect((service as any).storage.deleteFile).toHaveBeenCalledWith('/tmp/structured/first.txt');
+    });
   });
 
   describe('findAll', () => {
@@ -153,6 +212,80 @@ describe('DocumentService', () => {
           templateData: expect.any(Object),
           versions: expect.any(Object),
         }),
+      }));
+    });
+
+    it('filters root and directory listings without bypassing access predicates', async () => {
+      await service.findAll({ page: 1, limit: 10, directoryId: 7 } as any, 'user123', UserRole.ADMIN);
+      expect((prisma.document.findMany as jest.Mock).mock.calls.at(-1)[0].where.AND)
+        .toEqual(expect.arrayContaining([{ directoryId: 7 }]));
+    });
+
+    it('keeps viewer access predicates when filtering the logical root', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'viewer',
+        role: UserRole.USER,
+        roleAssignments: [],
+      });
+
+      await service.findAll({ page: 1, limit: 10, directoryId: null } as any, 'viewer', UserRole.USER);
+
+      const where = (prisma.document.findMany as jest.Mock).mock.calls.at(-1)[0].where;
+      expect(where.AND).toEqual(expect.arrayContaining([
+        { directoryId: null },
+        expect.objectContaining({ OR: expect.arrayContaining([
+          { uploadedById: 'viewer' },
+          { isPublic: true },
+        ]) }),
+      ]));
+    });
+  });
+
+  describe('move', () => {
+    it('rejects a non-numeric destination before looking up the document', async () => {
+      await expect(service.move(1, { directoryId: Number.NaN }, 'user123', UserRole.USER))
+        .rejects.toBeInstanceOf(BadRequestException);
+      expect(prisma.document.update).not.toHaveBeenCalled();
+    });
+    it('changes only logical placement for an editable document', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({ id: 1, uploadedById: 'user123', directoryId: null } as any);
+      (prisma.document.update as jest.Mock).mockResolvedValue({ id: 1, directoryId: 7 });
+
+      await service.move(1, { directoryId: 7 }, 'user123', UserRole.USER);
+
+      expect(prisma.document.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { directoryId: 7 } });
+    });
+
+    it('does not mutate an inaccessible document', async () => {
+      jest.spyOn(service, 'findOne').mockRejectedValue(new NotFoundException('Documento no encontrado'));
+      await expect(service.move(1, { directoryId: 7 }, 'user123', UserRole.USER)).rejects.toThrow('Documento no encontrado');
+      expect(prisma.document.update).not.toHaveBeenCalled();
+    });
+
+    it('keeps a moved document available to an authorized viewer and preserves its file path', async () => {
+      const movedDocument = {
+        id: 1,
+        uploadedById: 'owner',
+        isPublic: true,
+        directoryId: 7,
+        versions: [{ path: '/files/active/original.pdf' }],
+      };
+      (prisma.document.findFirst as jest.Mock).mockResolvedValue(movedDocument);
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'viewer',
+        role: UserRole.USER,
+        roleAssignments: [],
+      });
+      (prisma.document.update as jest.Mock).mockResolvedValue({ id: 1, directoryId: 7 });
+
+      await service.move(1, { directoryId: 7 }, 'owner', UserRole.USER);
+      const visibleDocument = await service.findOne(1, 'viewer', UserRole.USER);
+
+      expect(visibleDocument.versions[0].path).toBe('/files/active/original.pdf');
+      expect(prisma.document.update).toHaveBeenCalledWith({ where: { id: 1 }, data: { directoryId: 7 } });
+      expect((prisma.document.findFirst as jest.Mock).mock.calls.at(-1)[0].where).toEqual(expect.objectContaining({
+        id: 1,
+        OR: expect.arrayContaining([{ isPublic: true }]),
       }));
     });
   });

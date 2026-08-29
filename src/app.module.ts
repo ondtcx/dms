@@ -21,6 +21,7 @@ import { DocumentCompositionModule } from './document-composition/document-compo
 import { join } from 'path';
 import catalogAuthorizationConfig from './config/catalog-authorization.config';
 import { RoleModule } from './role/role.module';
+import { DirectoryModule } from './directory/directory.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { RoleModule } from './role/role.module';
     OnlyofficeModule, // Integración con OnlyOffice
     SettingsModule, // Configuración del sistema
     RoleModule,
+    DirectoryModule,
   ],
   controllers: [AppController],
   providers: [AppService],

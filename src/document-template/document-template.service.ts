@@ -393,6 +393,7 @@ export class DocumentTemplateService {
           description || `${template.name} - Generado desde formulario`,
         isPublic: isPublic || false,
         uploadedById: userId,
+        directoryId: null,
         categoryId: categoryId || null,
         versions: {
           create: {

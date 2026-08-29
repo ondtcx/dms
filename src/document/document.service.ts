@@ -21,6 +21,7 @@ import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter'
 import { randomUUID } from 'crypto';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentNumberingService } from './document-numbering.service';
+import { DirectoryService } from '../directory/directory.service';
 
 const pdfParse = require('pdf-parse');
 
@@ -35,13 +36,24 @@ export class DocumentService {
     private settingsService: SettingsService,
     private thumbnailService: ThumbnailService,
     private numberingService: DocumentNumberingService,
+    private directoryService: DirectoryService,
   ) {}
 
   async upload(
     file: Express.Multer.File,
     uploadDocumentDto: UploadDocumentDto,
     userId: string,
+    userRole: UserRole = UserRole.USER,
   ) {
+    const uploadDirectoryId = uploadDocumentDto.directoryId === undefined
+      ? undefined
+      : Number(uploadDocumentDto.directoryId);
+    if (uploadDirectoryId !== undefined) {
+      await this.directoryService.assertDiscoverable(uploadDirectoryId, {
+        id: userId,
+        role: userRole,
+      });
+    }
     // 0. Validar acceso a la categoría (allowedRoles + requiresCourse)
     if (uploadDocumentDto.categoryId) {
       const category = await this.prisma.category.findUnique({
@@ -92,33 +104,30 @@ export class DocumentService {
       uniqueFilename,
     );
 
-    // 2. Mover archivo de /temp a ubicación estructurada
-    this.storage.moveFile(file.path, storageLocation.path);
-
-    // 3. Calcular checksum del archivo
-    const checksum = await this.storage.calculateFileHash(storageLocation.path);
-
-    // 4. Extraer texto de PDF si es un PDF
-    let extractedText: string | null = null;
-    if (file.mimetype === 'application/pdf') {
-      extractedText = await this.extractTextFromPDF(storageLocation.path);
-    }
-
-    // 5. Crear registro en BD
     const academicData = uploadDocumentDto.academic || {};
-    const hasAcademic =
-      academicData.courseId || academicData.subjectId || resolvedAcademicYearId;
     const templateData = uploadDocumentDto.templateData;
     const searchData = uploadDocumentDto.search || {};
-    const hasSearch = searchData.extractedText || extractedText;
+    let document;
+    try {
+      // Finalization and all preparation steps belong to the compensated section.
+      this.storage.moveFile(file.path, storageLocation.path);
+      const checksum = await this.storage.calculateFileHash(storageLocation.path);
+      let extractedText: string | null = null;
+      if (file.mimetype === 'application/pdf') {
+        extractedText = await this.extractTextFromPDF(storageLocation.path);
+      }
+      const hasAcademic =
+        academicData.courseId || academicData.subjectId || resolvedAcademicYearId;
+      const hasSearch = searchData.extractedText || extractedText;
 
-    const document = await this.prisma.document.create({
+      document = await this.prisma.document.create({
       data: {
         description: uploadDocumentDto.description,
         categoryId: uploadDocumentDto.categoryId,
         documentTypeId: uploadDocumentDto.documentTypeId,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
+        directoryId: uploadDirectoryId ?? null,
         checksumSHA256: checksum,
         currentVersion: 1,
 
@@ -193,7 +202,16 @@ export class DocumentService {
           select: { id: true, name: true },
         },
       },
-    });
+      });
+    } catch (error) {
+      try {
+        this.storage.deleteFile(storageLocation.path);
+      } catch (cleanupError) {
+        console.error(`No se pudo limpiar el archivo ${storageLocation.path}:`, cleanupError);
+        throw new BadRequestException('No se pudo completar la carga ni limpiar el archivo preparado');
+      }
+      throw error;
+    }
 
     // 7. Regenerar thumbnail en background para garantizar que corresponde al archivo actual
     this.thumbnailService
@@ -212,12 +230,60 @@ export class DocumentService {
     files: Express.Multer.File[],
     uploadDocumentDto: UploadDocumentDto,
     userId: string,
+    userRole: UserRole = UserRole.USER,
   ) {
-    const uploadedDocuments = await Promise.all(
-      files.map((file) => this.upload(file, uploadDocumentDto, userId)),
-    );
+    const uploadDirectoryId = uploadDocumentDto.directoryId === undefined
+      ? undefined
+      : Number(uploadDocumentDto.directoryId);
+    if (uploadDirectoryId !== undefined) {
+      await this.directoryService.assertDiscoverable(uploadDirectoryId, {
+        id: userId,
+        role: userRole,
+      });
+    }
+    const uploadedDocuments = [];
+    try {
+      for (const file of files) {
+        uploadedDocuments.push(
+          await this.upload(file, uploadDocumentDto, userId, userRole),
+        );
+      }
+      return uploadedDocuments;
+    } catch (error) {
+      // Un lote no debe dejar asignaciones en la base si falla un elemento posterior.
+      const deleteDocument = (this.prisma.document as any).delete;
+      const finalizedPaths = new Set<string>();
+      let cleanupFailed = false;
 
-    return uploadedDocuments;
+      for (const document of uploadedDocuments) {
+        if (typeof deleteDocument === 'function') {
+          try {
+            await deleteDocument({ where: { id: document.id } });
+          } catch {
+            cleanupFailed = true;
+          }
+        }
+
+        for (const version of document.versions ?? []) {
+          if (version.path) finalizedPaths.add(version.path);
+        }
+      }
+
+      for (const filePath of finalizedPaths) {
+        try {
+          this.storage.deleteFile(filePath);
+        } catch {
+          cleanupFailed = true;
+        }
+      }
+
+      if (cleanupFailed) {
+        throw new BadRequestException(
+          'No se pudo completar la carga ni limpiar todos los archivos preparados',
+        );
+      }
+      throw error;
+    }
   }
 
   async findAll(query: QueryDocumentDto, userId: string, userRole: UserRole) {
@@ -233,7 +299,15 @@ export class DocumentService {
       page = 1,
       limit = 10,
       excludeComposites,
+      directoryId,
     } = query;
+
+    const requestedDirectoryId = directoryId === undefined || directoryId === null
+      ? directoryId
+      : Number(directoryId);
+    if (requestedDirectoryId !== undefined && requestedDirectoryId !== null) {
+      await this.directoryService.assertDiscoverable(requestedDirectoryId, { id: userId, role: userRole });
+    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
@@ -317,6 +391,10 @@ export class DocumentService {
 
     if (excludeComposites) {
       where.AND.push({ isComposite: false });
+    }
+
+    if (requestedDirectoryId !== undefined) {
+      where.AND.push({ directoryId: requestedDirectoryId ?? null });
     }
 
     // Filtro por año lectivo — omitido para roles PADRE y ESTUDIANTE
@@ -598,6 +676,27 @@ export class DocumentService {
     });
 
     return updatedDocument;
+  }
+
+  async move(id: number, directoryId: number | { directoryId: number | null }, userId: string, userRole: UserRole) {
+    const rawDestination = typeof directoryId === 'object' ? directoryId.directoryId : directoryId;
+    const destination = rawDestination === null ? null : Number(rawDestination);
+    if (destination !== null && !Number.isInteger(destination)) {
+      throw new BadRequestException('El directorio destino debe ser un entero o null');
+    }
+    const document = await this.findOne(id, userId, userRole);
+    const canEdit = userRole === UserRole.ADMIN || userRole === UserRole.RECTOR ||
+      userRole === UserRole.VICERRECTOR || document.uploadedById === userId;
+    if (!canEdit) throw new ForbiddenException('No tienes permiso para actualizar este documento');
+    if (destination !== null) {
+      await this.directoryService.assertDiscoverable(destination, { id: userId, role: userRole });
+    }
+    try {
+      return await this.prisma.document.update({ where: { id }, data: { directoryId: destination } });
+    } catch (error) {
+      if ((error as any)?.code === 'P2003') throw new ConflictException('El directorio destino ya no existe');
+      throw error;
+    }
   }
 
   async remove(id: number, userId: string, userRole: UserRole) {

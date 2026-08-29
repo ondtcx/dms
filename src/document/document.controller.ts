@@ -53,6 +53,7 @@ import { CreateBatchFromTemplateDto } from '../document-template/dto/create-batc
 import { DocumentTemplateService } from '../document-template/document-template.service';
 import { SettingsService } from '../settings/settings.service';
 import { RequirePermission } from '../auth/decorators/permission.decorator';
+import { MoveDocumentDto } from './dto/move-document.dto';
 
 @ApiTags('documents')
 @Controller('documents')
@@ -238,7 +239,7 @@ export class DocumentController {
     @CurrentUser() user: any,
   ) {
     await this.validateFile(file);
-    return this.documentsService.upload(file, uploadDocumentDto, user.id);
+    return this.documentsService.upload(file, uploadDocumentDto, user.id, user.role);
   }
 
   @Post('upload-multiple')
@@ -279,7 +280,22 @@ export class DocumentController {
       files,
       uploadDocumentDto,
       user.id,
+      user.role,
     );
+  }
+
+  @Patch(':id/directory')
+  @ApiOperation({ summary: 'Mover un documento a un directorio lógico' })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({ status: 200, description: 'Documento movido' })
+  @ApiResponse({ status: 404, description: 'Documento o directorio no encontrado' })
+  @ApiResponse({ status: 403, description: 'Sin permiso para mover el documento' })
+  moveToDirectory(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MoveDocumentDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentsService.move(id, dto, user.id, user.role);
   }
 
   @Get()

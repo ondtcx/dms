@@ -519,12 +519,15 @@ model User {
   // Relaciones de lotes de documentos
   createdBatches DocumentBatch[] @relation("CreatedBatches")
 
+  createdDirectories        Directory[]                @relation("DirectoryCreatedBy")
+  directoryUsages           UserDirectoryUsage[]
+  directoryNavigationEvents DirectoryNavigationEvent[]
+
   // Relaciones de restablecimiento de contraseña
   passwordResetTokens PasswordResetToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
 }
 
 model PasswordResetToken {
@@ -619,6 +622,9 @@ model Document {
   isPublic     Boolean           @default(false) // Si es público o privado
   uploadedBy   User              @relation(fields: [uploadedById], references: [id], onDelete: Cascade)
   uploadedById String
+
+  directoryId    Int?
+  directory      Directory?        @relation(fields: [directoryId], references: [id], onDelete: SetNull)
   // Versionado
   currentVersion Int               @default(1) // Versión actual del documento
   versions       DocumentVersion[] // Historial de versiones
@@ -671,6 +677,56 @@ model Document {
   @@index([archivedAt]) // Índice para filtrar documentos archivados
   @@index([createdAt]) // Índice para ordenar por fecha
   @@index([isComposite])
+  @@index([directoryId])
+}
+
+model Directory {
+  id               Int                        @id @default(autoincrement())
+  name             String
+  nameNormalized   String
+  parentId         Int?
+  parent           Directory?                 @relation("DirectoryHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
+  children         Directory[]                @relation("DirectoryHierarchy")
+  createdById      String
+  createdBy        User                       @relation("DirectoryCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  documents        Document[]
+  usages           UserDirectoryUsage[]
+  navigationEvents DirectoryNavigationEvent[]
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  @@index([parentId])
+  @@index([nameNormalized])
+  @@index([createdById])
+}
+
+model UserDirectoryUsage {
+  id             Int       @id @default(autoincrement())
+  userId         String
+  directoryId    Int
+  lastAccessedAt DateTime  @default(now())
+  accessCount    Int       @default(0)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  directory      Directory @relation(fields: [directoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, directoryId])
+  @@index([userId, lastAccessedAt])
+  @@index([userId, accessCount, lastAccessedAt])
+  @@index([directoryId])
+}
+
+model DirectoryNavigationEvent {
+  id          Int       @id @default(autoincrement())
+  eventId     String
+  userId      String
+  directoryId Int
+  createdAt   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  directory   Directory @relation(fields: [directoryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventId])
+  @@index([directoryId])
+  @@index([userId, directoryId])
 }
 
 model DocumentCompositionItem {

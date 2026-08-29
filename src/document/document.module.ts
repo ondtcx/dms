@@ -8,6 +8,7 @@ import { DocumentNumberingService } from './document-numbering.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentTemplateModule } from '../document-template/document-template.module';
 import { SettingsModule } from '../settings/settings.module';
+import { DirectoryModule } from '../directory/directory.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { SettingsModule } from '../settings/settings.module';
     }),
     DocumentTemplateModule,
     SettingsModule,
+    DirectoryModule,
   ],
   controllers: [DocumentController],
   providers: [

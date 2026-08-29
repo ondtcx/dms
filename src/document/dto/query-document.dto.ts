@@ -4,6 +4,15 @@ import { IsOptional, IsString, IsBoolean, IsInt, Min } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
 export class QueryDocumentDto {
+  @ApiPropertyOptional({ description: 'ID del directorio lógico; omitir equivale a no filtrar', example: 4 })
+  @IsInt()
+  @IsOptional()
+  @Transform(({ value }) => (
+    value === 'null' || value === null
+      ? null
+      : (value === undefined || value === '' ? undefined : parseInt(value, 10))
+  ))
+  directoryId?: number | null;
   @ApiPropertyOptional({
     description: 'Buscar por nombre de archivo',
     example: 'contrato',
