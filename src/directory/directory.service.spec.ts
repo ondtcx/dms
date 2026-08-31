@@ -44,6 +44,18 @@ describe('DirectoryService', () => {
     });
   });
 
+  it('creates a root directory when parentId is null without validating a parent', async () => {
+    const directory = { id: 1, name: 'Finance', parentId: null };
+    prisma.directory.create.mockResolvedValue(directory);
+
+    await expect(service.create({ name: 'Finance', parentId: null }, user)).resolves.toEqual(directory);
+
+    expect(prisma.directory.findUnique).not.toHaveBeenCalled();
+    expect(prisma.directory.create).toHaveBeenCalledWith({
+      data: { name: 'Finance', nameNormalized: 'finance', parentId: null, createdById: 'user-1' },
+    });
+  });
+
   it('maps a normalized sibling database conflict to 409', async () => {
     prisma.directory.create.mockRejectedValue({
       code: 'P2002',

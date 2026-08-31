@@ -99,7 +99,7 @@ export class DirectoryService {
 
   async create(dto: CreateDirectoryDto, user: DirectoryUser) {
     const name = this.normalizeName(dto.name);
-    if (dto.parentId !== undefined) await this.assertDiscoverable(dto.parentId, user);
+    if (dto.parentId !== undefined && dto.parentId !== null) await this.assertDiscoverable(dto.parentId, user);
     try {
       return await this.prisma.directory.create({
         data: { name, nameNormalized: this.normalizeKey(name), parentId: dto.parentId ?? null, createdById: user.id },
