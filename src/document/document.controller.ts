@@ -21,6 +21,8 @@ import {
   FileTypeValidator,
   NotFoundException,
   BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import {
@@ -54,6 +56,8 @@ import { DocumentTemplateService } from '../document-template/document-template.
 import { SettingsService } from '../settings/settings.service';
 import { RequirePermission } from '../auth/decorators/permission.decorator';
 import { MoveDocumentDto } from './dto/move-document.dto';
+import { WorkflowService } from '../workflow/workflow.service';
+import { StartWorkflowDto } from '../workflow/dto/start-workflow.dto';
 
 @ApiTags('documents')
 @Controller('documents')
@@ -64,7 +68,27 @@ export class DocumentController {
     private readonly documentTemplateService: DocumentTemplateService,
     private readonly thumbnailService: ThumbnailService,
     private readonly settingsService: SettingsService,
+    @Inject(forwardRef(() => WorkflowService))
+    private readonly workflowService: WorkflowService,
   ) {}
+
+  @Post(':id/workflow/start')
+  @RequirePermission('workflow.start')
+  @ApiOperation({ summary: 'Iniciar workflow desde un documento' })
+  startWorkflow(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: StartWorkflowDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.workflowService.start(id, dto, user.id, user.role);
+  }
+
+  @Get(':id/workflow-history')
+  @RequirePermission('workflow.view')
+  @ApiOperation({ summary: 'Consultar el historial de workflows de un documento' })
+  getWorkflowHistory(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.workflowService.history(id, user.id, user.role);
+  }
 
   @Post('from-template')
   @RequirePermission('templates.manage')

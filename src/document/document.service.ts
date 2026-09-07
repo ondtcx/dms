@@ -201,6 +201,12 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
+        workflow: {
+          where: { active: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true, currentState: true, documentVersionId: true },
+        },
       },
       });
     } catch (error) {
@@ -550,6 +556,12 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
+        workflow: {
+          where: { active: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true, currentState: true, documentVersionId: true },
+        },
       },
     });
 
@@ -567,6 +579,7 @@ export class DocumentService {
     userRole: UserRole,
   ) {
     const document = await this.findOne(id, userId, userRole);
+    await this.assertWorkflowEditable(id, userId, userRole);
 
     // El dueño, admin, director y vicerrector pueden actualizar cualquier documento
     const canEdit =
@@ -881,6 +894,7 @@ export class DocumentService {
     comment?: string,
   ) {
     const document = await this.findOne(id, userId, userRole);
+    await this.assertWorkflowEditable(id, userId, userRole);
 
     // Verificar permiso: dueño, admin, o participante con aprobación pendiente en workflow activo
     if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
@@ -988,17 +1002,13 @@ export class DocumentService {
     );
 
     // 8. Detectar workflow activo para tagging de origen (Fix 3)
-    const activeWorkflowForSource =
-      await this.prisma.documentWorkflow.findFirst({
-        where: {
-          documentId: id,
-          status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
-        },
-        select: { id: true },
-      });
+    const activeWorkflowForSource = await this.prisma.documentWorkflow.findFirst({
+      where: { documentId: id, active: true, status: WorkflowStatus.CHANGES_REQUESTED },
+      select: { id: true },
+    });
 
     // 8. Crear registro de nueva versión
-    await this.prisma.documentVersion.create({
+    const createdVersion = await this.prisma.documentVersion.create({
       data: {
         documentId: id,
         version: newVersion,
@@ -1016,6 +1026,13 @@ export class DocumentService {
         workflowId: activeWorkflowForSource?.id ?? null,
       },
     });
+
+    if (activeWorkflowForSource && createdVersion?.id) {
+      await this.prisma.documentWorkflow.update({
+        where: { id: activeWorkflowForSource.id },
+        data: { documentVersionId: createdVersion.id },
+      });
+    }
 
     // 8b. Rolling window: eliminar versiones más antiguas si se supera el límite
     const maxVersions = await this.settingsService.getMaxVersionsPerDocument();
@@ -1061,6 +1078,7 @@ export class DocumentService {
     userRole: UserRole,
   ) {
     const document = await this.findOne(id, userId, userRole);
+    await this.assertWorkflowEditable(id, userId, userRole);
 
     // Verificar permiso: dueño, admin, rector, vicerrector o participante con aprobación pendiente en workflow activo
     const canEdit =
@@ -1152,7 +1170,11 @@ export class DocumentService {
     });
 
     // 4. Crear registro de nueva versión (misma ruta física: el archivo se sobrescribió in-place)
-    await this.prisma.documentVersion.create({
+    const activeWorkflowForSource = await this.prisma.documentWorkflow.findFirst({
+      where: { documentId: id, active: true, status: WorkflowStatus.CHANGES_REQUESTED },
+      select: { id: true },
+    });
+    const createdVersion = await this.prisma.documentVersion.create({
       data: {
         documentId: id,
         version: newVersion,
@@ -1164,9 +1186,17 @@ export class DocumentService {
         checksumSHA256: newChecksum,
         comment: 'Editado con editor básico',
         createdById: userId,
-        source: 'REEMPLAZO_MANUAL',
+        source: activeWorkflowForSource ? 'CAMBIOS_SOLICITADOS' : 'REEMPLAZO_MANUAL',
+        workflowId: activeWorkflowForSource?.id ?? null,
       },
     });
+
+    if (activeWorkflowForSource && createdVersion?.id) {
+      await this.prisma.documentWorkflow.update({
+        where: { id: activeWorkflowForSource.id },
+        data: { documentVersionId: createdVersion.id },
+      });
+    }
 
     // 5. Rolling window: recortar versiones antiguas si se supera el límite.
     //    El editor básico reutiliza la misma ruta física en cada guardado, así que
@@ -1233,6 +1263,21 @@ export class DocumentService {
     return editableMimetypes.includes(normalizedMimetype);
   }
 
+  private async assertWorkflowEditable(id: number, userId: string, userRole: UserRole) {
+    const workflow = await this.prisma.documentWorkflow.findFirst({
+      where: {
+        documentId: id,
+        active: true,
+        status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.CHANGES_REQUESTED] },
+      },
+      select: { status: true, initiatedById: true },
+    });
+
+    if (!workflow || userRole === UserRole.ADMIN) return;
+    if (workflow.status === WorkflowStatus.CHANGES_REQUESTED && workflow.initiatedById === userId) return;
+    throw new ForbiddenException('No se puede editar un documento con un workflow activo');
+  }
+
   /**
    * Obtener todas las versiones de un documento
    */
@@ -1275,6 +1320,7 @@ export class DocumentService {
     userRole: UserRole,
   ) {
     const document = await this.findOne(documentId, userId, userRole);
+    await this.assertWorkflowEditable(documentId, userId, userRole);
 
     // Solo el dueño o admin pueden restaurar versiones
     if (userRole !== UserRole.ADMIN && document.uploadedById !== userId) {
@@ -1287,7 +1333,8 @@ export class DocumentService {
     const activeWorkflow = await this.prisma.documentWorkflow.findFirst({
       where: {
         documentId,
-        status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING] },
+        active: true,
+        status: { in: [WorkflowStatus.IN_PROGRESS, WorkflowStatus.PENDING, WorkflowStatus.CHANGES_REQUESTED] },
       },
       select: { currentState: true },
     });
@@ -1435,7 +1482,7 @@ export class DocumentService {
     const pendingWhere = {
       AND: [
         ...activeScope,
-        { workflow: { is: { status: WorkflowStatus.DRAFT } } },
+        { workflow: { some: { active: true, status: WorkflowStatus.DRAFT } } },
       ],
     };
     const recentWhere = { AND: activeScope };
@@ -1466,6 +1513,9 @@ export class DocumentService {
           },
         },
         workflow: {
+          where: { active: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
           select: { id: true, status: true, currentState: true },
         },
       },

@@ -51,6 +51,41 @@ enum ApprovalAction {
   COMMENTED // Solo comentó
 }
 
+enum WorkflowExecutionMode {
+  SEQUENTIAL
+}
+
+enum WorkflowCompletionRule {
+  UNANIMOUS
+}
+
+enum WorkflowAssignmentStatus {
+  PENDING
+  COMPLETED
+  REASSIGNED
+}
+
+enum WorkflowTransitionAction {
+  SUBMIT
+  APPROVE
+  REQUEST_CHANGES
+  REJECT
+  CANCEL
+  COMPLETE
+  REASSIGN
+}
+
+enum WorkflowEventType {
+  STARTED
+  SUBMITTED
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+  CANCELLED
+  REASSIGNED
+  COMPLETED
+}
+
 enum DocumentVersionSource {
   UPLOAD_INICIAL // Subida original del documento
   REEMPLAZO_MANUAL // Reemplazo manual sin workflow activo
@@ -181,6 +216,7 @@ model WorkflowTemplate {
 
   // Relaciones
   workflows DocumentWorkflow[]
+  versions  WorkflowTemplateVersion[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -189,12 +225,51 @@ model WorkflowTemplate {
   @@index([isActive])
 }
 
+model WorkflowTemplateVersion {
+  id          Int              @id @default(autoincrement())
+  templateId  Int
+  template    WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version     Int
+  snapshot    Json
+  isActive    Boolean          @default(false)
+  publishedAt DateTime?
+  stages      WorkflowStageDefinition[]
+  executions  DocumentWorkflow[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([templateId, version])
+  @@index([templateId, isActive])
+}
+
+model WorkflowStageDefinition {
+  id             Int                    @id @default(autoincrement())
+  versionId      Int
+  version        WorkflowTemplateVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  order          Int
+  roleKey        String
+  executionMode  WorkflowExecutionMode  @default(SEQUENTIAL)
+  completionRule WorkflowCompletionRule  @default(UNANIMOUS)
+  createdAt      DateTime               @default(now())
+  assignments    WorkflowAssignment[]
+
+  @@unique([versionId, order])
+  @@index([roleKey])
+}
+
 model DocumentWorkflow {
   id                Int              @id @default(autoincrement())
-  documentId        Int              @unique // Un documento solo puede tener un workflow activo
+  documentId        Int              // Un documento puede tener varios workflows históricos
   document          Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
   templateId        Int // Plantilla de workflow utilizada
   template          WorkflowTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  definitionVersionId Int
+  definitionVersion   WorkflowTemplateVersion @relation(fields: [definitionVersionId], references: [id], onDelete: Restrict)
+  snapshot            Json
+  documentVersionId   Int?
+  documentVersion     DocumentVersion? @relation("WorkflowDocumentVersion", fields: [documentVersionId], references: [id], onDelete: SetNull)
+  active              Boolean          @default(true)
+  legacyReadOnly      Boolean          @default(false)
   status            WorkflowStatus   @default(PENDING)
   currentState      String // Estado actual (ej: "pending_coord", "pending_director")
   currentStateOrder Int              @default(0) // Orden del estado actual
@@ -204,17 +279,77 @@ model DocumentWorkflow {
 
   // Relaciones
   approvals        WorkflowApproval[]
+  assignments      WorkflowAssignment[]
+  transitions      WorkflowTransition[]
+  events           WorkflowEvent[]
   notifications    Notification[]
-  documentVersions DocumentVersion[] // Versiones subidas durante este workflow (Fix 3)
+  documentVersions DocumentVersion[] @relation("WorkflowUploadedVersions") // Versiones subidas durante este workflow (Fix 3)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([documentId])
+  @@index([documentId, active])
+  @@index([definitionVersionId])
   @@index([templateId])
   @@index([status])
   @@index([currentState])
   @@index([initiatedById])
+}
+
+model WorkflowAssignment {
+  id                 Int                      @id @default(autoincrement())
+  workflowId         Int
+  workflow           DocumentWorkflow         @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  stageDefinitionId  Int
+  stageDefinition    WorkflowStageDefinition  @relation(fields: [stageDefinitionId], references: [id], onDelete: Restrict)
+  userId             String
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userNameSnapshot   String?
+  roleKeySnapshot    String
+  status             WorkflowAssignmentStatus @default(PENDING)
+  assignedAt         DateTime                 @default(now())
+  completedAt        DateTime?
+  reassignedAt       DateTime?
+  reassignmentReason String?                  @db.Text
+  transitions        WorkflowTransition[]
+
+  @@unique([workflowId, stageDefinitionId, userId])
+  @@index([workflowId, status])
+  @@index([userId, status])
+}
+
+model WorkflowTransition {
+  id                Int                     @id @default(autoincrement())
+  workflowId        Int
+  workflow          DocumentWorkflow        @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  assignmentId      Int?
+  assignment        WorkflowAssignment?     @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  action            WorkflowTransitionAction
+  fromState         String?
+  toState           String?
+  comment           String?                 @db.Text
+  performedById     String
+  performedBy       User                    @relation(fields: [performedById], references: [id], onDelete: Cascade)
+  documentVersionId Int?
+  documentVersion   DocumentVersion?        @relation("TransitionDocumentVersion", fields: [documentVersionId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                @default(now())
+
+  @@index([workflowId, createdAt])
+  @@index([assignmentId])
+  @@index([performedById])
+}
+
+model WorkflowEvent {
+  id         Int              @id @default(autoincrement())
+  workflowId Int
+  workflow   DocumentWorkflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  type       WorkflowEventType
+  payload    Json             @default("{}")
+  occurredAt DateTime         @default(now())
+
+  @@index([workflowId, occurredAt])
+  @@index([type])
 }
 
 model WorkflowApproval {
@@ -488,6 +623,8 @@ model User {
   // Relaciones de workflows
   initiatedWorkflows DocumentWorkflow[]
   workflowApprovals  WorkflowApproval[]
+  workflowAssignments WorkflowAssignment[]
+  workflowTransitions WorkflowTransition[]
 
   // Relaciones de notificaciones
   notifications          Notification[]
@@ -645,7 +782,7 @@ model Document {
   permissions DocumentPermission[] // Permisos específicos del documento
 
   // Workflow
-  workflow DocumentWorkflow? // Workflow de aprobación del documento
+  workflow DocumentWorkflow[] // Workflows históricos del documento
 
   // Notificaciones
   notifications Notification[] // Notificaciones relacionadas con este documento
@@ -846,10 +983,12 @@ model DocumentVersion {
   // Origen estructurado de la versión (Fix 3)
   source     DocumentVersionSource @default(REEMPLAZO_MANUAL)
   workflowId Int? // Workflow activo cuando se subió (solo para CAMBIOS_SOLICITADOS)
-  workflow   DocumentWorkflow?     @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+  workflow   DocumentWorkflow?     @relation("WorkflowUploadedVersions", fields: [workflowId], references: [id], onDelete: SetNull)
+  workflowExecutions DocumentWorkflow[] @relation("WorkflowDocumentVersion")
 
   // Aprobaciones que apuntaron a esta versión (Fix 2)
   approvals WorkflowApproval[]
+  workflowTransitions WorkflowTransition[] @relation("TransitionDocumentVersion")
 
   @@unique([documentId, version]) // Una versión única por documento
   @@index([documentId])

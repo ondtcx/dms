@@ -20,12 +20,14 @@ import { DocumentTypeModule } from './document-type/document-type.module';
 import { DocumentCompositionModule } from './document-composition/document-composition.module';
 import { join } from 'path';
 import catalogAuthorizationConfig from './config/catalog-authorization.config';
+import workflowFeatureConfig from './config/workflow-feature.config';
 import { RoleModule } from './role/role.module';
 import { DirectoryModule } from './directory/directory.module';
+import { WorkflowModule } from './workflow/workflow.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true, load: [catalogAuthorizationConfig] }),
+    ConfigModule.forRoot({ isGlobal: true, load: [catalogAuthorizationConfig, workflowFeatureConfig] }),
     // Servir archivos estáticos — process.cwd() siempre apunta al directorio
     // raíz del proyecto (dms-backend/) sin importar si corre desde src/ o dist/
     ServeStaticModule.forRoot({
@@ -49,6 +51,7 @@ import { DirectoryModule } from './directory/directory.module';
     SettingsModule, // Configuración del sistema
     RoleModule,
     DirectoryModule,
+    WorkflowModule,
   ],
   controllers: [AppController],
   providers: [AppService],

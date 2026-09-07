@@ -83,6 +83,15 @@ const catalogPermissions = [
   ['document-types.manage', 'Gestionar tipos de documento'],
   ['templates.manage', 'Gestionar plantillas'],
   ['roles.manage', 'Gestionar roles y permisos'],
+  ['workflow.templates.manage', 'Gestionar plantillas de workflow'],
+  ['workflow.view', 'Consultar workflows'],
+  ['workflow.start', 'Iniciar workflows'],
+  ['workflow.submit', 'Enviar documentos en workflows'],
+  ['workflow.approve', 'Aprobar etapas de workflow'],
+  ['workflow.request_changes', 'Solicitar cambios en workflows'],
+  ['workflow.reject', 'Rechazar workflows'],
+  ['workflow.cancel', 'Cancelar workflows'],
+  ['workflow.assignments.manage', 'Administrar asignaciones de workflow'],
 ] as const;
 
 async function main() {
@@ -135,6 +144,24 @@ async function main() {
       update: {},
       create: { roleId: roles[UserRole.ADMIN], permissionId },
     });
+  }
+
+  const workflowApproverPermissions = [
+    'workflow.view',
+    'workflow.approve',
+    'workflow.request_changes',
+    'workflow.reject',
+  ];
+  for (const roleKey of [UserRole.RECTOR, UserRole.COORDINADOR]) {
+    for (const permissionKey of workflowApproverPermissions) {
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: { roleId: roles[roleKey], permissionId: permissions[permissionKey] },
+        },
+        update: {},
+        create: { roleId: roles[roleKey], permissionId: permissions[permissionKey] },
+      });
+    }
   }
 
   const categories: Record<string, number> = {};

@@ -47,6 +47,7 @@ describe('DocumentService', () => {
               delete: jest.fn(),
               aggregate: jest.fn().mockResolvedValue({ _sum: { size: 0 } }),
             },
+            documentWorkflow: { findFirst: jest.fn().mockResolvedValue(null) },
             documentAccess: { create: jest.fn() },
             workflowApproval: { findFirst: jest.fn().mockResolvedValue(null) },
             user: { findUnique: jest.fn().mockResolvedValue({ role: 'admin' }) },
@@ -308,6 +309,42 @@ describe('DocumentService', () => {
   });
 
   describe('update', () => {
+    it('blocks metadata edits while an active workflow is in progress', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        id: 1,
+        uploadedById: 'user123',
+        versions: [{}],
+      } as any);
+      (prisma.documentWorkflow.findFirst as jest.Mock).mockResolvedValue({
+        id: 9,
+        status: 'IN_PROGRESS',
+      });
+
+      await expect(service.update(1, { description: 'Blocked' } as any, 'user123', UserRole.USER))
+        .rejects.toThrow('No se puede editar un documento con un workflow activo');
+      expect(prisma.document.update).not.toHaveBeenCalled();
+    });
+
+    it('allows the initiator to edit after changes are requested', async () => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        id: 1,
+        uploadedById: 'user123',
+        versions: [{}],
+        academic: { id: 1 },
+      } as any);
+      (prisma.documentWorkflow.findFirst as jest.Mock).mockResolvedValue({
+        id: 9,
+        status: 'CHANGES_REQUESTED',
+        initiatedById: 'user123',
+      });
+
+      await service.update(1, { description: 'Corrected' } as any, 'user123', UserRole.USER);
+
+      expect(prisma.document.update).toHaveBeenCalledWith(expect.objectContaining({
+        data: expect.objectContaining({ description: 'Corrected' }),
+      }));
+    });
+
     it('should properly structure the update payload for nested relations', async () => {
       jest.spyOn(prisma.document, 'findUnique').mockResolvedValue({ 
         id: 1, 
@@ -334,6 +371,26 @@ describe('DocumentService', () => {
           }
         }),
       }));
+    });
+  });
+
+  describe('workflow editing integration', () => {
+    it('blocks text edits while an active workflow is in progress', async () => {
+      const document = {
+        id: 1,
+        uploadedById: 'user123',
+        currentVersion: 1,
+        versions: [{ mimetype: 'text/plain', path: '/uploads/document.txt' }],
+      };
+      jest.spyOn(service, 'findOne').mockResolvedValue(document as any);
+      (prisma.documentWorkflow.findFirst as jest.Mock).mockResolvedValue({
+        id: 9,
+        status: 'PENDING',
+      });
+
+      await expect(service.saveTextContent(1, 'Blocked', 'user123', UserRole.USER))
+        .rejects.toThrow('No se puede editar un documento con un workflow activo');
+      expect(prisma.document.update).not.toHaveBeenCalled();
     });
   });
 
@@ -548,7 +605,7 @@ describe('DocumentService', () => {
         AND: expect.arrayContaining([
           { deletedAt: null },
           { archivedAt: null },
-          { workflow: { is: { status: 'DRAFT' } } },
+          { workflow: { some: { active: true, status: 'DRAFT' } } },
           expect.objectContaining({ OR: expect.any(Array) }),
         ]),
       }));
@@ -576,7 +633,7 @@ describe('DocumentService', () => {
         AND: [
           { deletedAt: null },
           { archivedAt: null },
-          { workflow: { is: { status: 'DRAFT' } } },
+          { workflow: { some: { active: true, status: 'DRAFT' } } },
         ],
       });
     });
