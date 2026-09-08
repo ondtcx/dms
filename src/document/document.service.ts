@@ -22,8 +22,7 @@ import { randomUUID } from 'crypto';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentNumberingService } from './document-numbering.service';
 import { DirectoryService } from '../directory/directory.service';
-
-const pdfParse = require('pdf-parse');
+import { PDFParse } from 'pdf-parse';
 
 const unlinkAsync = promisify(fs.unlink);
 const readFileAsync = promisify(fs.readFile);
@@ -1864,13 +1863,27 @@ export class DocumentService {
    * @returns Texto extraído o null si falla
    */
   private async extractTextFromPDF(filePath: string): Promise<string | null> {
+    let parser: PDFParse | null = null;
+    let extractedText: string | null = null;
+
     try {
       const dataBuffer = await readFileAsync(filePath);
-      const data = await pdfParse(dataBuffer);
-      return data.text || null;
+      parser = new PDFParse({ data: new Uint8Array(dataBuffer) });
+      const result = await parser.getText();
+      extractedText = result.text;
     } catch (error) {
       console.error(`Error extrayendo texto del PDF ${filePath}:`, error);
-      return null;
+    } finally {
+      if (parser) {
+        try {
+          await parser.destroy();
+        } catch (error) {
+          console.error(`Error extrayendo texto del PDF ${filePath}:`, error);
+          extractedText = null;
+        }
+      }
     }
+
+    return extractedText;
   }
 }

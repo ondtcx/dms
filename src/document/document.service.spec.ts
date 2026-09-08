@@ -11,17 +11,30 @@ import { UploadDocumentDto } from './dto/upload-document.dto';
 import { UserRole } from '../auth/role.enum';
 import * as fs from 'fs';
 
+jest.mock('pdf-parse', () => ({
+  PDFParse: jest.fn(),
+}));
+import { PDFParse } from 'pdf-parse';
+
 jest.mock('uuid', () => ({ v4: () => '1234-5678' }));
 jest.mock('fs', () => ({
   ...jest.requireActual('fs'),
   writeFileSync: jest.fn(),
+  readFile: jest.fn(),
 }));
 
 describe('DocumentService', () => {
   let service: DocumentService;
   let prisma: PrismaService;
 
+  const pdfParseMock = PDFParse as unknown as jest.Mock;
+
   beforeEach(async () => {
+    pdfParseMock.mockReset();
+    pdfParseMock.mockImplementation(() => ({
+      getText: jest.fn().mockResolvedValue({ text: '' }),
+      destroy: jest.fn(),
+    }));
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         DocumentService,
@@ -96,6 +109,93 @@ describe('DocumentService', () => {
     prisma = module.get<PrismaService>(PrismaService);
   });
 
+  describe('extractTextFromPDF', () => {
+    beforeEach(() => {
+      (fs.readFile as unknown as jest.Mock).mockImplementation(((_path: any, callback: any) => {
+        callback(null, Buffer.from('pdf-data'));
+      }) as any);
+    });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+    });
+
+    it('constructs PDFParse with Uint8Array data and returns extracted text', async () => {
+      const parser = { getText: jest.fn().mockResolvedValue({ text: 'Extracted text' }), destroy: jest.fn() };
+      pdfParseMock.mockImplementation(() => parser);
+
+      const result = await (service as any).extractTextFromPDF('/tmp/test.pdf');
+
+      expect(result).toBe('Extracted text');
+      expect(pdfParseMock).toHaveBeenCalledWith({ data: expect.any(Uint8Array) });
+      expect(pdfParseMock.mock.calls[0][0].data).toEqual(new Uint8Array(Buffer.from('pdf-data')));
+      expect(parser.getText).toHaveBeenCalledTimes(1);
+      expect(parser.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves successful empty text and destroys the parser once', async () => {
+      const parser = { getText: jest.fn().mockResolvedValue({ text: '' }), destroy: jest.fn() };
+      pdfParseMock.mockImplementation(() => parser);
+
+      await expect((service as any).extractTextFromPDF('/tmp/test.pdf')).resolves.toBe('');
+      expect(parser.destroy).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns null and logs when parser construction fails', async () => {
+      const error = new Error('construction failed');
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      pdfParseMock.mockImplementation(() => { throw error; });
+
+      await expect((service as any).extractTextFromPDF('/tmp/test.pdf')).resolves.toBeNull();
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error extrayendo texto del PDF /tmp/test.pdf:',
+        error,
+      );
+    });
+
+    it('returns null and logs when reading the PDF fails', async () => {
+      const error = new Error('read failed');
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      (fs.readFile as unknown as jest.Mock).mockImplementation(((_path: any, callback: any) => {
+        callback(error);
+      }) as any);
+
+      await expect((service as any).extractTextFromPDF('/tmp/test.pdf')).resolves.toBeNull();
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error extrayendo texto del PDF /tmp/test.pdf:',
+        error,
+      );
+    });
+
+    it('returns null, logs, and destroys once when extraction fails', async () => {
+      const error = new Error('extraction failed');
+      const parser = { getText: jest.fn().mockRejectedValue(error), destroy: jest.fn() };
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      pdfParseMock.mockImplementation(() => parser);
+
+      await expect((service as any).extractTextFromPDF('/tmp/test.pdf')).resolves.toBeNull();
+      expect(parser.destroy).toHaveBeenCalledTimes(1);
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error extrayendo texto del PDF /tmp/test.pdf:',
+        error,
+      );
+    });
+
+    it('returns null and logs when cleanup fails', async () => {
+      const error = new Error('cleanup failed');
+      const parser = { getText: jest.fn().mockResolvedValue({ text: 'text' }), destroy: jest.fn().mockRejectedValue(error) };
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      pdfParseMock.mockImplementation(() => parser);
+
+      await expect((service as any).extractTextFromPDF('/tmp/test.pdf')).resolves.toBeNull();
+      expect(parser.destroy).toHaveBeenCalledTimes(1);
+      expect(consoleError).toHaveBeenCalledWith(
+        'Error extrayendo texto del PDF /tmp/test.pdf:',
+        error,
+      );
+    });
+  });
+
   describe('upload', () => {
     it('should create document with nested academic and template data', async () => {
       const file: any = {
@@ -146,6 +246,27 @@ describe('DocumentService', () => {
           }
         })
       }));
+    });
+
+    it('continues PDF upload without extracted text when extraction fails', async () => {
+      jest.spyOn(service as any, 'extractTextFromPDF').mockResolvedValue(null);
+
+      await service.upload({ originalname: 'failed.pdf', mimetype: 'application/pdf', size: 1, path: '/tmp/failed.pdf' } as any,
+        {} as UploadDocumentDto, 'user123');
+
+      const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
+      expect(createData.search).toBeUndefined();
+      expect(prisma.document.create).toHaveBeenCalled();
+    });
+
+    it('passes successful PDF extraction into upload persistence', async () => {
+      jest.spyOn(service as any, 'extractTextFromPDF').mockResolvedValue('indexed text');
+
+      await service.upload({ originalname: 'success.pdf', mimetype: 'application/pdf', size: 1, path: '/tmp/success.pdf' } as any,
+        {} as UploadDocumentDto, 'user123');
+
+      const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
+      expect(createData.search).toEqual({ create: { extractedText: 'indexed text' } });
     });
 
     it('assigns uploads to a discoverable logical directory', async () => {
