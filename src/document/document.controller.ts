@@ -466,7 +466,7 @@ export class DocumentController {
   @ApiResponse({ status: 200, description: 'Información del documento' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
-    return this.documentsService.findOne(id, user.id, user.role);
+    return this.documentsService.findOne(id, user.id, user.role, true);
   }
 
   @Get(':id/download')
@@ -505,7 +505,7 @@ export class DocumentController {
     @CurrentUser() user: any,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const { path, filename, mimetype } = await this.documentsService.download(
+    const { path, filename, mimetype } = await this.documentsService.view(
       id,
       user.id,
       user.role,

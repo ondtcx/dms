@@ -1,9 +1,23 @@
 // src/documents/dto/query-documents.dto.ts
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsBoolean, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsInt, IsIn, Min } from 'class-validator';
 import { Type, Transform } from 'class-transformer';
 
+export const DOCUMENT_LIST_VIEWS = [
+  'recent-accessed',
+  'recent-created',
+  'all',
+  'trash',
+] as const;
+
+export type DocumentListView = (typeof DOCUMENT_LIST_VIEWS)[number];
+
 export class QueryDocumentDto {
+  @ApiPropertyOptional({ enum: DOCUMENT_LIST_VIEWS, description: 'Vista documental solicitada' })
+  @IsIn(DOCUMENT_LIST_VIEWS)
+  @IsOptional()
+  view?: DocumentListView;
+
   @ApiPropertyOptional({ description: 'ID del directorio lógico; omitir equivale a no filtrar', example: 4 })
   @IsInt()
   @IsOptional()

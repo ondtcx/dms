@@ -1123,6 +1123,10 @@ export class DocumentTemplateService {
       );
     }
 
+    await this.prisma.documentAccess.create({
+      data: { documentId: id, userId, action: 'UPDATE' },
+    });
+
     return updatedDocument;
   }
 

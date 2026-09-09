@@ -305,7 +305,9 @@ export class DocumentService {
       limit = 10,
       excludeComposites,
       directoryId,
+      view,
     } = query;
+    const isUnfilteredView = view === 'recent-accessed' || view === 'recent-created' || view === 'all';
 
     const requestedDirectoryId = directoryId === undefined || directoryId === null
       ? directoryId
@@ -332,15 +334,22 @@ export class DocumentService {
           role: user.role as unknown as UserRole,
           assignments: (user.roleAssignments ?? []).map(({ role }) => role),
         })
-      : null;
+      : ({ id: -1 } as any);
 
     // Construir filtros
     const where: any = {
       AND: [],
     };
 
+    const quarantinedDocumentIds = await this.quarantinedDocumentIds();
+    if (quarantinedDocumentIds.length) {
+      where.AND.push({ id: { notIn: quarantinedDocumentIds } });
+    }
+
     // Filtrar documentos eliminados (soft delete)
-    if (!includeDeleted) {
+    if (view === 'trash') {
+      where.AND.push({ deletedAt: { not: null } });
+    } else if (view === 'all' || !includeDeleted) {
       where.AND.push({ deletedAt: null });
     }
 
@@ -384,7 +393,7 @@ export class DocumentService {
       where.AND.push({ uploadedById: userId });
     }
 
-    if (excludeBatched) {
+    if (excludeBatched && !isUnfilteredView) {
       where.AND.push({
         OR: [{ templateData: null }, { templateData: { batchId: null } }],
       });
@@ -394,7 +403,7 @@ export class DocumentService {
       where.AND.push({ templateData: { batchId } });
     }
 
-    if (excludeComposites) {
+    if (excludeComposites && !isUnfilteredView) {
       where.AND.push({ isComposite: false });
     }
 
@@ -406,7 +415,7 @@ export class DocumentService {
     const skipYearFilter = (
       [UserRole.PADRE, UserRole.ESTUDIANTE] as string[]
     ).includes(userRole as string);
-    if (query.academicYearId && !skipYearFilter) {
+    if (query.academicYearId && !skipYearFilter && !isUnfilteredView) {
       where.AND.push({
         OR: [
           { academic: { academicYearId: query.academicYearId } },
@@ -417,6 +426,24 @@ export class DocumentService {
       });
     }
 
+    let recentAccessDocumentIds: number[] | undefined;
+    if (view === 'recent-accessed') {
+      const recentAccesses = await this.prisma.documentAccess.findMany({
+        where: {
+          userId,
+          action: { in: ['VIEW', 'DOWNLOAD', 'UPDATE'] },
+          document: where,
+        },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        distinct: ['documentId'],
+        select: { documentId: true },
+      });
+      recentAccessDocumentIds = Array.from(
+        new Set(recentAccesses.map(({ documentId }) => documentId)),
+      );
+      where.AND.push({ id: { in: recentAccessDocumentIds } });
+    }
+
     // Si no hay condiciones AND, usar objeto vacío
     if (where.AND.length === 0) {
       delete where.AND;
@@ -425,64 +452,74 @@ export class DocumentService {
     // Paginación
     const skip = (page - 1) * limit;
 
-    const [documents, total] = await Promise.all([
-      this.prisma.document.findMany({
-        where,
-        include: {
-          academic: true,
-          search: true,
-          templateData: {
-            include: {
-              template: {
-                select: {
-                  id: true,
-                  name: true,
-                  documentType: { select: { id: true, name: true } },
-                },
+    const documentQuery: any = {
+      where,
+      include: {
+        academic: true,
+        search: true,
+        templateData: {
+          include: {
+            template: {
+              select: {
+                id: true,
+                name: true,
+                documentType: { select: { id: true, name: true } },
               },
-              batch: { select: { id: true, name: true } },
             },
+            batch: { select: { id: true, name: true } },
           },
-          versions: { orderBy: { version: 'desc' }, take: 1 },
-          uploadedBy: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-            },
+        },
+        versions: { orderBy: { version: 'desc' }, take: 1 },
+        uploadedBy: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
           },
-          category: {
-            select: {
-              id: true,
-              name: true,
-              color: true,
-              icon: true,
-              bypassAcademicYear: true,
-            },
+        },
+        category: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            icon: true,
+            bypassAcademicYear: true,
           },
-          documentType: {
-            select: { id: true, name: true },
+        },
+        documentType: {
+          select: { id: true, name: true },
+        },
+        workflow: {
+          select: {
+            id: true,
+            status: true,
+            currentState: true,
           },
+        },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    };
+    if (view !== 'recent-accessed') {
+      documentQuery.skip = skip;
+      documentQuery.take = limit;
+    }
 
-          workflow: {
-            select: {
-              id: true,
-              status: true,
-              currentState: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
+    const [documents, total] = await Promise.all([
+      this.prisma.document.findMany(documentQuery),
       this.prisma.document.count({ where }),
     ]);
 
+    const orderedDocuments = recentAccessDocumentIds
+      ? recentAccessDocumentIds
+          .map((id) => documents.find((document) => document.id === id))
+          .filter(Boolean)
+      : documents;
+    const pagedDocuments = recentAccessDocumentIds
+      ? orderedDocuments.slice(skip, skip + limit)
+      : orderedDocuments;
+
     return {
-      data: documents,
+      data: pagedDocuments,
       meta: {
         total,
         page,
@@ -492,7 +529,16 @@ export class DocumentService {
     };
   }
 
-  async findOne(id: number, userId: string, userRole: UserRole) {
+  async findOne(
+    id: number,
+    userId: string,
+    userRole: UserRole,
+    recordView = false,
+  ) {
+    const quarantinedDocumentIds = await this.quarantinedDocumentIds();
+    if (quarantinedDocumentIds.includes(id)) {
+      throw new NotFoundException('Documento no encontrado');
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -566,6 +612,10 @@ export class DocumentService {
 
     if (!document) {
       throw new NotFoundException('Documento no encontrado');
+    }
+
+    if (recordView) {
+      await this.recordDocumentAccess(id, userId, 'VIEW');
     }
 
     return document;
@@ -687,6 +737,8 @@ export class DocumentService {
       },
     });
 
+    await this.recordDocumentAccess(id, userId, 'UPDATE');
+
     return updatedDocument;
   }
 
@@ -704,7 +756,12 @@ export class DocumentService {
       await this.directoryService.assertDiscoverable(destination, { id: userId, role: userRole });
     }
     try {
-      return await this.prisma.document.update({ where: { id }, data: { directoryId: destination } });
+      const movedDocument = await this.prisma.document.update({
+        where: { id },
+        data: { directoryId: destination },
+      });
+      await this.recordDocumentAccess(id, userId, 'UPDATE');
+      return movedDocument;
     } catch (error) {
       if ((error as any)?.code === 'P2003') throw new ConflictException('El directorio destino ya no existe');
       throw error;
@@ -849,6 +906,19 @@ export class DocumentService {
   }
 
   async download(id: number, userId: string, userRole: UserRole) {
+    return this.getFileForAccess(id, userId, userRole, 'DOWNLOAD');
+  }
+
+  async view(id: number, userId: string, userRole: UserRole) {
+    return this.getFileForAccess(id, userId, userRole, 'VIEW');
+  }
+
+  private async getFileForAccess(
+    id: number,
+    userId: string,
+    userRole: UserRole,
+    action: 'VIEW' | 'DOWNLOAD',
+  ) {
     const document = await this.findOne(id, userId, userRole);
 
     // Verificar que el archivo existe
@@ -869,14 +939,7 @@ export class DocumentService {
       }
     }
 
-    // Registrar auditoría de descarga
-    await this.prisma.documentAccess.create({
-      data: {
-        documentId: id,
-        userId: userId,
-        action: 'DOWNLOAD',
-      },
-    });
+    await this.recordDocumentAccess(id, userId, action);
 
     return {
       path: (document as any).versions[0].path,
@@ -1423,6 +1486,10 @@ export class DocumentService {
 
   async getStats(userId: string, userRole: UserRole) {
     const where: any = { deletedAt: null }; // Excluir eliminados
+    const quarantinedDocumentIds = await this.quarantinedDocumentIds();
+    if (quarantinedDocumentIds.length) {
+      where.id = { notIn: quarantinedDocumentIds };
+    }
 
     if (userRole !== UserRole.ADMIN) {
       where.uploadedById = userId;
@@ -1434,6 +1501,9 @@ export class DocumentService {
         where: {
           document: {
             deletedAt: null,
+            ...(quarantinedDocumentIds.length
+              ? { id: { notIn: quarantinedDocumentIds } }
+              : {}),
             ...(userRole !== UserRole.ADMIN ? { uploadedById: userId } : {}),
           },
         },
@@ -1472,10 +1542,14 @@ export class DocumentService {
       id: user?.id ?? userId,
       role: (user?.role as UserRole) ?? userRole,
     });
+    const quarantinedDocumentIds = await this.quarantinedDocumentIds();
 
     const activeScope: any[] = [
       { deletedAt: null },
       { archivedAt: null },
+      ...(quarantinedDocumentIds.length
+        ? [{ id: { notIn: quarantinedDocumentIds } }]
+        : []),
       ...(accessFilter ? [accessFilter] : []),
     ];
     const pendingWhere = {
@@ -1885,5 +1959,28 @@ export class DocumentService {
     }
 
     return extractedText;
+  }
+
+  private async recordDocumentAccess(
+    documentId: number,
+    userId: string,
+    action: 'VIEW' | 'DOWNLOAD' | 'UPDATE',
+  ): Promise<void> {
+    await this.prisma.documentAccess.create({
+      data: { documentId, userId, action },
+    });
+  }
+
+  private async quarantinedDocumentIds(): Promise<number[]> {
+    const candidateStore = (this.prisma as any).workflowResidueCandidate;
+    if (!candidateStore?.findMany) return [];
+    const candidates = await candidateStore.findMany({
+      where: { rootType: 'DOCUMENT', state: 'QUARANTINED' },
+      select: { rootId: true },
+    });
+    const rootIds = (candidates ?? []).map((candidate) =>
+      Number(candidate.rootId),
+    ) as number[];
+    return Array.from(new Set<number>(rootIds));
   }
 }

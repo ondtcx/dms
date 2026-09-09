@@ -61,7 +61,10 @@ describe('DocumentService', () => {
               aggregate: jest.fn().mockResolvedValue({ _sum: { size: 0 } }),
             },
             documentWorkflow: { findFirst: jest.fn().mockResolvedValue(null) },
-            documentAccess: { create: jest.fn() },
+            documentAccess: {
+              create: jest.fn(),
+              findMany: jest.fn().mockResolvedValue([]),
+            },
             workflowApproval: { findFirst: jest.fn().mockResolvedValue(null) },
             user: { findUnique: jest.fn().mockResolvedValue({ role: 'admin' }) },
           },
@@ -361,6 +364,96 @@ describe('DocumentService', () => {
         ]) }),
       ]));
     });
+
+    it('orders recent accessed documents by the current user activity types', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'viewer',
+        role: UserRole.USER,
+        roleAssignments: [],
+      });
+      (prisma.documentAccess.findMany as jest.Mock).mockResolvedValue([
+        { documentId: 2 },
+        { documentId: 1 },
+        { documentId: 2 },
+      ]);
+      (prisma.document.findMany as jest.Mock).mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      (prisma.document.count as jest.Mock).mockResolvedValue(2);
+
+      const result = await service.findAll(
+        { view: 'recent-accessed', page: 1, limit: 10 } as any,
+        'viewer',
+        UserRole.USER,
+      );
+
+      expect(result.data.map((document) => document.id)).toEqual([2, 1]);
+      expect(prisma.documentAccess.findMany).toHaveBeenCalledWith(expect.objectContaining({
+        where: expect.objectContaining({
+          userId: 'viewer',
+          action: { in: ['VIEW', 'DOWNLOAD', 'UPDATE'] },
+        }),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        distinct: ['documentId'],
+      }));
+    });
+
+    it('scopes all documents while omitting automatic academic, batch, and composite filters', async () => {
+      (prisma.user.findUnique as jest.Mock).mockResolvedValue({
+        id: 'viewer',
+        role: UserRole.USER,
+        roleAssignments: [],
+      });
+
+      await service.findAll({
+        view: 'all',
+        academicYearId: 3,
+        excludeBatched: true,
+        excludeComposites: true,
+        page: 1,
+        limit: 10,
+      } as any, 'viewer', UserRole.USER);
+
+      const where = (prisma.document.findMany as jest.Mock).mock.calls.at(-1)[0].where;
+      expect(where.AND).toEqual(expect.arrayContaining([{ deletedAt: null }]));
+      expect(where.AND).not.toEqual(expect.arrayContaining([
+        { OR: [{ templateData: null }, { templateData: { batchId: null } }] },
+        { isComposite: false },
+      ]));
+      expect(where.AND.some((condition: any) => condition.academic)).toBe(false);
+      expect(where.AND).toEqual(expect.arrayContaining([
+        expect.objectContaining({ OR: expect.arrayContaining([{ uploadedById: 'viewer' }, { isPublic: true }]) }),
+      ]));
+    });
+
+    it('keeps deleted documents out of all view even when includeDeleted is requested', async () => {
+      await service.findAll({
+        view: 'all',
+        includeDeleted: true,
+        page: 1,
+        limit: 10,
+      } as any, 'user123', UserRole.ADMIN);
+
+      const where = (prisma.document.findMany as jest.Mock).mock.calls.at(-1)[0].where;
+      expect(where.AND).toEqual(expect.arrayContaining([{ deletedAt: null }]));
+    });
+
+    it('keeps trash restricted to deleted documents when includeDeleted is requested', async () => {
+      await service.findAll({
+        view: 'trash',
+        includeDeleted: true,
+        page: 1,
+        limit: 10,
+      } as any, 'user123', UserRole.ADMIN);
+
+      const where = (prisma.document.findMany as jest.Mock).mock.calls.at(-1)[0].where;
+      expect(where.AND).toEqual(expect.arrayContaining([{ deletedAt: { not: null } }]));
+    });
+
+    it('orders recently created documents by creation time', async () => {
+      await service.findAll({ view: 'recent-created', page: 1, limit: 10 } as any, 'user123', UserRole.ADMIN);
+
+      expect((prisma.document.findMany as jest.Mock).mock.calls.at(-1)[0].orderBy)
+        .toEqual([{ createdAt: 'desc' }, { id: 'desc' }]);
+    });
   });
 
   describe('move', () => {
@@ -426,6 +519,24 @@ describe('DocumentService', () => {
           versions: expect.any(Object),
         }),
       }));
+    });
+
+    it('records a VIEW when a document is opened through the detail route', async () => {
+      await service.findOne(1, 'user123', UserRole.ADMIN, true);
+
+      expect(prisma.documentAccess.create).toHaveBeenCalledWith({
+        data: { documentId: 1, userId: 'user123', action: 'VIEW' },
+      });
+    });
+  });
+
+  describe('view', () => {
+    it('records preview activity as VIEW instead of DOWNLOAD', async () => {
+      await service.view(1, 'user123', UserRole.ADMIN);
+
+      expect(prisma.documentAccess.create).toHaveBeenCalledWith({
+        data: { documentId: 1, userId: 'user123', action: 'VIEW' },
+      });
     });
   });
 

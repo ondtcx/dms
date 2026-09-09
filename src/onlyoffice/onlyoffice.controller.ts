@@ -129,6 +129,10 @@ export class OnlyofficeController {
   ) {
     try {
       if (body.status === 2) {
+        const editorUserId = Array.isArray(body.users)
+          && typeof body.users[0] === 'string'
+          ? body.users[0]
+          : undefined;
         const document = await this.prisma.document.findUnique({
           where: { id: documentId },
           include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
@@ -169,6 +173,12 @@ export class OnlyofficeController {
             source: 'REEMPLAZO_MANUAL',
           },
         });
+
+        if (editorUserId) {
+          await this.prisma.documentAccess.create({
+            data: { documentId, userId: editorUserId, action: 'UPDATE' },
+          });
+        }
       }
 
       return res.json({ error: 0 });
