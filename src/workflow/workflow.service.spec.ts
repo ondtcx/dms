@@ -1,4 +1,4 @@
-import { ForbiddenException, BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { WorkflowAssignmentStatus, WorkflowStatus, WorkflowTransitionAction } from '@prisma/client';
 import { WorkflowService } from './workflow.service';
 
@@ -11,7 +11,7 @@ describe('WorkflowService', () => {
     prisma = {
       $transaction: jest.fn(),
       document: { findUnique: jest.fn() },
-      workflowTemplate: {},
+      workflowTemplate: { findMany: jest.fn() },
       workflowTemplateVersion: { findFirst: jest.fn() },
       documentWorkflow: { findUnique: jest.fn() },
       user: { findUnique: jest.fn() },
@@ -65,6 +65,169 @@ describe('WorkflowService', () => {
     );
 
     await expect(service.start(10, {}, 'owner', 'profesor')).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('returns only active, applicable, role-allowed definitions with ordered active versions and stages', async () => {
+    prisma.document.findUnique.mockResolvedValue({
+      categoryId: 7,
+      uploadedById: 'owner',
+      workflow: [],
+    });
+    prisma.workflowTemplate.findMany.mockResolvedValue([
+      {
+        id: 2,
+        name: 'Zeta',
+        description: null,
+        categoryId: null,
+        allowedInitiatorRoles: [],
+        isActive: true,
+        versions: [
+          {
+            id: 21,
+            templateId: 2,
+            version: 2,
+            isActive: true,
+            publishedAt: null,
+            snapshot: {},
+            stages: [
+              { id: 212, order: 2, roleKey: 'rector' },
+              { id: 211, order: 1, roleKey: 'coordinador' },
+            ],
+          },
+          { id: 20, templateId: 2, version: 1, isActive: false, publishedAt: null, snapshot: {}, stages: [] },
+        ],
+      },
+      {
+        id: 1,
+        name: 'Alpha',
+        description: 'Category workflow',
+        categoryId: 7,
+        allowedInitiatorRoles: ['secretary'],
+        isActive: true,
+        versions: [{
+          id: 11,
+          templateId: 1,
+          version: 3,
+          isActive: true,
+          publishedAt: null,
+          snapshot: { name: 'Alpha' },
+          stages: [{ id: 111, order: 1, roleKey: 'rector' }],
+        }],
+      },
+      {
+        id: 3,
+        name: 'Inactive',
+        description: null,
+        categoryId: 7,
+        allowedInitiatorRoles: [],
+        isActive: false,
+        versions: [{ id: 31, templateId: 3, version: 1, isActive: true, publishedAt: null, snapshot: {}, stages: [] }],
+      },
+      {
+        id: 4,
+        name: 'Other category',
+        description: null,
+        categoryId: 9,
+        allowedInitiatorRoles: [],
+        isActive: true,
+        versions: [{ id: 41, templateId: 4, version: 1, isActive: true, publishedAt: null, snapshot: {}, stages: [] }],
+      },
+      {
+        id: 5,
+        name: 'Other role',
+        description: null,
+        categoryId: null,
+        allowedInitiatorRoles: ['rector'],
+        isActive: true,
+        versions: [{ id: 51, templateId: 5, version: 1, isActive: true, publishedAt: null, snapshot: {}, stages: [] }],
+      },
+    ]);
+
+    const result = await service.findApplicableDefinitions(10, 'owner', 'secretary');
+
+    expect(result.map((definition) => definition.name)).toEqual(['Alpha', 'Zeta']);
+    expect(result[0].versions.map((version) => version.id)).toEqual([11]);
+    expect(result[1].versions[0].stages.map((stage) => stage.order)).toEqual([1, 2]);
+    expect(prisma.workflowTemplate.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        isActive: true,
+        OR: [{ categoryId: null }, { categoryId: 7 }],
+        versions: { some: { isActive: true } },
+      }),
+    }));
+  });
+
+  it('returns no definitions for an existing document with an active workflow', async () => {
+    prisma.document.findUnique.mockResolvedValue({
+      categoryId: 7,
+      uploadedById: 'owner',
+      workflow: [{ id: 90 }],
+    });
+
+    await expect(service.findApplicableDefinitions(10, 'owner', 'secretary')).resolves.toEqual([]);
+    expect(prisma.workflowTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('keeps the existing administrator override for allowed initiator roles', async () => {
+    prisma.document.findUnique.mockResolvedValue({ categoryId: 7, uploadedById: 'owner', workflow: [] });
+    prisma.workflowTemplate.findMany.mockResolvedValue([{
+      id: 5,
+      name: 'Restricted',
+      description: null,
+      categoryId: 7,
+      allowedInitiatorRoles: ['rector'],
+      isActive: true,
+      versions: [{
+        id: 51,
+        templateId: 5,
+        version: 1,
+        isActive: true,
+        publishedAt: null,
+        snapshot: {},
+        stages: [{ id: 511, order: 1, roleKey: 'rector' }],
+      }],
+    }]);
+
+    await expect(service.findApplicableDefinitions(10, 'admin-user', 'admin')).resolves.toHaveLength(1);
+  });
+
+  it('returns 404 for a missing document and does not query definitions', async () => {
+    prisma.document.findUnique.mockResolvedValue(null);
+
+    await expect(service.findApplicableDefinitions(404, 'owner', 'secretary')).rejects.toBeInstanceOf(NotFoundException);
+    expect(prisma.workflowTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('preserves the start permission and ownership boundary for applicability', async () => {
+    prisma.document.findUnique.mockResolvedValue({ categoryId: null, uploadedById: 'owner', workflow: [] });
+
+    await expect(service.findApplicableDefinitions(10, 'other-user', 'secretary')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.workflowTemplate.findMany).not.toHaveBeenCalled();
+
+    authorization.hasPermission.mockResolvedValue(false);
+    await expect(service.findApplicableDefinitions(10, 'owner', 'secretary')).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.workflowTemplate.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects a category-incompatible version through the start route', async () => {
+    prisma.document.findUnique.mockResolvedValue({
+      categoryId: 7,
+      uploadedById: 'owner',
+      versions: [{ id: 20 }],
+      workflow: [],
+    });
+    (service as any).resolveVersion = jest.fn().mockResolvedValue({
+      id: 30,
+      templateId: 4,
+      snapshot: {},
+      template: { categoryId: 9, isActive: true, allowedInitiatorRoles: [] },
+      stages: [{ id: 40, order: 1, roleKey: 'coordinador' }],
+    });
+
+    await expect(service.start(10, { versionId: 30 }, 'owner', 'secretary')).rejects.toThrow(
+      'El workflow no aplica a la categoría del documento',
+    );
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 

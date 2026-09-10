@@ -29,9 +29,13 @@ export class WorkflowPolicyService {
     if (document.uploadedById !== userId && userRole !== 'admin') {
       throw new ForbiddenException('Solo el editor principal puede iniciar el workflow');
     }
-    if (allowedRoles.length && userRole !== 'admin' && !allowedRoles.includes(userRole)) {
+    if (!this.isInitiatorRoleAllowed(userRole, allowedRoles)) {
       throw new ForbiddenException('Tu rol no puede iniciar esta definición');
     }
+  }
+
+  isInitiatorRoleAllowed(userRole: string, allowedRoles: string[]) {
+    return userRole === 'admin' || !allowedRoles.length || allowedRoles.includes(userRole);
   }
 
   async assertHistory(userId: string, userRole: string, document: any) {

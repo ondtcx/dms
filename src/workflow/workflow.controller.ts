@@ -21,6 +21,12 @@ export class WorkflowController {
   @RequirePermission('workflow.templates.manage')
   findDefinitions() { return this.workflowService.findDefinitions(); }
 
+  @Get('documents/:id/workflow-definitions')
+  @RequirePermission('workflow.start')
+  findApplicableDefinitions(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    return this.workflowService.findApplicableDefinitions(id, user.id, user.role);
+  }
+
   @Post('workflow-definitions')
   @RequirePermission('workflow.templates.manage')
   createDefinition(@Body() dto: CreateWorkflowDefinitionDto, @CurrentUser() user: any) {

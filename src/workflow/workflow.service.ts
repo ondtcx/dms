@@ -27,6 +27,24 @@ const WORKFLOW_INCLUDE = {
   events: { orderBy: { occurredAt: 'asc' } },
 } as const;
 
+type ApplicableWorkflowDefinition = {
+  id: number;
+  name: string;
+  description: string | null;
+  categoryId: number | null;
+  allowedInitiatorRoles: string[];
+  isActive: boolean;
+  versions: Array<{
+    id: number;
+    templateId: number;
+    version: number;
+    isActive: boolean;
+    publishedAt: Date | null;
+    snapshot: Record<string, unknown>;
+    stages: Array<{ id: number; order: number; roleKey: string }>;
+  }>;
+};
+
 @Injectable()
 export class WorkflowService {
   constructor(
@@ -41,6 +59,78 @@ export class WorkflowService {
       include: { versions: { include: { stages: { orderBy: { order: 'asc' } } } } },
       orderBy: { name: 'asc' },
     });
+  }
+
+  async findApplicableDefinitions(
+    documentId: number,
+    userId: string,
+    userRole: string,
+  ): Promise<ApplicableWorkflowDefinition[]> {
+    const document = await this.prisma.document.findUnique({
+      where: { id: documentId },
+      select: {
+        categoryId: true,
+        uploadedById: true,
+        workflow: { where: { active: true }, select: { id: true } },
+      },
+    });
+    if (!document) throw new NotFoundException('Documento no encontrado');
+    await this.policy.assertStart(userId, userRole, document, []);
+    if (document.workflow.length) return [];
+
+    const definitions = await this.prisma.workflowTemplate.findMany({
+      where: {
+        isActive: true,
+        OR: [{ categoryId: null }, { categoryId: document.categoryId }],
+        versions: { some: { isActive: true } },
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        categoryId: true,
+        allowedInitiatorRoles: true,
+        isActive: true,
+        versions: {
+          where: { isActive: true },
+          orderBy: [{ version: 'asc' }, { id: 'asc' }],
+          select: {
+            id: true,
+            templateId: true,
+            version: true,
+            isActive: true,
+            publishedAt: true,
+            snapshot: true,
+            stages: {
+              orderBy: [{ order: 'asc' }, { id: 'asc' }],
+              select: { id: true, order: true, roleKey: true },
+            },
+          },
+        },
+      },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+
+    return definitions
+      .map((definition) => ({
+        ...definition,
+        allowedInitiatorRoles: this.normalizeAllowedInitiatorRoles(definition.allowedInitiatorRoles),
+        versions: definition.versions
+          .filter((version) => version.isActive)
+          .map((version) => ({
+            ...version,
+            snapshot: version.snapshot as Record<string, unknown>,
+            stages: [...version.stages].sort((left, right) => left.order - right.order || left.id - right.id),
+          }))
+          .sort((left, right) => left.version - right.version || left.id - right.id),
+      }))
+      .filter((definition) =>
+        definition.isActive &&
+        this.isCategoryCompatible(definition.categoryId, document.categoryId) &&
+        definition.versions.length > 0 &&
+        this.policy.isInitiatorRoleAllowed(userRole, definition.allowedInitiatorRoles),
+      )
+      .sort((left, right) => left.name.localeCompare(right.name, 'en') || left.id - right.id);
   }
 
   async createDefinition(dto: CreateWorkflowDefinitionDto, createdById: string) {
@@ -121,7 +211,15 @@ export class WorkflowService {
     if (document.workflow.length) throw new ConflictException('El documento ya tiene un workflow activo');
 
     const version = await this.resolveVersion(dto.versionId);
-    await this.policy.assertStart(userId, userRole, document, version.template.allowedInitiatorRoles as string[]);
+    await this.policy.assertStart(
+      userId,
+      userRole,
+      document,
+      this.normalizeAllowedInitiatorRoles(version.template.allowedInitiatorRoles),
+    );
+    if (!this.isCategoryCompatible(version.template.categoryId, document.categoryId)) {
+      throw new BadRequestException('El workflow no aplica a la categoría del documento');
+    }
     const assignments = await this.resolveAssignments(version.stages);
     const firstStage = version.stages[0];
     try {
@@ -305,6 +403,14 @@ export class WorkflowService {
     });
     if (!version || !version.template.isActive) throw new BadRequestException('No existe una versión activa de workflow');
     return version;
+  }
+
+  private normalizeAllowedInitiatorRoles(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((role): role is string => typeof role === 'string') : [];
+  }
+
+  private isCategoryCompatible(templateCategoryId: number | null | undefined, documentCategoryId: number | null | undefined) {
+    return templateCategoryId == null || templateCategoryId === documentCategoryId;
   }
 
   private async resolveAssignments(stages: any[]) {
