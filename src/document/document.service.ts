@@ -44,17 +44,25 @@ export class DocumentService {
     userId: string,
     userRole: UserRole = UserRole.USER,
   ) {
-    if (
-      uploadDocumentDto.documentTypeId === undefined ||
-      uploadDocumentDto.documentTypeId === null
-    ) {
-      throw new BadRequestException('El tipo de documento es obligatorio');
-    }
+    const hasExplicitDocumentType =
+      uploadDocumentDto.documentTypeId !== undefined &&
+      uploadDocumentDto.documentTypeId !== null;
+    const documentType = hasExplicitDocumentType
+      ? await this.prisma.documentType.findUnique({
+          where: { id: uploadDocumentDto.documentTypeId },
+          select: { id: true, isActive: true, categoryId: true },
+        })
+      : await this.prisma.documentType.findFirst({
+          where: { isDefault: true, isActive: true },
+          select: { id: true, isActive: true, categoryId: true },
+          orderBy: { id: 'asc' },
+        });
 
-    const documentType = await this.prisma.documentType.findUnique({
-      where: { id: uploadDocumentDto.documentTypeId },
-      select: { id: true, isActive: true },
-    });
+    if (!documentType && !hasExplicitDocumentType) {
+      throw new BadRequestException(
+        'No hay un tipo de documento predeterminado activo configurado',
+      );
+    }
     if (!documentType) {
       throw new BadRequestException('El tipo de documento no existe');
     }
@@ -62,21 +70,25 @@ export class DocumentService {
       throw new BadRequestException('El tipo de documento está inactivo');
     }
 
-    const category = await this.prisma.category.upsert({
-      where: { name: 'General' },
-      update: {},
-      create: {
-        name: 'General',
-        description: 'Categoría predeterminada para documentos subidos',
-        color: '#64748c',
-        icon: 'Folder',
-        requiresCourse: false,
-        allowedRoles: [],
-        prefix: 'GEN',
-      },
+    if (
+      uploadDocumentDto.categoryId !== undefined &&
+      uploadDocumentDto.categoryId !== documentType.categoryId
+    ) {
+      throw new BadRequestException(
+        'La categoría indicada no corresponde al tipo de documento seleccionado',
+      );
+    }
+
+    const resolvedCategoryId = documentType.categoryId;
+    const category = await this.prisma.category.findUnique({
+      where: { id: resolvedCategoryId },
       select: { id: true, allowedRoles: true, requiresCourse: true },
     });
-    const resolvedCategoryId = category.id;
+    if (!category) {
+      throw new BadRequestException(
+        'La categoría asociada al tipo de documento no existe',
+      );
+    }
 
     const allowedRoles = category.allowedRoles as string[];
     if (

@@ -46,9 +46,15 @@ describe('DocumentService', () => {
                 allowedRoles: [],
                 requiresCourse: false,
               }),
+              findUnique: jest.fn().mockResolvedValue({
+                id: 99,
+                allowedRoles: [],
+                requiresCourse: false,
+              }),
             },
             documentType: {
-              findUnique: jest.fn().mockResolvedValue({ id: 12, isActive: true }),
+              findUnique: jest.fn().mockResolvedValue({ id: 12, isActive: true, categoryId: 99 }),
+              findFirst: jest.fn().mockResolvedValue({ id: 12, isActive: true, categoryId: 99 }),
             },
             academicYear: { findFirst: jest.fn().mockResolvedValue({ id: 3 }) },
             document: { 
@@ -215,32 +221,23 @@ describe('DocumentService', () => {
       path: '/tmp/test.txt',
     } as any;
 
-    it('uses the explicit document type and the General category', async () => {
-      await service.upload(uploadFile, {
-        documentTypeId: 12,
-      }, 'user123');
+    it('uses the active default document type when no type is provided', async () => {
+      await service.upload(uploadFile, {}, 'user123');
 
       const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
       expect(createData.categoryId).toBe(99);
       expect(createData.documentTypeId).toBe(12);
-      expect(prisma.documentType.findUnique).toHaveBeenCalledWith({
-        where: { id: 12 },
-        select: { id: true, isActive: true },
+      expect(prisma.documentType.findFirst).toHaveBeenCalledWith({
+        where: { isDefault: true, isActive: true },
+        select: { id: true, isActive: true, categoryId: true },
+        orderBy: { id: 'asc' },
       });
-      expect(prisma.category.upsert).toHaveBeenCalledWith({
-        where: { name: 'General' },
-        update: {},
-        create: {
-          name: 'General',
-          description: 'Categoría predeterminada para documentos subidos',
-          color: '#64748c',
-          icon: 'Folder',
-          requiresCourse: false,
-          allowedRoles: [],
-          prefix: 'GEN',
-        },
+      expect(prisma.documentType.findUnique).not.toHaveBeenCalled();
+      expect(prisma.category.findUnique).toHaveBeenCalledWith({
+        where: { id: 99 },
         select: { id: true, allowedRoles: true, requiresCourse: true },
       });
+      expect(prisma.category.upsert).not.toHaveBeenCalled();
       expect((service as any).storage.generateStructuredPath).toHaveBeenCalledWith(
         'user123',
         99,
@@ -249,24 +246,51 @@ describe('DocumentService', () => {
       expect((service as any).numberingService.assignNumber).toHaveBeenCalledWith(1, 99);
     });
 
-    it('ignores a legacy category id and uses the General category', async () => {
-      await service.upload(uploadFile, {
-        documentTypeId: 12,
-        categoryId: 404,
-      }, 'user123');
-      const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
-      expect(createData.documentTypeId).toBe(12);
-      expect(createData.categoryId).toBe(99);
-      expect(prisma.category.upsert).toHaveBeenCalledWith(expect.objectContaining({
-        where: { name: 'General' },
-      }));
+    it('rejects the upload when no active default document type is configured', async () => {
+      (prisma.documentType.findFirst as jest.Mock).mockResolvedValueOnce(null);
+
+      await expect(service.upload(uploadFile, {}, 'user123'))
+        .rejects.toThrow('No hay un tipo de documento predeterminado activo configurado');
+      expect(prisma.category.findUnique).not.toHaveBeenCalled();
+      expect((service as any).storage.moveFile).not.toHaveBeenCalled();
+      expect(prisma.document.create).not.toHaveBeenCalled();
     });
 
-    it('rejects the upload when the document type is missing', async () => {
-      await expect(service.upload(uploadFile, {} as UploadDocumentDto, 'user123'))
-        .rejects.toThrow('El tipo de documento es obligatorio');
-      expect(prisma.documentType.findUnique).not.toHaveBeenCalled();
+    it('uses the explicit active document type and its category', async () => {
+      await service.upload(uploadFile, {
+        documentTypeId: 12,
+        categoryId: 99,
+      }, 'user123');
+
+      const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
+      expect(createData.categoryId).toBe(99);
+      expect(createData.documentTypeId).toBe(12);
+      expect(prisma.documentType.findUnique).toHaveBeenCalledWith({
+        where: { id: 12 },
+        select: { id: true, isActive: true, categoryId: true },
+      });
+      expect(prisma.documentType.findFirst).not.toHaveBeenCalled();
+      expect(prisma.category.findUnique).toHaveBeenCalledWith({
+        where: { id: 99 },
+        select: { id: true, allowedRoles: true, requiresCourse: true },
+      });
       expect(prisma.category.upsert).not.toHaveBeenCalled();
+      expect((service as any).storage.generateStructuredPath).toHaveBeenCalledWith(
+        'user123',
+        99,
+        expect.any(String),
+      );
+      expect((service as any).numberingService.assignNumber).toHaveBeenCalledWith(1, 99);
+    });
+
+    it('rejects an inconsistent explicit category before moving the staged file', async () => {
+      await expect(service.upload(uploadFile, {
+        documentTypeId: 12,
+        categoryId: 404,
+      }, 'user123')).rejects.toThrow(
+        'La categoría indicada no corresponde al tipo de documento seleccionado',
+      );
+      expect(prisma.category.findUnique).not.toHaveBeenCalled();
       expect((service as any).storage.moveFile).not.toHaveBeenCalled();
       expect(prisma.document.create).not.toHaveBeenCalled();
     });
@@ -276,6 +300,7 @@ describe('DocumentService', () => {
 
       await expect(service.upload(uploadFile, { documentTypeId: 404 }, 'user123'))
         .rejects.toThrow('El tipo de documento no existe');
+      expect(prisma.category.findUnique).not.toHaveBeenCalled();
       expect(prisma.category.upsert).not.toHaveBeenCalled();
       expect((service as any).storage.moveFile).not.toHaveBeenCalled();
       expect(prisma.document.create).not.toHaveBeenCalled();
@@ -289,6 +314,7 @@ describe('DocumentService', () => {
 
       await expect(service.upload(uploadFile, { documentTypeId: 12 }, 'user123'))
         .rejects.toThrow('El tipo de documento está inactivo');
+      expect(prisma.category.findUnique).not.toHaveBeenCalled();
       expect(prisma.category.upsert).not.toHaveBeenCalled();
       expect((service as any).storage.moveFile).not.toHaveBeenCalled();
       expect(prisma.document.create).not.toHaveBeenCalled();
