@@ -3,6 +3,7 @@ import Handlebars from 'handlebars';
 import puppeteer, { type Browser, type PDFOptions } from 'puppeteer';
 import * as fs from 'fs';
 import * as path from 'path';
+import type { DirectHtmlPdfOptions } from './direct-html-pdf-renderer';
 
 export interface GenerateDocumentOptions {
   htmlTemplate: string;
@@ -199,8 +200,6 @@ export class DocumentGeneratorService {
       orientation = 'portrait',
     } = options;
 
-    let browser: Browser | null = null;
-
     try {
       // Compilar plantilla con datos
       const compiledHtml = this.compileTemplate(htmlTemplate, data);
@@ -216,22 +215,58 @@ export class DocumentGeneratorService {
         fullHtml.substring(0, 500),
       );
 
+      return await this.renderPdf(fullHtml, pageSize, orientation);
+    } catch (error) {
+      this.logger.error('Error generando PDF:', error);
+      throw new Error(`Error al generar PDF: ${error.message}`);
+    }
+  }
+
+  /**
+   * Genera un PDF a partir de HTML ya convertido, sin interpretarlo como plantilla.
+   */
+  async generatePDFFromHtml(
+    options: DirectHtmlPdfOptions,
+  ): Promise<Buffer> {
+    try {
+      if (!options.html?.trim()) {
+        throw new Error('El HTML directo está vacío');
+      }
+
+      const fullHtml = this.generateHtmlWithStyles(
+        options.html,
+        options.styles,
+      );
+      return await this.renderPdf(
+        fullHtml,
+        options.pageSize || 'A4',
+        options.orientation || 'portrait',
+      );
+    } catch (error) {
+      this.logger.error('Error generando PDF desde HTML:', error);
+      throw new Error(`Error al generar PDF: ${error.message}`);
+    }
+  }
+
+  private async renderPdf(
+    fullHtml: string,
+    pageSize: 'A4' | 'Letter' | 'Legal',
+    orientation: 'portrait' | 'landscape',
+  ): Promise<Buffer> {
+    let browser: Browser | null = null;
+
+    try {
       this.logger.log('Iniciando generación de PDF...');
 
-      // Iniciar navegador headless
       browser = await puppeteer.launch({
         headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
 
       const page = await browser.newPage();
+      await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
 
-      // Establecer contenido HTML
-      await page.setContent(fullHtml, {
-        waitUntil: 'networkidle0',
-      });
-
-      // Configurar opciones de PDF según tamaño de página
       const pdfOptions: PDFOptions = {
         format: pageSize,
         landscape: orientation === 'landscape',
@@ -244,15 +279,9 @@ export class DocumentGeneratorService {
         },
       };
 
-      // Generar PDF
       const pdfBuffer = await page.pdf(pdfOptions);
-
       this.logger.log('PDF generado exitosamente');
-
       return Buffer.from(pdfBuffer);
-    } catch (error) {
-      this.logger.error('Error generando PDF:', error);
-      throw new Error(`Error al generar PDF: ${error.message}`);
     } finally {
       if (browser) {
         await browser.close();

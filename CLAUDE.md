@@ -89,7 +89,7 @@ uploads/
 ├── archive/        # Archived documents (same structure as active)
 ├── trash/          # Soft-deleted documents (flat with timestamp prefix)
 ├── temp/           # Temporary files
-└── thumbnails/     # Generated thumbnails (PNG, 200x283px)
+└── thumbnails/     # Generated thumbnails (JPEG, 200x200px)
 ```
 
 **Key patterns:**
@@ -159,10 +159,13 @@ Templates automatically receive `_metadata` object:
 Managed by `ThumbnailService` (src/document/thumbnail.service.ts):
 
 - **Automatic generation**: On document upload or template preview
-- **PDF → PNG**: Uses `pdf-to-img` library to convert first page
-- **Image optimization**: Sharp library resizes to 200x283px, 80% quality
-- **Storage**: `uploads/thumbnails/<id>.png`
-- **Template thumbnails**: Use negative IDs (e.g., template ID 5 → thumbnail -5.png)
+- **PDF → JPEG**: Uses `pdf-parse` and Sharp to render the first page
+- **DOCX → HTML → PDF → JPEG**: Uses Mammoth for approximate DOCX-to-HTML conversion, embedded images when practical, and the existing Puppeteer/PDF first-page pipeline; falls back to the Word icon on failure
+- **Word layout**: The preview is approximate, not a faithful reproduction of Word pagination or layout; legacy `.doc` files use the Word icon fallback
+- **Puppeteer runtime**: The Docker image provides Debian Chromium at `/usr/bin/chromium` and configures Puppeteer to use it without downloading another browser
+- **Image optimization**: Sharp library resizes thumbnails to 200x200px
+- **Storage**: `uploads/thumbnails/thumb_<id>.jpg`
+- **Template thumbnails**: Use negative IDs (e.g., template ID 5 → thumbnail `thumb_-5.jpg`)
 
 ## Development Guidelines
 

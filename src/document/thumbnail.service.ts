@@ -1,15 +1,23 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import sharp from 'sharp';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
+import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { existsSync, mkdirSync, unlinkSync, readFileSync } from 'fs';
-import { readFile } from 'fs/promises';
 import { PDFParse } from 'pdf-parse';
+import mammoth from 'mammoth';
+import { tmpdir } from 'os';
+import { DIRECT_HTML_PDF_RENDERER } from '../document-template/direct-html-pdf-renderer';
+import type { DirectHtmlPdfRenderer } from '../document-template/direct-html-pdf-renderer';
 
 @Injectable()
 export class ThumbnailService {
   private readonly logger = new Logger(ThumbnailService.name);
   private readonly thumbnailPath = './uploads/thumbnails';
   private readonly thumbnailSize = 200; // Tamaño del thumbnail en px
+  private readonly thumbnailGenerationLocks = new Map<
+    number,
+    Promise<string | null>
+  >();
 
   // Iconos por defecto para tipos de documentos
   private readonly defaultIcons: Record<string, string> = {
@@ -29,7 +37,10 @@ export class ThumbnailService {
     default: '📎',
   };
 
-  constructor() {
+  constructor(
+    @Inject(DIRECT_HTML_PDF_RENDERER)
+    private readonly documentGenerator: DirectHtmlPdfRenderer,
+  ) {
     // Asegurar que existe el directorio de thumbnails
     if (!existsSync(this.thumbnailPath)) {
       mkdirSync(this.thumbnailPath, { recursive: true });
@@ -40,6 +51,16 @@ export class ThumbnailService {
    * Genera un thumbnail para un documento
    */
   async generateThumbnail(
+    filePath: string,
+    documentId: number,
+    mimetype: string,
+  ): Promise<string | null> {
+    return this.withThumbnailGenerationLock(documentId, () =>
+      this.generateThumbnailInternal(filePath, documentId, mimetype),
+    );
+  }
+
+  private async generateThumbnailInternal(
     filePath: string,
     documentId: number,
     mimetype: string,
@@ -74,8 +95,17 @@ export class ThumbnailService {
         }
       } else if (this.isOfficeDocument(mimetype)) {
         // Para documentos de Office
-        const label = this.getDocumentLabel(mimetype);
-        await this.generateIconThumbnail(mimetype, thumbnailFullPath, label);
+        const officeThumbnailPath = await this.generateOfficeThumbnail(
+          filePath,
+          documentId,
+          mimetype,
+        );
+        if (!officeThumbnailPath || !existsSync(officeThumbnailPath)) {
+          this.logger.warn(
+            `No se generó un thumbnail válido para el documento ${documentId}`,
+          );
+          return null;
+        }
       } else if (mimetype.startsWith('text/')) {
         // Para archivos de texto
         await this.generateTextThumbnail(filePath, thumbnailFullPath, mimetype);
@@ -305,6 +335,7 @@ export class ThumbnailService {
 
       browser = await puppeteer.launch({
         headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
       });
 
@@ -370,29 +401,86 @@ export class ThumbnailService {
   }
 
   /**
-   * Genera thumbnail desde un documento Office (Word, Excel, PowerPoint)
+   * Genera thumbnail desde un documento Office
    */
   async generateOfficeThumbnail(
-    _filePath: string,
+    filePath: string,
     documentId: number,
     mimetype: string,
   ): Promise<string | null> {
-    try {
-      // Esta funcionalidad requiere herramientas externas
-      // Por ahora, usar icono representativo
-      const thumbnailFilename = `thumb_${documentId}.jpg`;
-      const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
+    const thumbnailFilename = `thumb_${documentId}.jpg`;
+    const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
 
+    if (!this.isWordDocument(mimetype)) {
       const label = this.getDocumentLabel(mimetype);
       await this.generateIconThumbnail(mimetype, thumbnailFullPath, label);
+      return existsSync(thumbnailFullPath) ? thumbnailFullPath : null;
+    }
+
+    let temporaryWorkspace: string | undefined;
+    try {
+      temporaryWorkspace = await mkdtemp(
+        join(tmpdir(), 'dms-docx-thumbnail-'),
+      );
+      const conversion = await mammoth.convertToHtml(
+        { path: filePath },
+        { convertImage: mammoth.images.dataUri },
+      );
+      this.logMammothMessages(documentId, conversion.messages);
+
+      if (!conversion.value || !conversion.value.trim()) {
+        throw new Error('Mammoth no produjo HTML válido');
+      }
+
+      const pdfBuffer = await this.documentGenerator.generatePDFFromHtml({
+        html: conversion.value,
+      });
+      if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
+        throw new Error('El generador de PDF no produjo un resultado válido');
+      }
+
+      const pdfPath = join(temporaryWorkspace, 'document.pdf');
+      await writeFile(pdfPath, pdfBuffer);
+      const rendered = await this.generatePdfThumbnail(
+        pdfPath,
+        thumbnailFullPath,
+      );
+
+      if (!rendered || !existsSync(thumbnailFullPath)) {
+        throw new Error('No se pudo renderizar el PDF convertido');
+      }
 
       return thumbnailFullPath;
     } catch (error: unknown) {
-      this.logger.error(
-        `Error generando thumbnail Office para documento ${documentId}:`,
-        error instanceof Error ? error.message : error,
+      this.logger.warn(
+        `No se pudo convertir el documento Word ${documentId}; se usará el icono: ${this.formatError(error)}`,
       );
-      return null;
+      try {
+        await this.generateIconThumbnail(
+          mimetype,
+          thumbnailFullPath,
+          this.getDocumentLabel(mimetype),
+        );
+        if (!existsSync(thumbnailFullPath)) {
+          throw new Error('El icono de respaldo no produjo un archivo válido');
+        }
+        return thumbnailFullPath;
+      } catch (fallbackError: unknown) {
+        this.logger.error(
+          `Error generando icono de respaldo para documento ${documentId}: ${this.formatError(fallbackError)}`,
+        );
+        return null;
+      }
+    } finally {
+      if (temporaryWorkspace) {
+        await rm(temporaryWorkspace, { recursive: true, force: true }).catch(
+          (cleanupError: unknown) => {
+            this.logger.warn(
+              `No se pudo limpiar el espacio temporal del documento ${documentId}: ${this.formatError(cleanupError)}`,
+            );
+          },
+        );
+      }
     }
   }
 
@@ -436,11 +524,13 @@ export class ThumbnailService {
     documentId: number,
     mimetype: string,
   ): Promise<string | null> {
-    // Eliminar thumbnail existente
-    this.deleteThumbnail(documentId);
+    return this.withThumbnailRegenerationQueue(documentId, async () => {
+      // Eliminar thumbnail existente
+      this.deleteThumbnail(documentId);
 
-    // Generar nuevo thumbnail
-    return this.generateThumbnail(filePath, documentId, mimetype);
+      // Generar nuevo thumbnail
+      return this.generateThumbnailInternal(filePath, documentId, mimetype);
+    });
   }
 
   /**
@@ -480,6 +570,81 @@ export class ThumbnailService {
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     ];
     return officeTypes.includes(mimetype);
+  }
+
+  /**
+   * Verifica si es un documento DOCX compatible con Mammoth
+   */
+  private isWordDocument(mimetype: string): boolean {
+    return mimetype ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  }
+
+  private logMammothMessages(
+    documentId: number,
+    messages: readonly { type: string; message: string }[],
+  ): void {
+    const relevantMessages = messages.filter(
+      (message) => message.type === 'warning' || message.type === 'error',
+    );
+    if (relevantMessages.length === 0) {
+      return;
+    }
+
+    const details = relevantMessages
+      .slice(0, 5)
+      .map((message) => `${message.type}: ${this.formatError(message.message)}`)
+      .join(' | ');
+    const suffix = relevantMessages.length > 5 ? ' | ...' : '';
+    this.logger.warn(
+      `Mammoth informó ${relevantMessages.length} incidencia(s) al convertir DOCX ${documentId}: ${details}${suffix}`,
+    );
+  }
+
+  private async withThumbnailGenerationLock(
+    documentId: number,
+    operation: () => Promise<string | null>,
+  ): Promise<string | null> {
+    const activeGeneration = this.thumbnailGenerationLocks.get(documentId);
+    if (activeGeneration) {
+      return activeGeneration;
+    }
+
+    const generation = operation();
+    this.thumbnailGenerationLocks.set(documentId, generation);
+
+    try {
+      return await generation;
+    } finally {
+      if (this.thumbnailGenerationLocks.get(documentId) === generation) {
+        this.thumbnailGenerationLocks.delete(documentId);
+      }
+    }
+  }
+
+  private async withThumbnailRegenerationQueue(
+    documentId: number,
+    operation: () => Promise<string | null>,
+  ): Promise<string | null> {
+    const activeGeneration = this.thumbnailGenerationLocks.get(documentId);
+    const generation = activeGeneration
+      ? activeGeneration.then(operation, operation)
+      : operation();
+
+    this.thumbnailGenerationLocks.set(documentId, generation);
+
+    try {
+      return await generation;
+    } finally {
+      if (this.thumbnailGenerationLocks.get(documentId) === generation) {
+        this.thumbnailGenerationLocks.delete(documentId);
+      }
+    }
+  }
+
+  private formatError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    return message.replace(/\s+/g, ' ').slice(0, 300);
   }
 
   /**
@@ -578,7 +743,8 @@ export class ThumbnailService {
           'application/vnd.ms-powerpoint',
           'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         ],
-        thumbnail: 'Icono representativo con color',
+        thumbnail:
+          'Vista previa de la primera página en Word; icono en otros formatos',
       },
       {
         category: 'Archivos de texto',
