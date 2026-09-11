@@ -28,7 +28,6 @@ describe('DocumentService', () => {
   let prisma: PrismaService;
 
   const pdfParseMock = PDFParse as unknown as jest.Mock;
-
   beforeEach(async () => {
     pdfParseMock.mockReset();
     pdfParseMock.mockImplementation(() => ({
@@ -41,7 +40,16 @@ describe('DocumentService', () => {
         {
           provide: PrismaService,
           useValue: {
-            category: { findUnique: jest.fn() },
+            category: {
+              upsert: jest.fn().mockResolvedValue({
+                id: 99,
+                allowedRoles: [],
+                requiresCourse: false,
+              }),
+            },
+            documentType: {
+              findUnique: jest.fn().mockResolvedValue({ id: 12, isActive: true }),
+            },
             academicYear: { findFirst: jest.fn().mockResolvedValue({ id: 3 }) },
             document: { 
               create: jest.fn().mockResolvedValue({ id: 1 }),
@@ -200,6 +208,92 @@ describe('DocumentService', () => {
   });
 
   describe('upload', () => {
+    const uploadFile = {
+      originalname: 'test.txt',
+      mimetype: 'text/plain',
+      size: 1000,
+      path: '/tmp/test.txt',
+    } as any;
+
+    it('uses the explicit document type and the General category', async () => {
+      await service.upload(uploadFile, {
+        documentTypeId: 12,
+      }, 'user123');
+
+      const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
+      expect(createData.categoryId).toBe(99);
+      expect(createData.documentTypeId).toBe(12);
+      expect(prisma.documentType.findUnique).toHaveBeenCalledWith({
+        where: { id: 12 },
+        select: { id: true, isActive: true },
+      });
+      expect(prisma.category.upsert).toHaveBeenCalledWith({
+        where: { name: 'General' },
+        update: {},
+        create: {
+          name: 'General',
+          description: 'Categoría predeterminada para documentos subidos',
+          color: '#64748c',
+          icon: 'Folder',
+          requiresCourse: false,
+          allowedRoles: [],
+          prefix: 'GEN',
+        },
+        select: { id: true, allowedRoles: true, requiresCourse: true },
+      });
+      expect((service as any).storage.generateStructuredPath).toHaveBeenCalledWith(
+        'user123',
+        99,
+        expect.any(String),
+      );
+      expect((service as any).numberingService.assignNumber).toHaveBeenCalledWith(1, 99);
+    });
+
+    it('ignores a legacy category id and uses the General category', async () => {
+      await service.upload(uploadFile, {
+        documentTypeId: 12,
+        categoryId: 404,
+      }, 'user123');
+      const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
+      expect(createData.documentTypeId).toBe(12);
+      expect(createData.categoryId).toBe(99);
+      expect(prisma.category.upsert).toHaveBeenCalledWith(expect.objectContaining({
+        where: { name: 'General' },
+      }));
+    });
+
+    it('rejects the upload when the document type is missing', async () => {
+      await expect(service.upload(uploadFile, {} as UploadDocumentDto, 'user123'))
+        .rejects.toThrow('El tipo de documento es obligatorio');
+      expect(prisma.documentType.findUnique).not.toHaveBeenCalled();
+      expect(prisma.category.upsert).not.toHaveBeenCalled();
+      expect((service as any).storage.moveFile).not.toHaveBeenCalled();
+      expect(prisma.document.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an unknown document type before moving the staged file', async () => {
+      (prisma.documentType.findUnique as jest.Mock).mockResolvedValueOnce(null);
+
+      await expect(service.upload(uploadFile, { documentTypeId: 404 }, 'user123'))
+        .rejects.toThrow('El tipo de documento no existe');
+      expect(prisma.category.upsert).not.toHaveBeenCalled();
+      expect((service as any).storage.moveFile).not.toHaveBeenCalled();
+      expect(prisma.document.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an inactive document type before moving the staged file', async () => {
+      (prisma.documentType.findUnique as jest.Mock).mockResolvedValueOnce({
+        id: 12,
+        isActive: false,
+      });
+
+      await expect(service.upload(uploadFile, { documentTypeId: 12 }, 'user123'))
+        .rejects.toThrow('El tipo de documento está inactivo');
+      expect(prisma.category.upsert).not.toHaveBeenCalled();
+      expect((service as any).storage.moveFile).not.toHaveBeenCalled();
+      expect(prisma.document.create).not.toHaveBeenCalled();
+    });
+
     it('should create document with nested academic and template data', async () => {
       const file: any = {
         originalname: 'test.pdf',
@@ -210,6 +304,7 @@ describe('DocumentService', () => {
 
       const dto: UploadDocumentDto = {
         description: 'Test',
+        documentTypeId: 12,
         academic: {
           courseId: 1,
           subjectId: 2,
@@ -255,7 +350,7 @@ describe('DocumentService', () => {
       jest.spyOn(service as any, 'extractTextFromPDF').mockResolvedValue(null);
 
       await service.upload({ originalname: 'failed.pdf', mimetype: 'application/pdf', size: 1, path: '/tmp/failed.pdf' } as any,
-        {} as UploadDocumentDto, 'user123');
+        { documentTypeId: 12 } as UploadDocumentDto, 'user123');
 
       const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
       expect(createData.search).toBeUndefined();
@@ -266,7 +361,7 @@ describe('DocumentService', () => {
       jest.spyOn(service as any, 'extractTextFromPDF').mockResolvedValue('indexed text');
 
       await service.upload({ originalname: 'success.pdf', mimetype: 'application/pdf', size: 1, path: '/tmp/success.pdf' } as any,
-        {} as UploadDocumentDto, 'user123');
+        { documentTypeId: 12 } as UploadDocumentDto, 'user123');
 
       const createData = (prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data;
       expect(createData.search).toEqual({ create: { extractedText: 'indexed text' } });
@@ -274,7 +369,7 @@ describe('DocumentService', () => {
 
     it('assigns uploads to a discoverable logical directory', async () => {
       await service.upload({ originalname: 'test.txt', mimetype: 'text/plain', size: 4, path: '/tmp/test.txt' } as any,
-        { directoryId: 7 } as UploadDocumentDto, 'user123');
+        { directoryId: 7, documentTypeId: 12 } as UploadDocumentDto, 'user123');
 
       expect((prisma.document.create as jest.Mock).mock.calls.at(-1)[0].data.directoryId).toBe(7);
     });
@@ -283,7 +378,7 @@ describe('DocumentService', () => {
       (service as any).directoryService.assertDiscoverable.mockRejectedValue(new Error('hidden'));
 
       await expect(service.upload({ path: '/tmp/test.txt', originalname: 'test.txt', size: 1, mimetype: 'text/plain' } as any,
-        { directoryId: 9 } as UploadDocumentDto, 'user123')).rejects.toThrow('hidden');
+        { directoryId: 9, documentTypeId: 12 } as UploadDocumentDto, 'user123')).rejects.toThrow('hidden');
       expect((service as any).storage.moveFile).not.toHaveBeenCalled();
     });
 
@@ -291,7 +386,7 @@ describe('DocumentService', () => {
       (prisma.document.create as jest.Mock).mockRejectedValueOnce(new Error('database unavailable'));
 
       await expect(service.upload({ path: '/tmp/test.txt', originalname: 'test.txt', size: 1, mimetype: 'text/plain' } as any,
-        {} as UploadDocumentDto, 'user123')).rejects.toThrow('database unavailable');
+        { documentTypeId: 12 } as UploadDocumentDto, 'user123')).rejects.toThrow('database unavailable');
       expect((service as any).storage.deleteFile).toHaveBeenCalledWith('/tmp/structured/test.pdf');
     });
 
@@ -299,7 +394,7 @@ describe('DocumentService', () => {
       (service as any).storage.calculateFileHash.mockRejectedValueOnce(new Error('hash unavailable'));
 
       await expect(service.upload({ path: '/tmp/test.txt', originalname: 'test.txt', size: 1, mimetype: 'text/plain' } as any,
-        {} as UploadDocumentDto, 'user123')).rejects.toThrow('hash unavailable');
+        { documentTypeId: 12 } as UploadDocumentDto, 'user123')).rejects.toThrow('hash unavailable');
       expect((service as any).storage.deleteFile).toHaveBeenCalledWith('/tmp/structured/test.pdf');
       expect(prisma.document.create).not.toHaveBeenCalled();
     });
@@ -314,7 +409,7 @@ describe('DocumentService', () => {
 
       await expect(service.uploadMultiple(
         [{ path: '/tmp/first.txt' }, { path: '/tmp/second.txt' }] as any,
-        {} as UploadDocumentDto,
+        { documentTypeId: 12 } as UploadDocumentDto,
         'user123',
       )).rejects.toThrow('second upload failed');
 

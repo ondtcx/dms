@@ -247,6 +247,10 @@ export class DocumentController {
         },
         description: { type: 'string' },
         isPublic: { type: 'boolean' },
+        documentTypeId: {
+          type: 'integer',
+          description: 'ID del tipo de documento activo',
+        },
       },
     },
   })
@@ -282,6 +286,10 @@ export class DocumentController {
         },
         description: { type: 'string' },
         isPublic: { type: 'boolean' },
+        documentTypeId: {
+          type: 'integer',
+          description: 'ID del tipo de documento activo común para los archivos',
+        },
       },
     },
   })

@@ -44,6 +44,56 @@ export class DocumentService {
     userId: string,
     userRole: UserRole = UserRole.USER,
   ) {
+    if (
+      uploadDocumentDto.documentTypeId === undefined ||
+      uploadDocumentDto.documentTypeId === null
+    ) {
+      throw new BadRequestException('El tipo de documento es obligatorio');
+    }
+
+    const documentType = await this.prisma.documentType.findUnique({
+      where: { id: uploadDocumentDto.documentTypeId },
+      select: { id: true, isActive: true },
+    });
+    if (!documentType) {
+      throw new BadRequestException('El tipo de documento no existe');
+    }
+    if (!documentType.isActive) {
+      throw new BadRequestException('El tipo de documento está inactivo');
+    }
+
+    const category = await this.prisma.category.upsert({
+      where: { name: 'General' },
+      update: {},
+      create: {
+        name: 'General',
+        description: 'Categoría predeterminada para documentos subidos',
+        color: '#64748c',
+        icon: 'Folder',
+        requiresCourse: false,
+        allowedRoles: [],
+        prefix: 'GEN',
+      },
+      select: { id: true, allowedRoles: true, requiresCourse: true },
+    });
+    const resolvedCategoryId = category.id;
+
+    const allowedRoles = category.allowedRoles as string[];
+    if (
+      userRole !== UserRole.ADMIN &&
+      allowedRoles.length > 0 &&
+      !allowedRoles.includes(userRole)
+    ) {
+      throw new ForbiddenException(
+        'Tu rol no tiene permiso para subir documentos a esta categoría',
+      );
+    }
+    if (category.requiresCourse && !uploadDocumentDto.academic?.courseId) {
+      throw new BadRequestException(
+        'Esta categoría requiere especificar un curso',
+      );
+    }
+
     const uploadDirectoryId = uploadDocumentDto.directoryId === undefined
       ? undefined
       : Number(uploadDocumentDto.directoryId);
@@ -52,36 +102,6 @@ export class DocumentService {
         id: userId,
         role: userRole,
       });
-    }
-    // 0. Validar acceso a la categoría (allowedRoles + requiresCourse)
-    if (uploadDocumentDto.categoryId) {
-      const category = await this.prisma.category.findUnique({
-        where: { id: uploadDocumentDto.categoryId },
-        select: { allowedRoles: true, requiresCourse: true },
-      });
-      if (category) {
-        const allowed = category.allowedRoles as string[];
-        const user = await this.prisma.user.findUnique({
-          where: { id: userId },
-          select: { role: true },
-        });
-        const isAdmin = user?.role === 'admin';
-        if (
-          !isAdmin &&
-          allowed.length > 0 &&
-          user &&
-          !allowed.includes(user.role)
-        ) {
-          throw new ForbiddenException(
-            'Tu rol no tiene permiso para subir documentos a esta categoría',
-          );
-        }
-        if (category.requiresCourse && !uploadDocumentDto.academic?.courseId) {
-          throw new BadRequestException(
-            'Esta categoría requiere especificar un curso',
-          );
-        }
-      }
     }
 
     // 1. Resolver año lectivo: usar el especificado o asignar el año isCurrent automáticamente
@@ -99,7 +119,7 @@ export class DocumentService {
     const uniqueFilename = `${randomUUID()}${extname(file.originalname)}`;
     const storageLocation = this.storage.generateStructuredPath(
       userId,
-      uploadDocumentDto.categoryId,
+      resolvedCategoryId,
       uniqueFilename,
     );
 
@@ -122,8 +142,8 @@ export class DocumentService {
       document = await this.prisma.document.create({
       data: {
         description: uploadDocumentDto.description,
-        categoryId: uploadDocumentDto.categoryId,
-        documentTypeId: uploadDocumentDto.documentTypeId,
+        categoryId: resolvedCategoryId,
+        documentTypeId: documentType.id,
         isPublic: uploadDocumentDto.isPublic || false,
         uploadedById: userId,
         directoryId: uploadDirectoryId ?? null,
@@ -225,7 +245,7 @@ export class DocumentService {
 
     // 8. Asignar número institucional en background (no bloquea la respuesta)
     this.numberingService
-      .assignNumber(document.id, uploadDocumentDto.categoryId)
+      .assignNumber(document.id, resolvedCategoryId)
       .catch(() => {});
 
     return document;
