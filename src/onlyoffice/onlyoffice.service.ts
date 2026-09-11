@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import * as fs from 'fs';
@@ -91,7 +91,36 @@ export class OnlyofficeService {
   }
 
   async createBlankDocument(dto: CreateBlankDocumentDto, userId: string) {
-    const { title, fileType, categoryId, courseId, documentTypeId } = dto;
+    const { title, fileType, categoryId, courseId } = dto;
+    const documentType = dto.documentTypeId === undefined
+      ? await this.prisma.documentType.findFirst({
+          where: { isDefault: true, isActive: true },
+          select: { id: true, isActive: true, categoryId: true },
+          orderBy: { id: 'asc' },
+        })
+      : await this.prisma.documentType.findUnique({
+          where: { id: dto.documentTypeId },
+          select: { id: true, isActive: true, categoryId: true },
+        });
+
+    if (!documentType && dto.documentTypeId === undefined) {
+      throw new BadRequestException(
+        'No hay un tipo de documento predeterminado activo configurado',
+      );
+    }
+    if (!documentType) {
+      throw new BadRequestException('El tipo de documento no existe');
+    }
+    if (!documentType.isActive) {
+      throw new BadRequestException('El tipo de documento está inactivo');
+    }
+    if (categoryId !== undefined && categoryId !== documentType.categoryId) {
+      throw new BadRequestException(
+        'La categoría indicada no corresponde al tipo de documento seleccionado',
+      );
+    }
+
+    const resolvedCategoryId = documentType.categoryId;
     const filename = `${title}.${fileType}`;
     const uniqueFilename = `${randomUUID()}.${fileType}`;
     const mimetype = this.getMimetype(fileType);
@@ -105,7 +134,7 @@ export class OnlyofficeService {
     // Move to structured storage path
     const storageLocation = this.storage.generateStructuredPath(
       userId,
-      categoryId ?? null,
+      resolvedCategoryId,
       uniqueFilename,
     );
     this.storage.moveFile(tempPath, storageLocation.path);
@@ -121,8 +150,8 @@ export class OnlyofficeService {
     // Create document record
     const document = await this.prisma.document.create({
       data: {
-        categoryId: categoryId ?? null,
-        documentTypeId: documentTypeId ?? null,
+        categoryId: resolvedCategoryId,
+        documentTypeId: documentType.id,
         isPublic: false,
         uploadedById: userId,
         directoryId: null,

@@ -108,6 +108,7 @@ describe('OnlyofficeService.createBlankDocument', () => {
   };
   let prisma: {
     academicYear: { findFirst: jest.Mock };
+    documentType: { findFirst: jest.Mock; findUnique: jest.Mock };
     document: { create: jest.Mock };
   };
   let thumbnailService: { regenerateThumbnail: jest.Mock };
@@ -123,6 +124,10 @@ describe('OnlyofficeService.createBlankDocument', () => {
     };
     prisma = {
       academicYear: { findFirst: jest.fn(async () => null) },
+      documentType: {
+        findFirst: jest.fn(async () => ({ id: 7, isActive: true, categoryId: 11 })),
+        findUnique: jest.fn(),
+      },
       document: { create: jest.fn(async () => ({ id: 42 })) },
     };
     thumbnailService = { regenerateThumbnail: jest.fn(async () => undefined) };
@@ -159,7 +164,7 @@ describe('OnlyofficeService.createBlankDocument', () => {
       );
       expect(storage.generateStructuredPath).toHaveBeenCalledWith(
         'user-1',
-        null,
+        11,
         expect.stringMatching(new RegExp(`^[0-9a-f-]{36}\\${extension}$`)),
       );
       expect(storage.moveFile).toHaveBeenCalledWith(

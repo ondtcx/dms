@@ -72,4 +72,45 @@ describe('DocumentTemplateService.updateDocumentFromTemplate', () => {
       data: { documentId: 42, userId: 'editor-1', action: 'UPDATE' },
     });
   });
+
+  it('uses the active default document type when creating a template without one', async () => {
+    const prisma = {
+      documentType: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 8,
+          isActive: true,
+          categoryId: 3,
+        }),
+      },
+      documentTemplate: {
+        create: jest.fn().mockResolvedValue({ id: 9 }),
+      },
+    };
+    const service = new DocumentTemplateService(
+      prisma as never,
+      {} as never,
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    await service.create(
+      {
+        name: 'Plantilla nueva',
+        fields: { fields: [] },
+        htmlTemplate: '<p />',
+      } as any,
+      'creator-1',
+    );
+
+    expect(prisma.documentTemplate.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          documentTypeId: 8,
+          categoryId: 3,
+          createdById: 'creator-1',
+        }),
+      }),
+    );
+  });
 });

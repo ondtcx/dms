@@ -44,10 +44,35 @@ export class DocumentTypeService {
       );
     }
 
-    return this.prisma.documentType.create({
-      data: dto,
-      include: DOCUMENT_TYPE_INCLUDE,
-    });
+    const isActive = dto.isActive ?? true;
+    if (dto.isDefault && !isActive) {
+      throw new BadRequestException(
+        'Un subtipo inactivo no puede ser el predeterminado',
+      );
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (dto.isDefault) {
+          await tx.documentType.updateMany({
+            where: { isDefault: true },
+            data: { isDefault: false },
+          });
+        }
+
+        return tx.documentType.create({
+          data: { ...dto, isActive, isDefault: dto.isDefault ?? false },
+          include: DOCUMENT_TYPE_INCLUDE,
+        });
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException(
+          'No se pudo establecer el subtipo predeterminado porque otro cambio concurrente lo estableció',
+        );
+      }
+      throw error;
+    }
   }
 
   async findAll(categoryId?: number) {
@@ -66,6 +91,14 @@ export class DocumentTypeService {
     });
   }
 
+  async findDefault() {
+    return this.prisma.documentType.findFirst({
+      where: { isDefault: true, isActive: true },
+      include: DOCUMENT_TYPE_INCLUDE,
+      orderBy: { id: 'asc' },
+    });
+  }
+
   async findOne(id: number) {
     const documentType = await this.prisma.documentType.findUnique({
       where: { id },
@@ -80,15 +113,12 @@ export class DocumentTypeService {
   }
 
   async update(id: number, dto: UpdateDocumentTypeDto) {
-    await this.findOne(id);
+    const current = await this.findOne(id);
 
     // Si cambia nombre o categoría, verificar unicidad
     if (dto.name !== undefined || dto.categoryId !== undefined) {
-      const current = await this.prisma.documentType.findUnique({
-        where: { id },
-      });
-      const newName = dto.name ?? current!.name;
-      const newCategoryId = dto.categoryId ?? current!.categoryId;
+      const newName = dto.name ?? current.name;
+      const newCategoryId = dto.categoryId ?? current.categoryId;
 
       const conflict = await this.prisma.documentType.findUnique({
         where: {
@@ -105,11 +135,41 @@ export class DocumentTypeService {
       }
     }
 
-    return this.prisma.documentType.update({
-      where: { id },
-      data: dto,
-      include: DOCUMENT_TYPE_INCLUDE,
-    });
+    const isActive = dto.isActive ?? current.isActive;
+    if (dto.isDefault === true && !isActive) {
+      throw new BadRequestException(
+        'Un subtipo inactivo no puede ser el predeterminado',
+      );
+    }
+
+    const data = {
+      ...dto,
+      ...(dto.isActive === false ? { isDefault: false } : {}),
+    };
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        if (dto.isDefault === true) {
+          await tx.documentType.updateMany({
+            where: { isDefault: true, id: { not: id } },
+            data: { isDefault: false },
+          });
+        }
+
+        return tx.documentType.update({
+          where: { id },
+          data,
+          include: DOCUMENT_TYPE_INCLUDE,
+        });
+      });
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        throw new ConflictException(
+          'No se pudo establecer el subtipo predeterminado porque otro cambio concurrente lo estableció',
+        );
+      }
+      throw error;
+    }
   }
 
   async remove(id: number) {

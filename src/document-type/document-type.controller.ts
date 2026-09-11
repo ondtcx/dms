@@ -72,6 +72,13 @@ export class DocumentTypeController {
     );
   }
 
+  @Get('default')
+  @ApiOperation({ summary: 'Obtener el subtipo predeterminado activo' })
+  @ApiResponse({ status: 200, description: 'Subtipo predeterminado activo o null' })
+  findDefault() {
+    return this.documentTypeService.findDefault();
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener un subtipo de documento por ID' })
   @ApiParam({ name: 'id', type: Number })

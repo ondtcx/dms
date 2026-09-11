@@ -42,4 +42,13 @@ export class CreateDocumentTypeDto {
   @IsBoolean()
   @IsOptional()
   isActive?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Si este subtipo es el tipo de documento predeterminado global',
+    example: false,
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isDefault?: boolean;
 }

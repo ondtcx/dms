@@ -114,9 +114,40 @@ export class DocumentTemplateService {
     createDocumentTemplateDto: CreateDocumentTemplateDto,
     userId: string,
   ) {
+    const { documentTypeId, categoryId } = createDocumentTemplateDto;
+    const documentType = documentTypeId === undefined
+      ? await this.prisma.documentType.findFirst({
+          where: { isDefault: true, isActive: true },
+          select: { id: true, isActive: true, categoryId: true },
+          orderBy: { id: 'asc' },
+        })
+      : await this.prisma.documentType.findUnique({
+          where: { id: documentTypeId },
+          select: { id: true, isActive: true, categoryId: true },
+        });
+
+    if (!documentType && documentTypeId === undefined) {
+      throw new BadRequestException(
+        'No hay un tipo de documento predeterminado activo configurado',
+      );
+    }
+    if (!documentType) {
+      throw new BadRequestException('El tipo de documento no existe');
+    }
+    if (!documentType.isActive) {
+      throw new BadRequestException('El tipo de documento está inactivo');
+    }
+    if (categoryId !== undefined && categoryId !== documentType.categoryId) {
+      throw new BadRequestException(
+        'La categoría indicada no corresponde al tipo de documento seleccionado',
+      );
+    }
+
     const template = await this.prisma.documentTemplate.create({
       data: {
         ...createDocumentTemplateDto,
+        documentTypeId: documentType.id,
+        categoryId: categoryId ?? documentType.categoryId,
         createdById: userId,
       },
       include: {
@@ -387,14 +418,18 @@ export class DocumentTemplateService {
       select: { id: true },
     });
 
+    const resolvedCategoryId =
+      categoryId ?? template.documentType?.categoryId ?? null;
+
     const document = await this.prisma.document.create({
       data: {
         description:
           description || `${template.name} - Generado desde formulario`,
         isPublic: isPublic || false,
-        uploadedById: userId,
-        directoryId: null,
-        categoryId: categoryId || null,
+         uploadedById: userId,
+         directoryId: null,
+         categoryId: resolvedCategoryId,
+         documentTypeId: template.documentTypeId || null,
         versions: {
           create: {
             version: 1,
@@ -439,6 +474,7 @@ export class DocumentTemplateService {
             icon: true,
           },
         },
+        documentType: { select: { id: true, name: true } },
       },
     });
 
@@ -468,6 +504,7 @@ export class DocumentTemplateService {
 
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id: templateId },
+      include: { documentType: { select: { id: true, name: true, categoryId: true } } },
     });
 
     if (!template) {
@@ -479,7 +516,8 @@ export class DocumentTemplateService {
     }
 
     // Usar el categoryId de la plantilla; validar que el rol tenga acceso
-    const effectiveCategoryId = template.categoryId ?? null;
+    const effectiveCategoryId =
+      template.categoryId ?? template.documentType?.categoryId ?? null;
     if (effectiveCategoryId && userRole !== UserRole.ADMIN) {
       const category = await this.prisma.category.findUnique({
         where: { id: effectiveCategoryId },
@@ -526,6 +564,7 @@ export class DocumentTemplateService {
     // Validar y obtener plantilla
     const template = await this.prisma.documentTemplate.findUnique({
       where: { id: templateId },
+      include: { documentType: { select: { id: true, name: true, categoryId: true } } },
     });
 
     if (!template) {
@@ -537,7 +576,8 @@ export class DocumentTemplateService {
     }
 
     // Usar el categoryId de la plantilla; validar que el rol tenga acceso
-    const effectiveCategoryId = template.categoryId ?? null;
+    const effectiveCategoryId =
+      template.categoryId ?? template.documentType?.categoryId ?? null;
     if (effectiveCategoryId && userRole !== UserRole.ADMIN) {
       const category = await this.prisma.category.findUnique({
         where: { id: effectiveCategoryId },

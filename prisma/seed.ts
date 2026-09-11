@@ -31,6 +31,7 @@ const users = [
 ] as const;
 
 const categoryData = [
+  ['General', 'Categoría predeterminada para documentos subidos', '#64748b', 'Folder', false, [], 'GEN'],
   ['Planificaciones', 'Planificaciones de clase, proyectos pedagógicos y programas', '#2563eb', 'CalendarDays', true, ['profesor', 'coordinador'], 'PLN'],
   ['Actas y Reuniones', 'Actas de reuniones, consejos de docentes y asambleas', '#7c3aed', 'Users', false, ['coordinador', 'secretario', 'rector', 'vicerrector', 'admin'], 'ACT'],
   ['Constancias y Certificados', 'Constancias de estudio, trabajo, buena conducta y certificados', '#059669', 'Award', false, ['secretario', 'rector', 'vicerrector', 'admin'], 'CST'],
@@ -184,6 +185,21 @@ async function main() {
       select: { id: true, name: true },
     });
     documentTypes[documentType.name] = documentType.id;
+  }
+
+  const configuredDefault = await prisma.documentType.findFirst({
+    where: { isDefault: true, isActive: true },
+    select: { id: true },
+  });
+  if (!configuredDefault) {
+    await prisma.documentType.updateMany({
+      where: { isDefault: true },
+      data: { isDefault: false },
+    });
+    await prisma.documentType.update({
+      where: { id: documentTypes[documentTypeData[0][0]] },
+      data: { isDefault: true },
+    });
   }
 
   await prisma.academicYear.upsert({
