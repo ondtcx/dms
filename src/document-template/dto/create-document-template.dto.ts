@@ -141,7 +141,7 @@ p { line-height: 1.6; }`,
 
   @ApiProperty({
     description:
-      'ID del subtipo de documento (DocumentType) al que pertenece esta plantilla',
+      'ID del tipo de documento (DocumentType) al que pertenece esta plantilla',
     example: 3,
     required: false,
   })

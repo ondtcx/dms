@@ -5,6 +5,7 @@ export interface DirectHtmlPdfOptions {
   styles?: string;
   pageSize?: 'A4' | 'Letter' | 'Legal';
   orientation?: 'portrait' | 'landscape';
+  untrusted?: boolean;
 }
 
 export interface DirectHtmlPdfRenderer {

@@ -1,19 +1,24 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import sharp from 'sharp';
 import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'fs';
-import { mkdtemp, readFile, rm, writeFile } from 'fs/promises';
+import { readFile } from 'fs/promises';
 import { join } from 'path';
 import { PDFParse } from 'pdf-parse';
-import mammoth from 'mammoth';
-import { tmpdir } from 'os';
 import { DIRECT_HTML_PDF_RENDERER } from '../document-template/direct-html-pdf-renderer';
 import type { DirectHtmlPdfRenderer } from '../document-template/direct-html-pdf-renderer';
+import {
+  OfficeContentService,
+  supportsOfficePreview,
+} from './office-content/office-content.service';
 
 @Injectable()
 export class ThumbnailService {
   private readonly logger = new Logger(ThumbnailService.name);
   private readonly thumbnailPath = './uploads/thumbnails';
   private readonly thumbnailSize = 200; // Tamaño del thumbnail en px
+  private contentThumbnailFilename(documentId: number): string {
+    return `thumb_content_v4_${documentId}.jpg`;
+  }
   private readonly thumbnailGenerationLocks = new Map<
     number,
     Promise<string | null>
@@ -40,6 +45,7 @@ export class ThumbnailService {
   constructor(
     @Inject(DIRECT_HTML_PDF_RENDERER)
     private readonly documentGenerator: DirectHtmlPdfRenderer,
+    private readonly officeContent: OfficeContentService,
   ) {
     // Asegurar que existe el directorio de thumbnails
     if (!existsSync(this.thumbnailPath)) {
@@ -72,7 +78,7 @@ export class ThumbnailService {
         return null;
       }
 
-      const thumbnailFilename = `thumb_${documentId}.jpg`;
+      const thumbnailFilename = this.contentThumbnailFilename(documentId);
       const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
 
       // Si ya existe el thumbnail, retornarlo
@@ -148,12 +154,14 @@ export class ThumbnailService {
    * Genera thumbnail renderizando la primera página de un PDF
    */
   private async generatePdfThumbnail(
-    pdfPath: string,
+    pdfPath: string | Buffer,
     outputPath: string,
   ): Promise<boolean> {
     let pdf: PDFParse | null = null;
     try {
-      const dataBuffer = await readFile(pdfPath);
+      const dataBuffer = Buffer.isBuffer(pdfPath)
+        ? pdfPath
+        : await readFile(pdfPath);
       pdf = new PDFParse({ data: new Uint8Array(dataBuffer) });
 
       const result = await pdf.getScreenshot({
@@ -181,7 +189,7 @@ export class ThumbnailService {
       return true;
     } catch (error: unknown) {
       this.logger.warn(
-        `PDF screenshot fallback para ${pdfPath}: ${error instanceof Error ? error.message : error}`,
+        `PDF screenshot fallback: ${error instanceof Error ? error.message : error}`,
       );
       return false;
     } finally {
@@ -309,7 +317,7 @@ export class ThumbnailService {
       | Awaited<ReturnType<(typeof import('puppeteer'))['launch']>>
       | undefined;
     try {
-      const thumbnailFilename = `thumb_${documentId}.jpg`;
+      const thumbnailFilename = this.contentThumbnailFilename(documentId);
       const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
 
       // Si ya existe el thumbnail, retornarlo
@@ -408,41 +416,23 @@ export class ThumbnailService {
     documentId: number,
     mimetype: string,
   ): Promise<string | null> {
-    const thumbnailFilename = `thumb_${documentId}.jpg`;
+    const thumbnailFilename = this.contentThumbnailFilename(documentId);
     const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
 
-    if (!this.isWordDocument(mimetype)) {
+    if (!supportsOfficePreview(mimetype)) {
       const label = this.getDocumentLabel(mimetype);
       await this.generateIconThumbnail(mimetype, thumbnailFullPath, label);
       return existsSync(thumbnailFullPath) ? thumbnailFullPath : null;
     }
 
-    let temporaryWorkspace: string | undefined;
     try {
-      temporaryWorkspace = await mkdtemp(
-        join(tmpdir(), 'dms-docx-thumbnail-'),
-      );
-      const conversion = await mammoth.convertToHtml(
-        { path: filePath },
-        { convertImage: mammoth.images.dataUri },
-      );
-      this.logMammothMessages(documentId, conversion.messages);
-
-      if (!conversion.value || !conversion.value.trim()) {
-        throw new Error('Mammoth no produjo HTML válido');
-      }
-
-      const pdfBuffer = await this.documentGenerator.generatePDFFromHtml({
-        html: conversion.value,
-      });
+      const pdfBuffer = await this.officeContent.convert(filePath, mimetype);
       if (!Buffer.isBuffer(pdfBuffer) || pdfBuffer.length === 0) {
         throw new Error('El generador de PDF no produjo un resultado válido');
       }
 
-      const pdfPath = join(temporaryWorkspace, 'document.pdf');
-      await writeFile(pdfPath, pdfBuffer);
       const rendered = await this.generatePdfThumbnail(
-        pdfPath,
+        pdfBuffer,
         thumbnailFullPath,
       );
 
@@ -453,7 +443,7 @@ export class ThumbnailService {
       return thumbnailFullPath;
     } catch (error: unknown) {
       this.logger.warn(
-        `No se pudo convertir el documento Word ${documentId}; se usará el icono: ${this.formatError(error)}`,
+        `No se pudo convertir el documento Office ${documentId}; se usará el icono: ${this.formatError(error)}`,
       );
       try {
         await this.generateIconThumbnail(
@@ -471,16 +461,6 @@ export class ThumbnailService {
         );
         return null;
       }
-    } finally {
-      if (temporaryWorkspace) {
-        await rm(temporaryWorkspace, { recursive: true, force: true }).catch(
-          (cleanupError: unknown) => {
-            this.logger.warn(
-              `No se pudo limpiar el espacio temporal del documento ${documentId}: ${this.formatError(cleanupError)}`,
-            );
-          },
-        );
-      }
     }
   }
 
@@ -488,7 +468,7 @@ export class ThumbnailService {
    * Obtiene la ruta del thumbnail si existe
    */
   getThumbnailPath(documentId: number): string | null {
-    const thumbnailFilename = `thumb_${documentId}.jpg`;
+    const thumbnailFilename = this.contentThumbnailFilename(documentId);
     const thumbnailFullPath = join(this.thumbnailPath, thumbnailFilename);
 
     if (existsSync(thumbnailFullPath)) {
@@ -576,8 +556,10 @@ export class ThumbnailService {
    * Verifica si es un documento DOCX compatible con Mammoth
    */
   private isWordDocument(mimetype: string): boolean {
-    return mimetype ===
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    return (
+      mimetype ===
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
   }
 
   private logMammothMessages(

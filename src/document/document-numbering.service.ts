@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 /**
@@ -40,21 +40,36 @@ export class DocumentNumberingService {
     const year = new Date().getFullYear();
     const { sectionPrefix, categoryPrefix } =
       await this.resolvePrefixes(categoryId);
-    const number = await this.nextNumber(sectionPrefix, categoryPrefix, year);
-    const documentNumber = this.formatNumber(
-      sectionPrefix,
-      categoryPrefix,
-      year,
-      number,
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const number = await this.nextNumber(sectionPrefix, categoryPrefix, year);
+      const documentNumber = this.formatNumber(
+        sectionPrefix,
+        categoryPrefix,
+        year,
+        number,
+      );
+      try {
+        const assigned = await this.prisma.document.updateMany({
+          where: { id: documentId, documentNumber: null },
+          data: { documentNumber },
+        });
+        if (assigned.count) {
+          this.logger.log(`Documento #${documentId} → ${documentNumber}`);
+          return documentNumber;
+        }
+      } catch (error) {
+        if ((error as { code?: string })?.code !== 'P2002') throw error;
+      }
+      const current = await this.prisma.document.findUnique({
+        where: { id: documentId },
+        select: { documentNumber: true },
+      });
+      if (current?.documentNumber) return current.documentNumber;
+      if (!current) break;
+    }
+    throw new ConflictException(
+      'No se pudo asignar un número institucional automático',
     );
-
-    await this.prisma.document.update({
-      where: { id: documentId },
-      data: { documentNumber },
-    });
-
-    this.logger.log(`Documento #${documentId} → ${documentNumber}`);
-    return documentNumber;
   }
 
   /**

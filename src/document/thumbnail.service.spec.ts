@@ -1,6 +1,6 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
-import { dirname, join } from 'path';
+import { join } from 'path';
 
 jest.mock('mammoth', () => ({
   __esModule: true,
@@ -13,6 +13,7 @@ jest.mock('mammoth', () => ({
 import mammoth from 'mammoth';
 import { DirectHtmlPdfRenderer } from '../document-template/direct-html-pdf-renderer';
 import { ThumbnailService } from './thumbnail.service';
+import { OfficeContentService } from './office-content/office-content.service';
 
 describe('ThumbnailService', () => {
   let service: ThumbnailService;
@@ -25,13 +26,17 @@ describe('ThumbnailService', () => {
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
   beforeEach(() => {
-    sourceDirectory = mkdtempSync(join(tmpdir(), 'thumbnail-service-test-'));
+    sourceDirectory = mkdtempSync(
+      join(tmpdir(), 'opencode', 'thumbnail-service-test-'),
+    );
     sourcePath = join(sourceDirectory, 'example.docx');
     writeFileSync(sourcePath, 'test document');
     documentGenerator = {
       generatePDFFromHtml: jest.fn(),
     };
-    service = new ThumbnailService(documentGenerator);
+    service = new ThumbnailService(documentGenerator, {
+      convert: convertToHtmlMock,
+    } as unknown as OfficeContentService);
     (service as any).thumbnailPath = sourceDirectory;
     convertToHtmlMock.mockReset();
   });
@@ -42,17 +47,15 @@ describe('ThumbnailService', () => {
   });
 
   it('converts DOCX to HTML, generates a PDF, and renders the first page', async () => {
-    const convertedHtml = '<p>Word {{literal}}</p>';
-    convertToHtmlMock.mockResolvedValue({ value: convertedHtml, messages: [] });
+    convertToHtmlMock.mockResolvedValue(Buffer.from('test pdf'));
     (documentGenerator.generatePDFFromHtml as jest.Mock).mockResolvedValue(
       Buffer.from('test pdf'),
     );
     const generatePdfThumbnail = jest
       .spyOn(service as any, 'generatePdfThumbnail')
       .mockImplementation(async () => true);
-    let temporaryPdfPath: string | undefined;
     generatePdfThumbnail.mockImplementation(async (pdfPath, outputPath) => {
-      temporaryPdfPath = pdfPath as string;
+      expect(pdfPath).toEqual(Buffer.from('test pdf'));
       writeFileSync(outputPath as string, 'rendered thumbnail');
       return true;
     });
@@ -63,20 +66,12 @@ describe('ThumbnailService', () => {
       wordMimeType,
     );
 
-    expect(thumbnailPath).toBe(join(sourceDirectory, 'thumb_7.jpg'));
-    expect(convertToHtmlMock).toHaveBeenCalledWith(
-      { path: sourcePath },
-      expect.objectContaining({ convertImage: mammoth.images.dataUri }),
-    );
-    expect(documentGenerator.generatePDFFromHtml).toHaveBeenCalledWith({
-      html: convertedHtml,
-    });
+    expect(thumbnailPath).toBe(join(sourceDirectory, 'thumb_content_v4_7.jpg'));
+    expect(convertToHtmlMock).toHaveBeenCalledWith(sourcePath, wordMimeType);
     expect(generatePdfThumbnail).toHaveBeenCalledWith(
-      expect.stringMatching(/dms-docx-thumbnail-.+document\.pdf$/),
-      join(sourceDirectory, 'thumb_7.jpg'),
+      Buffer.from('test pdf'),
+      join(sourceDirectory, 'thumb_content_v4_7.jpg'),
     );
-    expect(temporaryPdfPath).toBeDefined();
-    expect(existsAfterCleanup(temporaryPdfPath as string)).toBe(false);
   });
 
   it('falls back to the Word icon when DOCX conversion fails', async () => {
@@ -90,16 +85,50 @@ describe('ThumbnailService', () => {
 
     await expect(
       service.generateThumbnail(sourcePath, 8, wordMimeType),
-    ).resolves.toBe(join(sourceDirectory, 'thumb_8.jpg'));
+    ).resolves.toBe(join(sourceDirectory, 'thumb_content_v4_8.jpg'));
 
     expect(iconThumbnail).toHaveBeenCalledWith(
       wordMimeType,
-      join(sourceDirectory, 'thumb_8.jpg'),
+      join(sourceDirectory, 'thumb_content_v4_8.jpg'),
       'DOCX',
     );
     expect(documentGenerator.generatePDFFromHtml).not.toHaveBeenCalled();
     expect(warning).toHaveBeenCalledWith(
-      expect.stringContaining('No se pudo convertir el documento Word'),
+      expect.stringContaining('No se pudo convertir el documento Office'),
+    );
+  });
+
+  it('converts content, ignores v3 fallback caches and preserves old files', async () => {
+    const mime =
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    writeFileSync(join(sourceDirectory, 'thumb_70.jpg'), 'old Excel icon');
+    writeFileSync(
+      join(sourceDirectory, 'thumb_content_v3_70.jpg'),
+      'old content',
+    );
+    expect(service.getThumbnailPath(70)).toBeNull();
+    convertToHtmlMock.mockResolvedValue(Buffer.from('xlsx content pdf'));
+    const render = jest
+      .spyOn(service as any, 'generatePdfThumbnail')
+      .mockImplementation(async (_pdf, output) => {
+        writeFileSync(output as string, 'content thumbnail');
+        return true;
+      });
+    const icon = jest.spyOn(service as any, 'generateIconThumbnail');
+    await expect(service.generateThumbnail(sourcePath, 70, mime)).resolves.toBe(
+      join(sourceDirectory, 'thumb_content_v4_70.jpg'),
+    );
+    expect(convertToHtmlMock).toHaveBeenCalledWith(sourcePath, mime);
+    expect(render).toHaveBeenCalledWith(
+      Buffer.from('xlsx content pdf'),
+      expect.any(String),
+    );
+    expect(icon).not.toHaveBeenCalled();
+    expect(existsSync(join(sourceDirectory, 'thumb_content_v3_70.jpg'))).toBe(
+      true,
+    );
+    expect(service.getThumbnailPath(70)).toBe(
+      join(sourceDirectory, 'thumb_content_v4_70.jpg'),
     );
   });
 
@@ -112,11 +141,11 @@ describe('ThumbnailService', () => {
 
     await expect(
       service.generateThumbnail(sourcePath, 9, 'application/msword'),
-    ).resolves.toBe(join(sourceDirectory, 'thumb_9.jpg'));
+    ).resolves.toBe(join(sourceDirectory, 'thumb_content_v4_9.jpg'));
 
     expect(iconThumbnail).toHaveBeenCalledWith(
       'application/msword',
-      join(sourceDirectory, 'thumb_9.jpg'),
+      join(sourceDirectory, 'thumb_content_v4_9.jpg'),
       'DOC',
     );
     expect(convertToHtmlMock).not.toHaveBeenCalled();
@@ -149,8 +178,16 @@ describe('ThumbnailService', () => {
       .spyOn(service as any, 'generateThumbnailInternal')
       .mockReturnValue(generation);
 
-    const firstRequest = service.generateThumbnail(sourcePath, 11, wordMimeType);
-    const secondRequest = service.generateThumbnail(sourcePath, 11, wordMimeType);
+    const firstRequest = service.generateThumbnail(
+      sourcePath,
+      11,
+      wordMimeType,
+    );
+    const secondRequest = service.generateThumbnail(
+      sourcePath,
+      11,
+      wordMimeType,
+    );
 
     expect(generateThumbnailInternal).toHaveBeenCalledTimes(1);
     resolveGeneration('thumbnail');
@@ -197,7 +234,3 @@ describe('ThumbnailService', () => {
     expect((service as any).thumbnailGenerationLocks.size).toBe(0);
   });
 });
-
-function existsAfterCleanup(filePath: string): boolean {
-  return existsSync(dirname(filePath));
-}

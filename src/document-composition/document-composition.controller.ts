@@ -20,6 +20,10 @@ import { AddComponentDto } from './dto/add-component.dto';
 import { ReorderComponentsDto } from './dto/reorder-components.dto';
 import { UpdateComponentDto } from './dto/update-component.dto';
 
+// Todas las rutas propagan el actor autenticado; el servicio revalida su
+// identidad vigente en la base de datos y no confía en el rol del token.
+type CompositionActor = { id: string };
+
 @ApiTags('document-composition')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(AuthGuard)
@@ -34,8 +38,11 @@ export class DocumentCompositionController {
   @ApiOperation({
     summary: 'Obtener la composición de un documento (componentes + parte de)',
   })
-  getComposition(@Param('id', ParseIntPipe) parentId: number) {
-    return this.compositionService.getComposition(parentId);
+  getComposition(
+    @Param('id', ParseIntPipe) parentId: number,
+    @CurrentUser() user: CompositionActor,
+  ) {
+    return this.compositionService.getComposition(parentId, user.id);
   }
 
   @Post()
@@ -43,9 +50,9 @@ export class DocumentCompositionController {
   addComponent(
     @Param('id', ParseIntPipe) parentId: number,
     @Body() dto: AddComponentDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: CompositionActor,
   ) {
-    return this.compositionService.addComponent(parentId, dto);
+    return this.compositionService.addComponent(parentId, dto, user.id);
   }
 
   @Delete(':childId')
@@ -53,8 +60,9 @@ export class DocumentCompositionController {
   removeComponent(
     @Param('id', ParseIntPipe) parentId: number,
     @Param('childId', ParseIntPipe) childId: number,
+    @CurrentUser() user: CompositionActor,
   ) {
-    return this.compositionService.removeComponent(parentId, childId);
+    return this.compositionService.removeComponent(parentId, childId, user.id);
   }
 
   @Patch('reorder')
@@ -62,8 +70,9 @@ export class DocumentCompositionController {
   reorder(
     @Param('id', ParseIntPipe) parentId: number,
     @Body() dto: ReorderComponentsDto,
+    @CurrentUser() user: CompositionActor,
   ) {
-    return this.compositionService.reorder(parentId, dto);
+    return this.compositionService.reorder(parentId, dto, user.id);
   }
 
   @Patch(':childId')
@@ -72,8 +81,14 @@ export class DocumentCompositionController {
     @Param('id', ParseIntPipe) parentId: number,
     @Param('childId', ParseIntPipe) childId: number,
     @Body() dto: UpdateComponentDto,
+    @CurrentUser() user: CompositionActor,
   ) {
-    return this.compositionService.updateComponent(parentId, childId, dto);
+    return this.compositionService.updateComponent(
+      parentId,
+      childId,
+      dto,
+      user.id,
+    );
   }
 
   @Get('download')
@@ -83,8 +98,9 @@ export class DocumentCompositionController {
   async downloadMerged(
     @Param('id', ParseIntPipe) parentId: number,
     @Res() res: Response,
+    @CurrentUser() user: CompositionActor,
   ) {
-    const buffer = await this.pdfMergeService.merge(parentId);
+    const buffer = await this.pdfMergeService.merge(parentId, user.id);
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="informe-${parentId}.pdf"`,

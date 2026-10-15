@@ -225,9 +225,7 @@ export class DocumentGeneratorService {
   /**
    * Genera un PDF a partir de HTML ya convertido, sin interpretarlo como plantilla.
    */
-  async generatePDFFromHtml(
-    options: DirectHtmlPdfOptions,
-  ): Promise<Buffer> {
+  async generatePDFFromHtml(options: DirectHtmlPdfOptions): Promise<Buffer> {
     try {
       if (!options.html?.trim()) {
         throw new Error('El HTML directo está vacío');
@@ -241,6 +239,7 @@ export class DocumentGeneratorService {
         fullHtml,
         options.pageSize || 'A4',
         options.orientation || 'portrait',
+        options.untrusted,
       );
     } catch (error) {
       this.logger.error('Error generando PDF desde HTML:', error);
@@ -252,8 +251,10 @@ export class DocumentGeneratorService {
     fullHtml: string,
     pageSize: 'A4' | 'Letter' | 'Legal',
     orientation: 'portrait' | 'landscape',
+    untrusted = false,
   ): Promise<Buffer> {
     let browser: Browser | null = null;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
 
     try {
       this.logger.log('Iniciando generación de PDF...');
@@ -261,16 +262,37 @@ export class DocumentGeneratorService {
       browser = await puppeteer.launch({
         headless: true,
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+        args: untrusted ? [] : ['--no-sandbox', '--disable-setuid-sandbox'],
+        ...(untrusted ? { timeout: 15000 } : {}),
       });
 
+      if (untrusted) {
+        const process = browser.process();
+        deadline = setTimeout(() => {
+          process?.kill();
+        }, 45000);
+      }
       const page = await browser.newPage();
-      await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
+      if (untrusted) {
+        await page.setJavaScriptEnabled(false);
+        await page.setRequestInterception(true);
+        page.on('request', (request) => {
+          if (/^data:image\/(png|jpeg|gif|webp);base64,/.test(request.url()))
+            void request.continue();
+          else void request.abort();
+        });
+        page.setDefaultTimeout(15000);
+      }
+      await page.setContent(fullHtml, {
+        waitUntil: 'networkidle0',
+        ...(untrusted ? { timeout: 15000 } : {}),
+      });
 
       const pdfOptions: PDFOptions = {
         format: pageSize,
         landscape: orientation === 'landscape',
         printBackground: true,
+        ...(untrusted ? { timeout: 15000 } : {}),
         margin: {
           top: '2cm',
           right: '2cm',
@@ -283,8 +305,21 @@ export class DocumentGeneratorService {
       this.logger.log('PDF generado exitosamente');
       return Buffer.from(pdfBuffer);
     } finally {
+      if (deadline) clearTimeout(deadline);
       if (browser) {
-        await browser.close();
+        if (untrusted) {
+          const process = browser.process();
+          const cleanupDeadline = setTimeout(() => {
+            process?.kill();
+          }, 3000);
+          try {
+            await browser.close();
+          } finally {
+            clearTimeout(cleanupDeadline);
+          }
+        } else {
+          await browser.close();
+        }
       }
     }
   }

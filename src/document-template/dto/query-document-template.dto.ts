@@ -20,7 +20,7 @@ export class QueryDocumentTemplateDto {
   search?: string;
 
   @ApiProperty({
-    description: 'Filtrar por subtipo de documento (DocumentType)',
+    description: 'Filtrar por tipo de documento (DocumentType)',
     required: false,
     example: 1,
   })

@@ -10,30 +10,26 @@ import {
   Query,
   ParseIntPipe,
   HttpCode,
-  NotFoundException,
   UnauthorizedException,
   StreamableFile,
 } from '@nestjs/common';
 import { ApiOperation } from '@nestjs/swagger';
+import { ConfigService } from '@nestjs/config';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { CreateBlankDocumentDto } from './dto/create-blank-document.dto';
 import { OnlyofficeService } from './onlyoffice.service';
 import { DocumentService } from '../document/document.service';
-import { StorageService } from '../storage/storage.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { extname } from 'path';
 import { createReadStream } from 'fs';
 import { Response } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
-import * as jwt from 'jsonwebtoken';
 
 @Controller('onlyoffice')
 export class OnlyofficeController {
   constructor(
     private onlyofficeService: OnlyofficeService,
     private documentService: DocumentService,
-    private storageService: StorageService,
     private prisma: PrismaService,
     private config: ConfigService,
   ) {}
@@ -70,6 +66,11 @@ export class OnlyofficeController {
       '.',
       '',
     );
+    const canEdit = await this.documentService.canEditDocument(
+      document,
+      user.sub,
+      user.role,
+    );
     return this.onlyofficeService.generateEditorConfig(
       {
         id: document.id,
@@ -78,10 +79,12 @@ export class OnlyofficeController {
         callbackHost: '',
       },
       { id: user.sub, name: user.name },
+      canEdit,
     );
   }
 
-  // Endpoint público para que OnlyOffice descargue el archivo
+  // Endpoint público para que OnlyOffice descargue el archivo. El token de
+  // emisión liga al actor y se revalida contra la política vigente.
   @Public()
   @Get('file/:documentId')
   async getFile(
@@ -89,31 +92,19 @@ export class OnlyofficeController {
     @Query('token') token: string,
     @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
-    const secret = this.config.get('ONLYOFFICE_SECRET').trim();
-
-    try {
-      const decoded = jwt.verify(token, secret) as any;
-      const tokenDocumentId = decoded.documentId;
-
-      if (tokenDocumentId !== documentId) {
-        throw new UnauthorizedException('Token inválido');
-      }
-    } catch (e: any) {
-      if (e instanceof UnauthorizedException) throw e;
+    const access = await this.onlyofficeService.resolveFileAccess(
+      documentId,
+      token,
+    );
+    if (!access) {
       throw new UnauthorizedException('Token inválido o expirado');
     }
 
-    const document = await this.prisma.document.findUnique({
-      where: { id: documentId },
-      include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
-    });
-
-    if (!document) throw new NotFoundException('Documento no encontrado');
-
-    const file = createReadStream(document.versions[0].path);
+    const { version } = access;
+    const file = createReadStream(version.path);
     res.set({
-      'Content-Type': document.versions[0].mimetype,
-      'Content-Disposition': `inline; filename="${document.versions[0].filename}"`,
+      'Content-Type': version.mimetype,
+      'Content-Disposition': `inline; filename="${version.filename}"`,
     });
 
     return new StreamableFile(file);
@@ -125,66 +116,21 @@ export class OnlyofficeController {
   async handleCallback(
     @Param('documentId', ParseIntPipe) documentId: number,
     @Body() body: any,
-    @Res() res: Response,
+    @Req() req?: any,
+    @Res() response?: Response,
+    @Query('issuance') issuance?: string,
   ) {
     try {
-      if (body.status === 2) {
-        const editorUserId = Array.isArray(body.users)
-          && typeof body.users[0] === 'string'
-          ? body.users[0]
-          : undefined;
-        const document = await this.prisma.document.findUnique({
-          where: { id: documentId },
-          include: { versions: { orderBy: { version: 'desc' }, take: 1 } },
-        });
-
-        if (!document) return res.json({ error: 1 });
-
-        const fileResponse = await fetch(body.url);
-        const buffer = Buffer.from(await fileResponse.arrayBuffer());
-
-        const fs = await import('fs');
-        fs.writeFileSync(document.versions[0].path, buffer);
-
-        const newChecksum = await this.storageService.calculateFileHash(
-          document.versions[0].path,
-        );
-        const newVersion = document.currentVersion + 1;
-
-        await this.prisma.document.update({
-          where: { id: documentId },
-          data: {
-            currentVersion: newVersion,
-          },
-        });
-
-        await this.prisma.documentVersion.create({
-          data: {
-            documentId,
-            version: newVersion,
-            filename: document.versions[0].filename,
-            mimetype: document.versions[0].mimetype,
-            storedName: document.versions[0].storedName,
-            path: document.versions[0].path,
-            size: buffer.length,
-            checksumSHA256: newChecksum,
-            comment: 'Editado con OnlyOffice',
-            createdById: document.uploadedById,
-            source: 'REEMPLAZO_MANUAL',
-          },
-        });
-
-        if (editorUserId) {
-          await this.prisma.documentAccess.create({
-            data: { documentId, userId: editorUserId, action: 'UPDATE' },
-          });
-        }
-      }
-
-      return res.json({ error: 0 });
-    } catch (error) {
-      console.error('Error en callback de OnlyOffice:', error);
-      return res.json({ error: 1 });
+      const res = response || req;
+      const result = await this.onlyofficeService.handleCallback(
+        documentId,
+        body,
+        req?.headers?.authorization,
+        issuance,
+      );
+      return res.json({ error: result?.error === 0 ? 0 : 1 });
+    } catch {
+      return (response || req).json({ error: 1 });
     }
   }
 }
