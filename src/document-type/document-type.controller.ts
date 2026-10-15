@@ -32,25 +32,25 @@ export class DocumentTypeController {
 
   @Post()
   @RequirePermission('document-types.manage')
-  @ApiOperation({ summary: 'Crear un nuevo subtipo de documento' })
-  @ApiResponse({ status: 201, description: 'Subtipo creado correctamente' })
+  @ApiOperation({ summary: 'Crear un nuevo tipo de documento' })
+  @ApiResponse({ status: 201, description: 'Tipo creado correctamente' })
   @ApiResponse({
     status: 409,
-    description: 'Ya existe un subtipo con ese nombre en la categoría',
+    description: 'Ya existe un tipo con ese nombre en la categoría',
   })
   create(@Body() dto: CreateDocumentTypeDto) {
     return this.documentTypeService.create(dto);
   }
 
   @Get()
-  @ApiOperation({ summary: 'Listar todos los subtipos de documento' })
+  @ApiOperation({ summary: 'Listar todos los tipos de documento' })
   @ApiQuery({
     name: 'categoryId',
     required: false,
     type: Number,
     description: 'Filtrar por categoría',
   })
-  @ApiResponse({ status: 200, description: 'Lista de subtipos' })
+  @ApiResponse({ status: 200, description: 'Lista de tipos' })
   findAll(@Query('categoryId') categoryId?: string) {
     return this.documentTypeService.findAll(
       categoryId ? +categoryId : undefined,
@@ -58,14 +58,14 @@ export class DocumentTypeController {
   }
 
   @Get('active')
-  @ApiOperation({ summary: 'Listar subtipos activos' })
+  @ApiOperation({ summary: 'Listar tipos activos' })
   @ApiQuery({
     name: 'categoryId',
     required: false,
     type: Number,
     description: 'Filtrar por categoría',
   })
-  @ApiResponse({ status: 200, description: 'Lista de subtipos activos' })
+  @ApiResponse({ status: 200, description: 'Lista de tipos activos' })
   findActive(@Query('categoryId') categoryId?: string) {
     return this.documentTypeService.findActive(
       categoryId ? +categoryId : undefined,
@@ -73,30 +73,30 @@ export class DocumentTypeController {
   }
 
   @Get('default')
-  @ApiOperation({ summary: 'Obtener el subtipo predeterminado activo' })
-  @ApiResponse({ status: 200, description: 'Subtipo predeterminado activo o null' })
+  @ApiOperation({ summary: 'Obtener el tipo predeterminado activo' })
+  @ApiResponse({ status: 200, description: 'Tipo predeterminado activo o null' })
   findDefault() {
     return this.documentTypeService.findDefault();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Obtener un subtipo de documento por ID' })
+  @ApiOperation({ summary: 'Obtener un tipo de documento por ID' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Subtipo encontrado' })
-  @ApiResponse({ status: 404, description: 'Subtipo no encontrado' })
+  @ApiResponse({ status: 200, description: 'Tipo encontrado' })
+  @ApiResponse({ status: 404, description: 'Tipo no encontrado' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.documentTypeService.findOne(id);
   }
 
   @Patch(':id')
   @RequirePermission('document-types.manage')
-  @ApiOperation({ summary: 'Actualizar un subtipo de documento' })
+  @ApiOperation({ summary: 'Actualizar un tipo de documento' })
   @ApiParam({ name: 'id', type: Number })
   @ApiResponse({
     status: 200,
-    description: 'Subtipo actualizado correctamente',
+    description: 'Tipo actualizado correctamente',
   })
-  @ApiResponse({ status: 404, description: 'Subtipo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Tipo no encontrado' })
   update(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateDocumentTypeDto,
@@ -106,15 +106,14 @@ export class DocumentTypeController {
 
   @Delete(':id')
   @RequirePermission('document-types.manage')
-  @ApiOperation({ summary: 'Eliminar un subtipo de documento' })
+  @ApiOperation({ summary: 'Eliminar un tipo de documento' })
   @ApiParam({ name: 'id', type: Number })
-  @ApiResponse({ status: 200, description: 'Subtipo eliminado correctamente' })
+  @ApiResponse({ status: 200, description: 'Tipo eliminado correctamente' })
   @ApiResponse({
     status: 400,
-    description:
-      'No se puede eliminar por tener documentos/plantillas asociadas',
+    description: 'No se puede eliminar por tener documentos asociados',
   })
-  @ApiResponse({ status: 404, description: 'Subtipo no encontrado' })
+  @ApiResponse({ status: 404, description: 'Tipo no encontrado' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.documentTypeService.remove(id);
   }

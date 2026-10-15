@@ -13,7 +13,7 @@ const DOCUMENT_TYPE_INCLUDE = {
     select: { id: true, name: true, color: true, icon: true },
   },
   _count: {
-    select: { documents: true, documentTemplates: true },
+    select: { documents: true },
   },
 } as const;
 
@@ -22,32 +22,31 @@ export class DocumentTypeService {
   constructor(private prisma: PrismaService) {}
 
   async create(dto: CreateDocumentTypeDto) {
-    // Verificar que la categoría existe
-    const category = await this.prisma.category.findUnique({
-      where: { id: dto.categoryId },
-    });
-    if (!category) {
-      throw new NotFoundException(
-        `Categoría con ID ${dto.categoryId} no encontrada`,
-      );
+    let category = null;
+    if (dto.categoryId != null) {
+      category = await this.prisma.category.findUnique({
+        where: { id: dto.categoryId },
+      });
+      if (!category) {
+        throw new NotFoundException(
+          `Categoría con ID ${dto.categoryId} no encontrada`,
+        );
+      }
     }
 
-    // Verificar unicidad dentro de la categoría
-    const existing = await this.prisma.documentType.findUnique({
-      where: {
-        name_categoryId: { name: dto.name, categoryId: dto.categoryId },
-      },
+    const existing = await this.prisma.documentType.findFirst({
+      where: { name: dto.name, categoryId: dto.categoryId ?? null },
     });
     if (existing) {
       throw new ConflictException(
-        `Ya existe un subtipo "${dto.name}" en la categoría "${category.name}"`,
+        `Ya existe un tipo "${dto.name}" en ${category ? `la categoría "${category.name}"` : 'los tipos sin categoría'}`,
       );
     }
 
     const isActive = dto.isActive ?? true;
     if (dto.isDefault && !isActive) {
       throw new BadRequestException(
-        'Un subtipo inactivo no puede ser el predeterminado',
+        'Un tipo inactivo no puede ser el predeterminado',
       );
     }
 
@@ -59,7 +58,6 @@ export class DocumentTypeService {
             data: { isDefault: false },
           });
         }
-
         return tx.documentType.create({
           data: { ...dto, isActive, isDefault: dto.isDefault ?? false },
           include: DOCUMENT_TYPE_INCLUDE,
@@ -68,7 +66,7 @@ export class DocumentTypeService {
     } catch (error: any) {
       if (error?.code === 'P2002') {
         throw new ConflictException(
-          'No se pudo establecer el subtipo predeterminado porque otro cambio concurrente lo estableció',
+          `Ya existe un tipo "${dto.name}" en ${category ? `la categoría "${category.name}"` : 'los tipos sin categoría'}`,
         );
       }
       throw error;
@@ -106,7 +104,7 @@ export class DocumentTypeService {
     });
     if (!documentType) {
       throw new NotFoundException(
-        `Subtipo de documento con ID ${id} no encontrado`,
+        `Tipo de documento con ID ${id} no encontrado`,
       );
     }
     return documentType;
@@ -114,58 +112,67 @@ export class DocumentTypeService {
 
   async update(id: number, dto: UpdateDocumentTypeDto) {
     const current = await this.findOne(id);
+    if (current.isDefault && dto.isActive === false) {
+      throw new BadRequestException(
+        'El tipo predeterminado no puede desactivarse',
+      );
+    }
+    if (current.isDefault && dto.isDefault === false) {
+      throw new BadRequestException(
+        'Seleccione otro tipo predeterminado antes de quitar el actual',
+      );
+    }
+    if (dto.isDefault && (dto.isActive ?? current.isActive) === false) {
+      throw new BadRequestException(
+        'Un tipo inactivo no puede ser el predeterminado',
+      );
+    }
 
     // Si cambia nombre o categoría, verificar unicidad
     if (dto.name !== undefined || dto.categoryId !== undefined) {
       const newName = dto.name ?? current.name;
-      const newCategoryId = dto.categoryId ?? current.categoryId;
+      const newCategoryId =
+        dto.categoryId !== undefined ? dto.categoryId : current.categoryId;
 
-      const conflict = await this.prisma.documentType.findUnique({
-        where: {
-          name_categoryId: { name: newName, categoryId: newCategoryId },
-        },
-      });
-      if (conflict && conflict.id !== id) {
-        const category = await this.prisma.category.findUnique({
+      if (newCategoryId != null) {
+        const categoryExists = await this.prisma.category.findUnique({
           where: { id: newCategoryId },
         });
+        if (!categoryExists) {
+          throw new NotFoundException(
+            `Categoría con ID ${newCategoryId} no encontrada`,
+          );
+        }
+      }
+
+      const conflict = await this.prisma.documentType.findFirst({
+        where: { name: newName, categoryId: newCategoryId ?? null },
+      });
+      if (conflict && conflict.id !== id) {
         throw new ConflictException(
-          `Ya existe un subtipo "${newName}" en la categoría "${category?.name}"`,
+          `Ya existe un tipo "${newName}" con la misma clasificación`,
         );
       }
     }
 
-    const isActive = dto.isActive ?? current.isActive;
-    if (dto.isDefault === true && !isActive) {
-      throw new BadRequestException(
-        'Un subtipo inactivo no puede ser el predeterminado',
-      );
-    }
-
-    const data = {
-      ...dto,
-      ...(dto.isActive === false ? { isDefault: false } : {}),
-    };
-
     try {
       return await this.prisma.$transaction(async (tx) => {
-        if (dto.isDefault === true) {
+        if (dto.isDefault) {
           await tx.documentType.updateMany({
             where: { isDefault: true, id: { not: id } },
             data: { isDefault: false },
           });
         }
-
         return tx.documentType.update({
           where: { id },
-          data,
+          data: dto,
           include: DOCUMENT_TYPE_INCLUDE,
         });
       });
     } catch (error: any) {
       if (error?.code === 'P2002') {
         throw new ConflictException(
-          'No se pudo establecer el subtipo predeterminado porque otro cambio concurrente lo estableció',
+          `Ya existe un tipo "${dto.name ?? current.name}" en la categoría seleccionada`,
         );
       }
       throw error;
@@ -175,22 +182,23 @@ export class DocumentTypeService {
   async remove(id: number) {
     await this.findOne(id);
 
+    // Plantillas are decoupled from types: the `DocumentTemplate.documentTypeId`
+    // foreign key is ON DELETE SET NULL, so deleting the type detaches its
+    // templates instead of blocking the operation. Only documents keep the
+    // type undeletable because they are the historical record.
     const counts = await this.prisma.documentType.findUnique({
       where: { id },
-      select: {
-        _count: { select: { documents: true, documentTemplates: true } },
-      },
+      select: { _count: { select: { documents: true } } },
     });
 
-    const total =
-      (counts?._count.documents ?? 0) + (counts?._count.documentTemplates ?? 0);
-    if (total > 0) {
+    const documents = counts?._count.documents ?? 0;
+    if (documents > 0) {
       throw new BadRequestException(
-        `No se puede eliminar el subtipo porque tiene ${counts!._count.documents} documento(s) y ${counts!._count.documentTemplates} plantilla(s) asociadas`,
+        `No se puede eliminar el tipo porque tiene ${documents} documento(s) asociados`,
       );
     }
 
     await this.prisma.documentType.delete({ where: { id } });
-    return { message: 'Subtipo de documento eliminado correctamente' };
+    return { message: 'Tipo de documento eliminado correctamente' };
   }
 }

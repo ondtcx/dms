@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsString,
-  IsDateString,
   IsBoolean,
   IsOptional,
   Matches,
@@ -10,17 +9,18 @@ import {
   ValidationArguments,
   Validate,
 } from 'class-validator';
+import { IsCalendarDate } from '../../document/upload-date';
 
 @ValidatorConstraint({ name: 'isStartBeforeEnd', async: false })
 class IsStartBeforeEnd implements ValidatorConstraintInterface {
   validate(startDate: string, args: ValidationArguments) {
     const dto = args.object as CreateAcademicYearDto;
     if (!dto.endDate || !startDate) return true;
-    return new Date(startDate) < new Date(dto.endDate);
+    return new Date(startDate) <= new Date(dto.endDate);
   }
 
   defaultMessage() {
-    return 'La fecha de inicio debe ser anterior a la fecha de fin';
+    return 'La fecha de inicio no puede ser posterior a la fecha de fin';
   }
 }
 
@@ -39,7 +39,7 @@ export class CreateAcademicYearDto {
     example: '2025-03-01',
     description: 'Fecha de inicio del año lectivo',
   })
-  @IsDateString()
+  @Validate(IsCalendarDate)
   @Validate(IsStartBeforeEnd)
   startDate: string;
 
@@ -47,7 +47,7 @@ export class CreateAcademicYearDto {
     example: '2026-02-28',
     description: 'Fecha de fin del año lectivo',
   })
-  @IsDateString()
+  @Validate(IsCalendarDate)
   endDate: string;
 
   @ApiPropertyOptional({

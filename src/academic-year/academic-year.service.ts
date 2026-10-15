@@ -7,6 +7,8 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAcademicYearDto } from './dto/create-academic-year.dto';
 import { UpdateAcademicYearDto } from './dto/update-academic-year.dto';
+import { calendarDate, periodDay } from '../document/upload-date';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AcademicYearService {
@@ -64,26 +66,81 @@ export class AcademicYearService {
   }
 
   async create(dto: CreateAcademicYearDto) {
-    if (dto.isCurrent) {
-      return this.prisma.$transaction(async (tx) => {
-        await tx.academicYear.updateMany({ data: { isCurrent: false } });
-        return tx.academicYear.create({ data: dto });
-      });
-    }
-    return this.prisma.academicYear.create({ data: dto });
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(20261008, 1)::text`;
+        const startDate = calendarDate(dto.startDate);
+        const endDate = calendarDate(dto.endDate);
+        await this.assertInterval(tx, startDate, endDate);
+        if (dto.isCurrent)
+          await tx.academicYear.updateMany({ data: { isCurrent: false } });
+        return tx.academicYear.create({ data: { ...dto, startDate, endDate } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
   }
 
   async update(id: number, dto: UpdateAcademicYearDto) {
-    await this.findOne(id);
+    return this.prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(20261008, 1)::text`;
+        const year = await tx.academicYear.findUnique({ where: { id } });
+        if (!year)
+          throw new NotFoundException(`Año lectivo con ID ${id} no encontrado`);
+        const startDate =
+          dto.startDate === undefined
+            ? calendarDate(periodDay(year.startDate))
+            : calendarDate(dto.startDate);
+        const endDate =
+          dto.endDate === undefined
+            ? calendarDate(periodDay(year.endDate))
+            : calendarDate(dto.endDate);
+        if (
+          periodDay(startDate) !== periodDay(year.startDate) ||
+          periodDay(endDate) !== periodDay(year.endDate)
+        ) {
+          await this.assertInterval(tx, startDate, endDate, id);
+        }
+        if (dto.isCurrent)
+          await tx.academicYear.updateMany({ data: { isCurrent: false } });
+        return tx.academicYear.update({
+          where: { id },
+          data: {
+            ...dto,
+            ...(dto.startDate === undefined ? {} : { startDate }),
+            ...(dto.endDate === undefined ? {} : { endDate }),
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted },
+    );
+  }
 
-    if (dto.isCurrent) {
-      return this.prisma.$transaction(async (tx) => {
-        await tx.academicYear.updateMany({ data: { isCurrent: false } });
-        return tx.academicYear.update({ where: { id }, data: dto });
-      });
+  private async assertInterval(
+    tx: Prisma.TransactionClient,
+    startDate: Date,
+    endDate: Date,
+    ownId?: number,
+  ) {
+    if (startDate > endDate)
+      throw new BadRequestException(
+        'La fecha de inicio no puede ser posterior a la fecha de fin',
+      );
+    const years = await tx.academicYear.findMany({
+      select: { id: true, startDate: true, endDate: true },
+    });
+    if (
+      years.some(
+        (year) =>
+          year.id !== ownId &&
+          periodDay(year.startDate) <= periodDay(endDate) &&
+          periodDay(startDate) <= periodDay(year.endDate),
+      )
+    ) {
+      throw new ConflictException(
+        'El intervalo se superpone con otro año lectivo',
+      );
     }
-
-    return this.prisma.academicYear.update({ where: { id }, data: dto });
   }
 
   async setCurrent(id: number) {
