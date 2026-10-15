@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SearchQueryDto } from './dto/search-query.dto';
-import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
+import { buildDocumentAccessFilter, buildReceptionReadSqlRestriction } from '../auth/utils/document-access.filter';
 import { UserRole } from '../auth/role.enum';
 
 @Injectable()
@@ -14,6 +15,7 @@ export class SearchService {
     const {
       query,
       categoryIds,
+      documentTypeIds,
       courseIds,
       subjectIds,
       uploadedById,
@@ -24,6 +26,7 @@ export class SearchService {
       mimetypes,
       isPublic,
       includeDeleted = false,
+      includeContent = false,
       page = 1,
       limit = 20,
       sortBy = 'relevance',
@@ -42,57 +45,34 @@ export class SearchService {
       },
     });
 
-    const accessFilter = user
-      ? buildDocumentAccessFilter({
-          ...user,
-          role: user.role as unknown as UserRole,
-          assignments: (user.roleAssignments ?? []).map(({ role }) => role),
-        })
-      : null;
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    const accessFilter = buildDocumentAccessFilter({
+      ...user,
+      role: user.role as unknown as UserRole,
+      assignments: (user.roleAssignments ?? []).map(({ role }) => role),
+    });
 
     // Construir condiciones WHERE base
-    const baseWhere: any = {};
-
-    // IDs de documentos que hacen match con la búsqueda full-text (PostgreSQL tsvector via raw)
-    let ftsIds: number[] | null = null;
-    if (query && query.trim()) {
-      const tsquery = query
-        .trim()
-        .split(/\s+/)
-        .map((term) => term.replace(/[&|!():<>*'"\\]/g, ''))
-        .filter((term) => term.length > 0)
-        .map((term) => `${term}:*`)
-        .join(' & ');
-
-      if (tsquery) {
-        const rows = await this.prisma.$queryRaw<
-          { id: number; rank: number }[]
-        >`
-          SELECT id, ts_rank("searchVector", to_tsquery('simple', ${tsquery})) AS rank
-          FROM "Document"
-          WHERE "searchVector" @@ to_tsquery('simple', ${tsquery})
-            AND "deletedAt" IS NULL
-          ORDER BY rank DESC
-        `;
-        ftsIds = rows.map((r) => Number(r.id));
-      }
-    }
-
-    if (ftsIds !== null) {
-      baseWhere.id = { in: ftsIds };
-    }
+    const baseWhere: Prisma.DocumentWhereInput = {};
 
     // Filtros de categoría
     if (categoryIds && categoryIds.length > 0) {
       baseWhere.categoryId = { in: categoryIds };
     }
 
+    if (documentTypeIds && documentTypeIds.length > 0) {
+      baseWhere.documentTypeId = { in: documentTypeIds };
+    }
+
     if (courseIds && courseIds.length > 0) {
-      baseWhere.courseId = { in: courseIds };
+      baseWhere.academic = { courseId: { in: courseIds } };
     }
 
     if (subjectIds && subjectIds.length > 0) {
-      baseWhere.subjectId = { in: subjectIds };
+      baseWhere.academic = {
+        ...(baseWhere.academic as Prisma.DocumentAcademicWhereInput),
+        subjectId: { in: subjectIds },
+      };
     }
 
     // Filtro de usuario que subió
@@ -102,30 +82,26 @@ export class SearchService {
 
     // Filtros de fecha
     if (dateFrom || dateTo) {
-      baseWhere.createdAt = {};
-      if (dateFrom) {
-        baseWhere.createdAt.gte = new Date(dateFrom);
+      const lowerBound = dateFrom ? new Date(dateFrom) : undefined;
+      const upperBound = dateTo ? new Date(dateTo) : undefined;
+      const isDateOnlyUpper = !!dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo);
+      if (upperBound && isDateOnlyUpper) {
+        // El día final completo se incluye hasta el siguiente inicio de día UTC.
+        upperBound.setUTCDate(upperBound.getUTCDate() + 1);
       }
-      if (dateTo) {
-        baseWhere.createdAt.lte = new Date(dateTo);
+      if (lowerBound && upperBound && (
+        isDateOnlyUpper ? lowerBound >= upperBound : lowerBound > upperBound
+      )) {
+        throw new BadRequestException('La fecha desde no puede ser posterior a la fecha hasta');
       }
+      baseWhere.createdAt = {
+        ...(lowerBound ? { gte: lowerBound } : {}),
+        ...(upperBound ? (isDateOnlyUpper ? { lt: upperBound } : { lte: upperBound }) : {}),
+      };
     }
 
     // Filtros de tamaño
-    if (minSize || maxSize) {
-      baseWhere.size = {};
-      if (minSize) {
-        baseWhere.size.gte = minSize;
-      }
-      if (maxSize) {
-        baseWhere.size.lte = maxSize;
-      }
-    }
-
-    // Filtro de tipo MIME
-    if (mimetypes && mimetypes.length > 0) {
-      baseWhere.mimetype = { in: mimetypes };
-    }
+    // Tamaño y MIME se filtran en SQL sobre la última versión.
 
     // Filtro de visibilidad
     if (isPublic !== undefined) {
@@ -140,83 +116,100 @@ export class SearchService {
     // Combinar filtros base con el filtro de acceso (ReBAC)
     const where = accessFilter ? { AND: [baseWhere, accessFilter] } : baseWhere;
 
-    // Construir ordenamiento
-    // Cuando sortBy=relevance y hay FTS, los IDs ya vienen ordenados por ts_rank.
-    // Prisma respetará ese orden si usamos: orderBy = [{ id: { sort: 'asc', nulls: 'last' } }]
-    // pero no podemos ordenar por rank en findMany. En su lugar mantenemos el orden del array ftsIds
-    // usando un campo estable como fallback (createdAt).
-    let orderBy: any;
-    if (sortBy === 'relevance' && ftsIds !== null) {
-      // El orden de relevancia ya está en ftsIds (por ts_rank DESC).
-      // Usamos createdAt desc como ordenamiento secundario para documentos con igual rank.
-      orderBy = [{ createdAt: sortOrder }];
-    } else {
-      orderBy = { [sortBy]: sortOrder };
-    }
-
-    // Paginación
+    // Solo se materializan IDs autorizados; SQL ordena y pagina antes de cargar documentos.
     const skip = (page - 1) * limit;
     const take = limit;
 
-    const docInclude = {
+    const docInclude: Prisma.DocumentInclude = {
       category: { select: { id: true, name: true, color: true, icon: true } },
-      section: { select: { id: true, name: true, color: true, icon: true } },
       uploadedBy: { select: { id: true, name: true, email: true } },
-      course: { select: { id: true, name: true, code: true } },
-      subject: { select: { id: true, name: true, code: true } },
-      template: { select: { id: true, name: true } },
+      academic: { include: { course: true, subject: true } },
+      templateData: { include: { template: { select: { id: true, name: true } } } },
+      versions: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 },
     };
 
-    let documents: any[];
-    let total: number;
-
-    if (ftsIds !== null && sortBy === 'relevance') {
-      // Los IDs ya están ordenados por ts_rank. Aplicamos los filtros adicionales en memoria
-      // consultando todos los docs que pasan el where (sin el id: {in:} de FTS) y cruzando.
-      // Para evitar una query gigante, filtramos el where a solo los IDs de la página y count aparte.
-
-      // Total: contar cuántos ftsIds pasan los filtros adicionales (excluye el id:{in:ftsIds})
-      const { id: _ignored, ...baseWithoutId } = baseWhere;
-      const otherFilters = accessFilter
-        ? { AND: [baseWithoutId, accessFilter] }
-        : baseWithoutId;
-
-      const passingIds =
-        ftsIds.length > 0
-          ? await this.prisma.document
-              .findMany({
-                where: { id: { in: ftsIds }, ...otherFilters },
-                select: { id: true },
-              })
-              .then((rows) => new Set(rows.map((r) => r.id)))
-          : new Set<number>();
-
-      const orderedIds = ftsIds.filter((id) => passingIds.has(id));
-      total = orderedIds.length;
-
-      const pageIds = orderedIds.slice(skip, skip + take);
-      const rawDocs =
-        pageIds.length > 0
-          ? await this.prisma.document.findMany({
-              where: { id: { in: pageIds } },
-              include: docInclude,
-            })
-          : [];
-
-      // Restaurar el orden de relevancia
-      const docMap = new Map(rawDocs.map((d) => [d.id, d]));
-      documents = pageIds.map((id) => docMap.get(id)).filter(Boolean);
-    } else {
-      [documents, total] = await Promise.all([
-        this.prisma.document.findMany({
-          where,
-          orderBy,
-          skip,
-          take,
-          include: docInclude,
-        }),
-        this.prisma.document.count({ where }),
+    const candidates = await this.prisma.document.findMany({ where, select: { id: true } });
+    let documents = [];
+    let total = 0;
+    if (candidates.length) {
+      const ids = Prisma.join(candidates.map(({ id }) => id));
+      const text = query?.trim() ?? '';
+      const metadataVector = Prisma.sql`(
+        setweight(to_tsvector('spanish', COALESCE(d.name, '') || ' ' || COALESCE(v.filename, '') || ' ' || COALESCE(d."documentNumber", '')), 'A')
+        || setweight(to_tsvector('spanish', COALESCE(d.description, '')), 'B')
+      )`;
+      const rank = text
+        ? includeContent
+          ? Prisma.sql`COALESCE(ts_rank(s."searchVector", plainto_tsquery('spanish', ${text})), 0)`
+          : Prisma.sql`COALESCE(ts_rank(${metadataVector}, plainto_tsquery('spanish', ${text})), 0)`
+        : Prisma.sql`0`;
+      const columns = {
+        relevance: text ? rank : Prisma.sql`d."createdAt"`,
+        createdAt: Prisma.sql`d."createdAt"`,
+        updatedAt: Prisma.sql`d."updatedAt"`,
+        filename: Prisma.sql`v.filename`,
+        size: Prisma.sql`v.size`,
+      };
+      const order = columns[sortBy] ?? columns.relevance;
+      const direction = sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;
+      const exactNumber = text
+        ? Prisma.sql`(LOWER(d."documentNumber") = LOWER(${text})) DESC NULLS LAST, `
+        : Prisma.sql``;
+      const orderBy = sortBy === 'relevance'
+        ? Prisma.sql`${exactNumber}${order} ${direction} NULLS LAST, d.id ASC`
+        : Prisma.sql`${order} ${direction} NULLS LAST, d.id ASC`;
+      const versionFilters = [Prisma.sql`TRUE`];
+      if (text) {
+        const pattern = `%${text.replace(/[\\%_]/g, '\\$&')}%`;
+        const alternatives = [
+          Prisma.sql`d.description ILIKE ${pattern}`,
+          Prisma.sql`d.name ILIKE ${pattern}`,
+          Prisma.sql`v.filename ILIKE ${pattern}`,
+          Prisma.sql`d."documentNumber" ILIKE ${pattern}`,
+        ];
+        if (includeContent) {
+          alternatives.push(Prisma.sql`s."extractedText" ILIKE ${pattern}`);
+          alternatives.push(Prisma.sql`s."searchVector" @@ plainto_tsquery('spanish', ${text})`);
+        }
+        versionFilters.push(Prisma.sql`(${Prisma.join(alternatives, ' OR ')})`);
+      }
+      if (minSize !== undefined) versionFilters.push(Prisma.sql`v.size >= ${minSize}`);
+      if (maxSize !== undefined) versionFilters.push(Prisma.sql`v.size <= ${maxSize}`);
+      if (mimetypes?.length) {
+        versionFilters.push(Prisma.sql`(${Prisma.join(
+          mimetypes.map((mime) => mime.endsWith('/')
+            ? Prisma.sql`starts_with(v.mimetype, ${mime})`
+            : Prisma.sql`v.mimetype = ${mime}`),
+          ' OR ',
+        )})`);
+      }
+      const selection = Prisma.sql`
+        FROM "Document" d
+        LEFT JOIN "DocumentSearch" s ON s."documentId" = d.id
+        LEFT JOIN LATERAL (
+          SELECT * FROM "DocumentVersion" WHERE "documentId" = d.id
+          ORDER BY "createdAt" DESC, id DESC LIMIT 1
+        ) v ON TRUE
+        WHERE d.id IN (${ids}) AND ${buildReceptionReadSqlRestriction(userId)}
+          AND ${Prisma.join(versionFilters, ' AND ')}
+      `;
+      const [rows, counts] = await Promise.all([
+        this.prisma.$queryRaw<{ id: number }[]>(Prisma.sql`
+          SELECT d.id ${selection}
+          ORDER BY ${orderBy}
+          LIMIT ${take} OFFSET ${skip}
+        `),
+        this.prisma.$queryRaw<{ total: bigint }[]>(Prisma.sql`SELECT COUNT(*) AS total ${selection}`),
       ]);
+      total = Number(counts[0].total);
+      if (rows.length) {
+        const rawDocs = await this.prisma.document.findMany({
+          where: { AND: [where, { id: { in: rows.map(({ id }) => id) } }] },
+          include: docInclude,
+        });
+        const docMap = new Map(rawDocs.map((doc) => [doc.id, doc]));
+        documents = rows.map(({ id }) => docMap.get(id)).filter(Boolean);
+      }
     }
 
     // Guardar en historial de búsqueda (si hay query)
@@ -249,29 +242,32 @@ export class SearchService {
       select: { id: true, role: true },
     });
 
-    const accessFilter = user
-      ? buildDocumentAccessFilter({
-          ...user,
-          role: user.role as unknown as UserRole,
-        })
-      : null;
+    if (!user) throw new UnauthorizedException('Usuario no encontrado');
+    const accessFilter = buildDocumentAccessFilter({
+      ...user,
+      role: user.role as unknown as UserRole,
+    });
 
     const suggestions = await this.prisma.document.findMany({
       where: {
-        OR: [
-          { versions: { some: { filename: { contains: query, mode: 'insensitive' } } } },
-          { description: { contains: query, mode: 'insensitive' } },
+        AND: [
+          { OR: [
+            { name: { contains: query, mode: 'insensitive' } },
+            { versions: { some: { filename: { contains: query, mode: 'insensitive' } } } },
+            { description: { contains: query, mode: 'insensitive' } },
+          ] },
+          ...(accessFilter ? [accessFilter] : []),
         ],
         deletedAt: null,
-        ...(accessFilter ?? {}),
       },
-      select: { versions: { select: { filename: true }, take: 1 }, description: true },
+      select: { name: true, versions: { select: { filename: true }, take: 1 }, description: true },
       take: limit,
       
     });
 
     const terms = new Set<string>();
     suggestions.forEach((doc) => {
+      if (doc.name?.trim()) terms.add(doc.name);
       if (doc.versions?.[0]?.filename) terms.add(doc.versions[0].filename);
       if (doc.description) terms.add(doc.description);
     });
@@ -297,6 +293,9 @@ export class SearchService {
     if (filters.minSize) relevantFilters.minSize = filters.minSize;
     if (filters.maxSize) relevantFilters.maxSize = filters.maxSize;
     if (filters.mimetypes) relevantFilters.mimetypes = filters.mimetypes;
+    if (typeof filters.includeContent === 'boolean') {
+      relevantFilters.includeContent = filters.includeContent;
+    }
 
     await this.prisma.searchHistory.create({
       data: {
@@ -339,21 +338,12 @@ export class SearchService {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const user = await this.prisma.user.findUnique({
-      where: { id: userId },
-      select: { role: true },
-    });
-
-    const isPrivileged =
-      user?.role === UserRole.ADMIN || user?.role === UserRole.RECTOR;
-
-    // ADMIN y DIRECTOR ven búsquedas populares globales.
-    // Otros roles solo ven las tendencias de sus propias búsquedas pasadas
-    // para evitar exponer queries de documentos a los que no tienen acceso.
+    // El historial no tiene relaciones a documentos para filtrar recepciones.
+    // Ningún rol puede descubrir consultas de otros usuarios por esta vía.
     const whereClause = {
       createdAt: { gte: thirtyDaysAgo },
       query: { not: '' },
-      ...(isPrivileged ? {} : { userId }),
+      userId,
     };
 
     const popularSearches = await this.prisma.searchHistory.groupBy({
