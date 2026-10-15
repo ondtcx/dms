@@ -60,4 +60,21 @@ describe('WorkflowPolicyService', () => {
       workflow: [{ assignments: [{ userId: 'u1' }] }],
     })).resolves.toBeUndefined();
   });
+
+  it('forwards the supplied transaction client to every authorization read', async () => {
+    const tx = { user: { findUnique: jest.fn() } } as any;
+
+    await (policy as any).assertPermission('u1', 'workflow.approve', tx);
+    expect(authorization.hasPermission).toHaveBeenCalledWith('u1', 'workflow.approve', tx);
+
+    authorization.hasPermission.mockClear();
+    await (policy as any).assertTransitionContext(WorkflowTransitionAction.APPROVE, 'u1', 'profesor', {
+      active: true,
+      initiatedById: 'owner',
+      currentStateOrder: 1,
+      status: WorkflowStatus.IN_PROGRESS,
+      assignments: [{ id: 4, userId: 'u1', status: WorkflowAssignmentStatus.PENDING, stageDefinition: { order: 1 } }],
+    }, undefined, null, tx);
+    expect(authorization.hasPermission).toHaveBeenCalledWith('u1', 'workflow.approve', tx);
+  });
 });
