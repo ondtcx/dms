@@ -3,6 +3,9 @@
 /node_modules
 /build
 
+# Caché incremental de TypeScript, fuera de /dist para que deleteOutDir no la borre en cada build
+/.tsbuild
+
 # Logs
 logs
 *.log
@@ -58,3 +61,11 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # .gitignore
 uploads/*
 !uploads/.gitkeep
+# Local Pi runtime state
+.atl/
+
+# Modelos OCR locales
+/ocr-models/
+
+# Local Pi runtime state
+/.pi/
