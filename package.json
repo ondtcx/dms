@@ -7,9 +7,11 @@
   "license": "UNLICENSED",
   "scripts": {
     "build": "nest build",
+    "ocr:setup": "node scripts/provision-ocr-model.mjs",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "seed": "ts-node prisma/seed.ts",
     "seed:documents": "ts-node prisma/seed-documents.ts",
+    "backfill:page-count": "ts-node scripts/backfill-page-count.ts",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -25,6 +27,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@napi-rs/canvas": "0.1.88",
     "@nestjs/common": "^10.4.15",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^10.0.0",
@@ -40,28 +43,35 @@
     "@signpdf/signpdf": "^3.3.0",
     "@types/archiver": "^7.0.0",
     "@types/bcrypt": "^5.0.2",
+    "@xmldom/xmldom": "0.9.8",
     "archiver": "^7.0.1",
     "axios": "^1.13.5",
     "bcrypt": "^5.1.1",
     "canvas": "^3.2.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
+    "docx-preview": "0.4.1",
     "docxtemplater": "^3.67.6",
     "dotenv": "^17.2.3",
+    "exceljs": "4.4.0",
     "handlebars": "^4.7.8",
     "jsonwebtoken": "^9.0.3",
+    "jszip": "3.10.2",
     "mammoth": "^1.12.2",
     "multer": "^2.0.2",
     "node-forge": "^1.4.0",
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "pdf-to-img": "^5.0.0",
+    "pdfjs-dist": "5.4.530",
     "pizzip": "^3.2.0",
     "puppeteer": "^24.34.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
+    "sanitize-html": "2.17.0",
     "sharp": "^0.34.5",
     "swagger-ui-express": "^5.0.1",
+    "tesseract.js": "7.0.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -75,6 +85,7 @@
     "@types/multer": "^2.0.0",
     "@types/node": "^20.19.24",
     "@types/puppeteer": "^5.4.7",
+    "@types/sanitize-html": "2.16.0",
     "@types/serve-static": "^2.2.0",
     "@types/supertest": "^6.0.0",
     "@types/uuid": "^10.0.0",
@@ -104,7 +115,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "isolatedModules": true
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
