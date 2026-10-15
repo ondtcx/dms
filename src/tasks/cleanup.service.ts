@@ -5,6 +5,7 @@ import { StorageService } from '../storage/storage.service';
 import { SettingsService } from '../settings/settings.service';
 import { readdirSync, statSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
+import { canUnlinkVersionBlob, DAY_MS, getVersionRetention, retentionEvidenceInclude } from '../document/document-version-retention';
 
 @Injectable()
 export class CleanupService implements OnModuleInit {
@@ -132,6 +133,90 @@ export class CleanupService implements OnModuleInit {
       );
     } catch (error) {
       this.logger.error(`❌ Error en limpieza de papelera: ${error.message}`);
+    }
+  }
+
+  /**
+   * Limpieza acotada de versiones históricas, independiente de la papelera.
+   */
+  @Cron('30 2 * * *')
+  async cleanDocumentVersions(now = new Date()) {
+    if (!this.isReady) return;
+    try {
+      const days = await this.settingsService.getAuthoritativeVersionRetentionDays();
+      if (days === null) {
+        this.logger.warn('Retención de versiones malformada; se omite la limpieza');
+        return;
+      }
+      const cutoff = new Date(now.getTime() - days * DAY_MS);
+      // Filtrar protecciones antes del límite evita que ocupen cada lote diario.
+      const candidates = await this.prisma.$queryRaw<Array<{ id: number; documentId: number }>>`
+        SELECT v.id, v."documentId"
+        FROM "DocumentVersion" v JOIN "Document" d ON d.id = v."documentId"
+        WHERE d."deletedAt" IS NULL AND v.version <> d."currentVersion"
+          AND v."supersededAt" IS NOT NULL AND v."supersededAt" <= ${cutoff}
+          AND v."preservePermanently" = false
+          AND (v."preserveUntil" IS NULL OR v."preserveUntil" <= ${now})
+          AND (v."retentionGraceUntil" IS NULL OR v."retentionGraceUntil" <= ${now})
+          AND v."workflowId" IS NULL
+          AND NOT EXISTS (SELECT 1 FROM "DocumentWorkflow" w WHERE w."documentVersionId" = v.id)
+          AND NOT EXISTS (SELECT 1 FROM "WorkflowApproval" a WHERE a."documentVersionId" = v.id)
+          AND NOT EXISTS (SELECT 1 FROM "WorkflowTransition" t WHERE t."documentVersionId" = v.id)
+        ORDER BY v."supersededAt" ASC, v.id ASC LIMIT 100
+      `;
+      for (const candidate of candidates) {
+        const deleted = await this.prisma.$transaction(async (tx) => {
+          // Orden fijo: política, documento, versión. UPDATE de configuración
+          // espera este bloqueo y las extensiones ya confirmadas se respetan.
+          const settingsRows = await tx.$queryRaw<Array<{ id: number }>>`SELECT id FROM "SystemSettings" WHERE id = 1 FOR SHARE`;
+          if (settingsRows.length !== 1) {
+            // Una fila inexistente no puede serializar una creación concurrente.
+            this.logger.warn('Configuración global no bloqueable; se conserva la versión');
+            return null;
+          }
+          const lockedDays = await this.settingsService.getAuthoritativeVersionRetentionDays(tx);
+          if (lockedDays === null) {
+            this.logger.warn('Retención de versiones malformada bajo bloqueo; se conserva la versión');
+            return null;
+          }
+          await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${candidate.documentId} FOR UPDATE`;
+          // Bloquear también la versión impide insertar referencias FK durante la comprobación.
+          await tx.$queryRaw`SELECT id FROM "DocumentVersion" WHERE id = ${candidate.id} FOR UPDATE`;
+          const document = await tx.document.findUnique({ where: { id: candidate.documentId } });
+          const version = await tx.documentVersion.findUnique({
+            where: { id: candidate.id }, include: retentionEvidenceInclude,
+          });
+          if (!document || !version || version.documentId !== candidate.documentId ||
+              !getVersionRetention(version, document, lockedDays, now).eligible) return null;
+          await tx.documentVersion.delete({ where: { id: version.id } });
+          return { id: version.id, path: version.path };
+        });
+        if (!deleted) continue;
+        // Nunca desvincular antes del commit; las referencias se comprueban globalmente.
+        try {
+          await this.prisma.$transaction(async (tx) => {
+            // Bloqueo breve global: ninguna escritura de rutas puede intercalarse
+            // entre la comprobación de referencias y la desvinculación física.
+            await tx.$executeRaw`LOCK TABLE "DocumentVersion" IN SHARE MODE`;
+            // Inventario global acotado, no filtrado por igualdad textual:
+            // rutas relativas, enlaces y diferencias de mayúsculas pueden aliasar.
+            const references = await tx.documentVersion.findMany({
+              select: { path: true }, take: 1001, orderBy: { id: 'asc' },
+            });
+            if (references.length > 1000 || !canUnlinkVersionBlob(deleted.path, references.map((row) => row.path))) {
+              this.logger.warn(`Archivo de versión ${deleted.id} conservado por referencias o identidad incierta; requiere conciliación`);
+              return;
+            }
+            if (this.storage.fileExists(deleted.path)) this.storage.deleteFile(deleted.path);
+          });
+        } catch {
+          // Sin cola persistente: un fallo deja un huérfano para conciliación operativa.
+          this.logger.warn(`No se pudo limpiar el archivo de la versión ${deleted.id}; requiere conciliación`);
+        }
+      }
+    } catch (error) {
+      this.logger.error('Falló la limpieza de versiones; no se desvinculan archivos sin commit');
+      throw error;
     }
   }
 
