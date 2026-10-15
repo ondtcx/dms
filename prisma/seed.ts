@@ -187,21 +187,6 @@ async function main() {
     documentTypes[documentType.name] = documentType.id;
   }
 
-  const configuredDefault = await prisma.documentType.findFirst({
-    where: { isDefault: true, isActive: true },
-    select: { id: true },
-  });
-  if (!configuredDefault) {
-    await prisma.documentType.updateMany({
-      where: { isDefault: true },
-      data: { isDefault: false },
-    });
-    await prisma.documentType.update({
-      where: { id: documentTypes[documentTypeData[0][0]] },
-      data: { isDefault: true },
-    });
-  }
-
   await prisma.academicYear.upsert({
     where: { name: '2025-2026' },
     update: { isCurrent: true, isActive: true },

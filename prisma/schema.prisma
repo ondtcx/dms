@@ -115,6 +115,76 @@ enum NotificationStatus {
   ARCHIVED // Archivada
 }
 
+enum DocumentChangeRequestStatus {
+  PENDING
+  IN_PROGRESS
+  CORRECTION_SUBMITTED
+  ACCEPTED
+  CANCELLED
+}
+
+model DocumentChangeRequest {
+  id Int @id @default(autoincrement())
+  documentId Int
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  requestedById String
+  requestedBy User @relation("ChangeRequestAuthor", fields: [requestedById], references: [id], onDelete: Restrict)
+  recipientId String
+  recipient User @relation("ChangeRequestRecipient", fields: [recipientId], references: [id], onDelete: Restrict)
+  status DocumentChangeRequestStatus @default(PENDING)
+  message String @db.Text
+  revision Int @default(0)
+  baseVersionId Int
+  stagedPath String?
+  filename String?
+  mimetype String?
+  size Int?
+  submittedAt DateTime?
+  decidedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([documentId, createdAt])
+  @@index([recipientId, status])
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  VIEW
+  DOWNLOAD
+  SHARE
+  REVOKE
+  SUBMIT
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+  CANCEL
+  COMPLETE
+  REASSIGN
+  RESTORE
+  ARCHIVE
+  LOGIN
+  LOGOUT
+}
+
+enum AuditResource {
+  DOCUMENT
+  DOCUMENT_VERSION
+  DOCUMENT_TEMPLATE
+  WORKFLOW
+  USER
+  ROLE
+  PERMISSION
+  DIRECTORY
+  CATEGORY
+  SECTION
+  SHARE
+  SESSION
+  SYSTEM
+}
+
 // ============ SISTEMA DE PERMISOS ============
 
 model Role {
@@ -128,6 +198,7 @@ model Role {
   assignments   UserRoleAssignment[]
   documentPermissions DocumentPermission[]
   documentShares DocumentShare[]
+  directoryParticipants DirectoryRoleParticipant[]
   createdAt     DateTime             @default(now())
   updatedAt     DateTime             @updatedAt
 
@@ -182,6 +253,7 @@ model DocumentPermission {
   // Permisos específicos
   canView   Boolean @default(true)
   canEdit   Boolean @default(false)
+  canUploadVersion Boolean @default(false)
   canDelete Boolean @default(false)
   canShare  Boolean @default(false)
 
@@ -599,7 +671,14 @@ model User {
   name     String?
   password String
   role     UserRole @default(user)
-  authRevision Int   @default(0)
+  authRevision        Int       @default(0)
+  lastActivityAt      DateTime  @default(now())
+  failedLoginAttempts Int       @default(0)
+  lockedUntil         DateTime?
+  totpSecret          String?
+  totpPendingSecret   String?
+  totpEnabled         Boolean  @default(false)
+  totpRecoveryCodeHashes Json   @default("[]")
 
   // Campos organizacionales
   phoneNumber  String?
@@ -628,6 +707,8 @@ model User {
 
   // Relaciones de notificaciones
   notifications          Notification[]
+  authoredChangeRequests DocumentChangeRequest[] @relation("ChangeRequestAuthor")
+  receivedChangeRequests DocumentChangeRequest[] @relation("ChangeRequestRecipient")
   notificationPreference NotificationPreference?
 
   // Relaciones de comentarios
@@ -657,8 +738,12 @@ model User {
   createdBatches DocumentBatch[] @relation("CreatedBatches")
 
   createdDirectories        Directory[]                @relation("DirectoryCreatedBy")
+  accessGrants AccessGrant[] @relation("AccessRecipient")
+  issuedAccessGrants AccessGrant[] @relation("AccessGrantor")
   directoryUsages           UserDirectoryUsage[]
   directoryNavigationEvents DirectoryNavigationEvent[]
+  receptionParticipations DirectoryUserParticipant[]
+  receptionDelegations DirectoryDelegate[]
 
   // Relaciones de restablecimiento de contraseña
   passwordResetTokens PasswordResetToken[]
@@ -699,27 +784,27 @@ model Category {
   documents         Document[] // Documentos de esta categoría
   workflowTemplates WorkflowTemplate[] // Templates de workflow para esta categoría
   documentTemplates DocumentTemplate[] // Plantillas de documento de esta categoría
-  documentTypes     DocumentType[] // Subtipos de documento de esta categoría
+  documentTypes     DocumentType[] // Tipos de documento de esta categoría
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   @@index([name])
 }
 
-// Subtipo de documento dentro de una categoría (ej: "Oficio Interno" dentro de "Administrativos")
+// Tipo de documento dentro de una categoría (ej: "Oficio Interno" dentro de "Administrativos")
 model DocumentType {
   id          Int      @id @default(autoincrement())
-  name        String // Nombre del subtipo (ej: "Oficio Interno", "Planificación Semanal")
-  description String? // Descripción opcional del subtipo
-  categoryId  Int // Categoría a la que pertenece este subtipo
-  category    Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name        String // Nombre del tipo (ej: "Oficio Interno", "Planificación Semanal")
+  description String? // Descripción opcional del tipo
+  categoryId  Int? // Categoría opcional a la que pertenece este tipo
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   isActive    Boolean  @default(true)
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  documents         Document[] // Documentos de este subtipo
-  documentTemplates DocumentTemplate[] // Plantillas de este subtipo
+  documents         Document[] // Documentos de este tipo
+  documentTemplates DocumentTemplate[] // Plantillas de este tipo; la FK es ON DELETE SET NULL, así que borrar el tipo las desasocia
 
   @@unique([name, categoryId]) // Mismo nombre no puede repetirse dentro de la misma categoría
   @@index([categoryId])
@@ -744,6 +829,8 @@ model Section {
 }
 
 model Document {
+  name String?
+  originDate DateTime? @db.Date
   id          Int       @id @default(autoincrement())
   description String? // Descripción del documento
   categoryId  Int? // Relación con categoría
@@ -754,8 +841,8 @@ model Document {
   search       DocumentSearch?
   templateData DocumentTemplateData?
 
-  // Subtipo de documento (jerarquía: Section → Category → DocumentType)
-  documentTypeId Int? // Subtipo del documento dentro de su categoría
+  // Tipo de documento (jerarquía: Section → Category → DocumentType)
+  documentTypeId Int? // Tipo del documento dentro de su categoría
   documentType   DocumentType? @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
 
   isPublic     Boolean           @default(false) // Si es público o privado
@@ -763,10 +850,16 @@ model Document {
   uploadedById String
 
   directoryId    Int?
+  accessGrants AccessGrant[]
+  effectiveGrants EffectiveAccessGrant[]
   directory      Directory?        @relation(fields: [directoryId], references: [id], onDelete: SetNull)
+  // El origen conserva la privacidad aunque cambie la ubicación física.
+  receptionOriginDirectoryId Int?
+  receptionOriginDirectory Directory? @relation("ReceptionOrigin", fields: [receptionOriginDirectoryId], references: [id], onDelete: Restrict)
   // Versionado
   currentVersion Int               @default(1) // Versión actual del documento
   versions       DocumentVersion[] // Historial de versiones
+      onlyofficeCallbackReceipts OnlyofficeCallbackReceipt[]
 
   // Integridad
   checksumSHA256 String? // Hash SHA256 del archivo para verificar integridad
@@ -788,6 +881,7 @@ model Document {
 
   // Notificaciones
   notifications Notification[] // Notificaciones relacionadas con este documento
+  changeRequests DocumentChangeRequest[]
 
   // Comentarios
   comments DocumentComment[] // Comentarios del documento
@@ -817,6 +911,40 @@ model Document {
   @@index([createdAt]) // Índice para ordenar por fecha
   @@index([isComposite])
   @@index([directoryId])
+  @@index([receptionOriginDirectoryId])
+}
+
+// Identidades históricas sin FK a documento/usuario: su eliminación no libera cupos.
+model ReceptionSubmission {
+  directoryId Int
+  documentId Int
+  uploadedById String
+  admittedAt DateTime @default(now())
+  directory Directory @relation(fields: [directoryId], references: [id], onDelete: Restrict)
+
+  @@id([directoryId, documentId])
+  @@index([directoryId, uploadedById])
+  @@index([documentId])
+}
+
+// Rutas opacas históricas: no dependen de la existencia del documento o autor.
+model ProtectedReceptionFile {
+  id Int @id @default(autoincrement())
+  directoryId Int
+  documentId Int
+  rawPath String
+  rawHash String @db.VarChar(32)
+  normalizedKey String
+  normalizedHash String @db.VarChar(32)
+  foldedKey String
+  foldedHash String @db.VarChar(32)
+  capturedAt DateTime @default(now())
+  directory Directory @relation(fields: [directoryId], references: [id], onDelete: Restrict)
+
+  @@unique([directoryId, documentId, rawHash])
+  @@index([normalizedHash])
+  @@index([foldedHash])
+  @@index([documentId])
 }
 
 model Directory {
@@ -829,14 +957,123 @@ model Directory {
   createdById      String
   createdBy        User                       @relation("DirectoryCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
   documents        Document[]
+  isPublic Boolean @default(false)
+  ancestors DirectoryAncestor[] @relation("AncestorDescendant")
+  descendants DirectoryAncestor[] @relation("AncestorSource")
+  accessGrants AccessGrant[]
+  effectiveGrants EffectiveAccessGrant[]
+  receptionOriginDocuments Document[] @relation("ReceptionOrigin")
+  receptionSubmissions ReceptionSubmission[]
+  protectedReceptionFiles ProtectedReceptionFile[]
   usages           UserDirectoryUsage[]
   navigationEvents DirectoryNavigationEvent[]
+  receptionEnabled Boolean @default(false)
+  singleDocumentPerParticipant Boolean @default(false)
+  userParticipants DirectoryUserParticipant[]
+  roleParticipants DirectoryRoleParticipant[]
+  delegates DirectoryDelegate[]
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
 
   @@index([parentId])
   @@index([nameNormalized])
   @@index([createdById])
+}
+
+model DirectoryAncestor {
+  ancestorId Int
+  descendantId Int
+  depth Int
+  ancestor Directory @relation("AncestorSource", fields: [ancestorId], references: [id], onDelete: Cascade)
+  descendant Directory @relation("AncestorDescendant", fields: [descendantId], references: [id], onDelete: Cascade)
+  @@id([ancestorId, descendantId])
+  @@index([descendantId, ancestorId])
+}
+
+model AccessGrant {
+  id Int @id @default(autoincrement())
+  directoryId Int?
+  directory Directory? @relation(fields: [directoryId], references: [id], onDelete: Cascade)
+  documentId Int?
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  userId String
+  user User @relation("AccessRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  grantedById String
+  grantedBy User @relation("AccessGrantor", fields: [grantedById], references: [id], onDelete: Cascade)
+  parentGrantId Int?
+  authorityDirectoryId Int?
+  parentGrant AccessGrant? @relation("GrantAuthority", fields: [parentGrantId], references: [id], onDelete: Cascade)
+  delegatedGrants AccessGrant[] @relation("GrantAuthority")
+  canView Boolean @default(true)
+  canEdit Boolean @default(false)
+  canUploadVersion Boolean @default(false)
+  canShare Boolean @default(false)
+  expiresAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([directoryId, userId])
+  @@index([documentId, userId])
+  @@index([parentGrantId])
+}
+
+// Modelo de solo lectura respaldado por una vista SQL de autoridad vigente.
+model EffectiveAccessGrant {
+  id Int @id
+  directoryId Int?
+  directory Directory? @relation(fields: [directoryId], references: [id])
+  documentId Int?
+  document Document? @relation(fields: [documentId], references: [id])
+  userId String
+  grantedById String
+  parentGrantId Int?
+  authorityDirectoryId Int?
+  sourceGrantId Int
+  sourceDirectoryId Int?
+  canView Boolean
+  canEdit Boolean
+  canUploadVersion Boolean
+  canShare Boolean
+  expiresAt DateTime?
+  createdAt DateTime
+}
+
+model DirectoryUserParticipant {
+  directoryId Int
+  userId String
+  peerRead Boolean @default(false)
+  directory Directory @relation(fields: [directoryId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([directoryId, userId])
+  @@index([userId])
+}
+
+model DirectoryRoleParticipant {
+  directoryId Int
+  roleId Int
+  peerRead Boolean @default(false)
+  directory Directory @relation(fields: [directoryId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([directoryId, roleId])
+  @@index([roleId])
+}
+
+model DirectoryDelegate {
+  directoryId Int
+  userId String
+  full Boolean @default(false)
+  configure Boolean @default(false)
+  manageParticipants Boolean @default(false)
+  readAll Boolean @default(false)
+  review Boolean @default(false)
+  manageDelegates Boolean @default(false)
+  manageStructure Boolean @default(false)
+  directory Directory @relation(fields: [directoryId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([directoryId, userId])
+  @@index([userId])
 }
 
 model UserDirectoryUsage {
@@ -920,7 +1157,7 @@ model DocumentTemplate {
   name            String          @unique // Nombre de la plantilla (ej: "Acta de Reunión")
   categoryId      Int? // Categoría a la que pertenece esta plantilla
   category        Category?       @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  documentTypeId  Int? // Subtipo de documento al que pertenece esta plantilla
+  documentTypeId  Int? // Tipo de documento al que pertenece esta plantilla
   documentType    DocumentType?   @relation(fields: [documentTypeId], references: [id], onDelete: SetNull)
   description     String? // Descripción de la plantilla
   fields          Json // Definición de campos del formulario en formato JSON
@@ -976,11 +1213,18 @@ model DocumentVersion {
   storedName     String // Nombre del archivo de esta versión
   path           String // Ruta donde está almacenada esta versión
   size           Int // Tamaño en bytes
+  pageCount      Int? // Páginas del archivo; null cuando el formato no se puede medir
   checksumSHA256 String? // Hash SHA256 de esta versión
   comment        String? // Comentario sobre los cambios en esta versión
   createdBy      User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   createdById    String // Usuario que creó esta versión
   createdAt      DateTime @default(now())
+
+  // La retención comienza al sustituir esta versión, no al crearla.
+  supersededAt        DateTime?
+  retentionGraceUntil DateTime?
+  preservePermanently Boolean   @default(false)
+  preserveUntil       DateTime?
 
   // Origen estructurado de la versión (Fix 3)
   source     DocumentVersionSource @default(REEMPLAZO_MANUAL)
@@ -992,6 +1236,8 @@ model DocumentVersion {
   approvals WorkflowApproval[]
   workflowTransitions WorkflowTransition[] @relation("TransitionDocumentVersion")
 
+  @@index([supersededAt, id])
+  @@index([path])
   @@unique([documentId, version]) // Una versión única por documento
   @@index([documentId])
   @@index([createdAt])
@@ -999,7 +1245,17 @@ model DocumentVersion {
   @@index([workflowId])
 }
 
-model DocumentAccess {
+model OnlyofficeCallbackReceipt {
+      id             String   @id @default(cuid())
+      documentId     Int
+      document       Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+      idempotencyKey String   @unique
+      createdAt      DateTime @default(now())
+
+      @@index([documentId])
+    }
+
+    model DocumentAccess {
   id         Int      @id @default(autoincrement())
   documentId Int // Documento accedido
   document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -1090,7 +1346,7 @@ model SystemSettings {
   appearance Json @default("{}")
 
   // Grupo 4 – Documentos
-  // { maxFileSizeMb, allowedMimeTypes, trashRetentionDays, maxVersionsPerDocument }
+  // { maxFileSizeMb, allowedMimeTypes, trashRetentionDays, versionRetentionDays, maxVersionsPerDocument (legado) }
   documents Json @default("{}")
 
   // Grupo 5 – Notificaciones
@@ -1098,7 +1354,7 @@ model SystemSettings {
   notifications Json @default("{}")
 
   // Grupo 6 – Seguridad
-  // { sessionTimeoutMinutes, maxLoginAttempts, require2FA }
+  // { sessionTimeoutMinutes, maxLoginAttempts } (legacy require2FA is ignored)
   security Json @default("{}")
 
   createdAt DateTime @default(now())
@@ -1224,4 +1480,35 @@ model DocumentTemplateData {
   @@index([documentId])
   @@index([templateId])
   @@index([batchId])
+}
+
+// Append-only audit trail. Stores an actor snapshot and the request origin so
+// the entry stays readable after the actor or the target document is removed.
+// It deliberately declares no relations: evidence must not depend on the
+// lifecycle of the referenced entities.
+model AuditLog {
+  id         String        @id @default(cuid())
+  action     AuditAction
+  resource   AuditResource
+  resourceId String?
+  documentId Int?
+
+  actorId    String?
+  actorEmail String?
+  actorName  String?
+  actorRole  String?
+
+  ipAddress String?
+  userAgent String?  @db.Text
+  requestId String?
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([resource, resourceId])
+  @@index([documentId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([requestId])
 }
