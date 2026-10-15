@@ -1,0 +1,66 @@
+# OpenSpec Configuration — dms-backend
+# Initialized for the backend repository; existing change artifacts are preserved.
+
+project: dms-backend
+stack:
+  - NestJS 10
+  - TypeScript
+  - Prisma 6
+  - PostgreSQL
+  - pdf-parse 2.x
+package_manager: npm
+strict_tdd: false
+
+context: >
+  Backend service for the dms full-stack document management system. The application
+  is a NestJS REST API with Prisma persistence and PostgreSQL, organized under src/.
+  Technical SDD artifacts are written in English; user-facing text and comments remain
+  Spanish according to repository guidance.
+
+testing:
+  runner:
+    framework: Jest
+    command: npm test
+  layers:
+    unit: Jest
+    integration: Supertest
+    e2e: Jest with test/jest-e2e.json
+  commands:
+    unit: npm test
+    focused: npm run test -- <path-to-spec>
+    e2e: npm run test:e2e
+  quality:
+    build: npm run build
+    lint: npm run lint
+    format: npm run format
+
+rules:
+  proposal:
+    require_problem_statement: true
+  spec:
+    require_acceptance_criteria: true
+  design:
+    require_tradeoffs: true
+  tasks:
+    protect_review_workload: true
+  apply:
+    test_command: npm test
+  verify:
+    test_command: npm test
+    build_command: npm run build
+
+phases:
+  proposal: {}
+  spec: {}
+  design: {}
+  tasks: {}
+  apply: {}
+  verify: {}
+  archive: {}
+
+session:
+  execution_mode: auto
+  artifact_store: openspec
+  delivery_strategy: ask-on-risk
+  review_budget_lines: 400
+  chain_strategy: deferred
