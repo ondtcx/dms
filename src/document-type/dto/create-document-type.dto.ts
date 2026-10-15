@@ -10,7 +10,7 @@ import {
 
 export class CreateDocumentTypeDto {
   @ApiProperty({
-    description: 'Nombre del subtipo de documento',
+    description: 'Nombre del tipo de documento',
     example: 'Oficio Interno',
   })
   @IsString()
@@ -18,24 +18,25 @@ export class CreateDocumentTypeDto {
   name: string;
 
   @ApiPropertyOptional({
-    description: 'Descripción del subtipo',
+    description: 'Descripción del tipo',
     example: 'Comunicación oficial interna entre departamentos',
   })
   @IsString()
   @IsOptional()
   description?: string;
 
-  @ApiProperty({
-    description: 'ID de la categoría a la que pertenece este subtipo',
+  @ApiPropertyOptional({
+    description: 'ID opcional de la categoría a la que pertenece este tipo',
     example: 1,
+    nullable: true,
   })
   @IsInt()
   @IsPositive()
-  @IsNotEmpty()
-  categoryId: number;
+  @IsOptional()
+  categoryId?: number | null;
 
   @ApiPropertyOptional({
-    description: 'Si el subtipo está activo',
+    description: 'Si el tipo está activo',
     example: true,
     default: true,
   })
@@ -44,7 +45,7 @@ export class CreateDocumentTypeDto {
   isActive?: boolean;
 
   @ApiPropertyOptional({
-    description: 'Si este subtipo es el tipo de documento predeterminado global',
+    description: 'Si este tipo es el tipo de documento predeterminado global',
     example: false,
     default: false,
   })

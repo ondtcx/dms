@@ -8,7 +8,6 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
   let app: INestApplication;
 
   beforeAll(async () => {
-    process.env.WORKFLOW_FEATURE_ENABLED = 'true';
     const moduleBuilder = Test.createTestingModule({ imports: [AppModule] });
     const moduleFixture = await moduleBuilder.compile();
     app = moduleFixture.createNestApplication();
@@ -22,7 +21,7 @@ const hasDatabase = Boolean(process.env.DATABASE_URL);
     ['POST', '/documents/1/workflows'],
     ['POST', '/workflows/1/transitions'],
     ['POST', '/workflows/1/assignments/1/reassign'],
-  ])('%s %s enforces the authentication boundary or rollout gate', async (method, path) => {
+  ])('%s %s enforces the authentication boundary', async (method, path) => {
     const response = await request(app.getHttpServer())[(method.toLowerCase() as 'get' | 'post')](path);
 
     expect(response.status).toBe(401);

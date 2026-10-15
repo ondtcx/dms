@@ -26,6 +26,7 @@ import { UpdateDocumentsDto } from './dto/update-documents.dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { UpdateSecurityDto } from './dto/update-security.dto';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../auth/role.enum';
 
 @ApiTags('settings')
@@ -37,8 +38,8 @@ export class SettingsController {
   @Get()
   @ApiOperation({ summary: 'Obtener configuración del sistema' })
   @ApiResponse({ status: 200, description: 'Configuración actual del sistema' })
-  getSettings() {
-    return this.settingsService.getSettings();
+  getSettings(@CurrentUser() user: any) {
+    return this.settingsService.getSettings(user);
   }
 
   @Patch('institution')
@@ -87,7 +88,7 @@ export class SettingsController {
   }
 
   @Patch('school-year')
-  @Roles(UserRole.ADMIN, UserRole.RECTOR)
+  @Roles(UserRole.ADMIN)
   @ApiOperation({ summary: 'Actualizar ciclo escolar' })
   @ApiResponse({ status: 200, description: 'Ciclo escolar actualizado' })
   updateSchoolYear(@Body() dto: UpdateSchoolYearDto) {

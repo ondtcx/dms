@@ -2,9 +2,15 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import { ReceptionFilePolicy } from './storage/reception-file.policy';
+import { installReceptionFileProtection } from './storage/reception-file.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // Permite que OnApplicationShutdown detenga y limpie trabajos OCR en curso.
+  app.enableShutdownHooks();
+  // Antes de init/listen y del registro estático; el prefijo API no protege /files.
+  installReceptionFileProtection(app, app.get(ReceptionFilePolicy));
   app.setGlobalPrefix('api');
 
   app.enableCors({

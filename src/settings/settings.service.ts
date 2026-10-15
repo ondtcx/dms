@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { existsSync, mkdirSync, unlinkSync, copyFileSync } from 'fs';
 import { join, extname } from 'path';
 import { PrismaService } from '../prisma/prisma.service';
@@ -8,6 +8,9 @@ import { UpdateAppearanceDto } from './dto/update-appearance.dto';
 import { UpdateDocumentsDto } from './dto/update-documents.dto';
 import { UpdateNotificationsDto } from './dto/update-notifications.dto';
 import { UpdateSecurityDto } from './dto/update-security.dto';
+import { UserRole } from '../auth/role.enum';
+import { authoritativeRetentionDays, versionRetentionDays } from '../document/document-version-retention';
+import { Prisma } from '@prisma/client';
 
 export interface InstitutionSettings {
   name: string;
@@ -36,6 +39,7 @@ export interface DocumentSettings {
   allowedMimeTypes: string[];
   trashRetentionDays: number;
   maxVersionsPerDocument: number;
+  versionRetentionDays: number;
 }
 
 export interface NotificationSettings {
@@ -48,6 +52,15 @@ export interface SecuritySettings {
   sessionTimeoutMinutes: number;
   maxLoginAttempts: number;
   require2FA: boolean;
+}
+
+export interface PublicSystemSettings {
+  id: number;
+  institution: InstitutionSettings;
+  schoolYear: SchoolYearSettings;
+  appearance: AppearanceSettings;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 const DEFAULT_INSTITUTION: InstitutionSettings = {
@@ -67,8 +80,8 @@ const DEFAULT_SCHOOL_YEAR: SchoolYearSettings = {
 };
 
 const DEFAULT_APPEARANCE: AppearanceSettings = {
-  primaryColor: '#3b82f6',
-  secondaryColor: '#10b981',
+  primaryColor: '#1e3a5f',
+  secondaryColor: '#047857',
   theme: 'system',
 };
 
@@ -83,6 +96,7 @@ const DEFAULT_DOCUMENTS: DocumentSettings = {
   ],
   trashRetentionDays: 30,
   maxVersionsPerDocument: 10,
+  versionRetentionDays: 30,
 };
 
 const DEFAULT_NOTIFICATIONS: NotificationSettings = {
@@ -108,10 +122,8 @@ export class SettingsService {
     }
   }
 
-  async getSettings() {
-    if (this.cache) return this.cache;
-
-    let settings = await this.prisma.systemSettings.findUnique({
+  async getSettings(user?: { role?: string }): Promise<any> {
+    let settings = this.cache ?? await this.prisma.systemSettings.findUnique({
       where: { id: 1 },
     });
 
@@ -129,7 +141,38 @@ export class SettingsService {
     }
 
     this.cache = settings;
-    return settings;
+    const currentYear = await this.prisma.academicYear.findFirst({
+      where: { isCurrent: true, isActive: true },
+      select: { name: true, startDate: true, endDate: true, isActive: true },
+    });
+    const schoolYear: SchoolYearSettings = currentYear
+      ? {
+          name: currentYear.name,
+          startDate: currentYear.startDate.toISOString(),
+          endDate: currentYear.endDate.toISOString(),
+          isActive: currentYear.isActive,
+        }
+      : { name: '', startDate: null, endDate: null, isActive: false };
+
+    const documents = {
+      ...(settings.documents as object ?? {}),
+      versionRetentionDays: versionRetentionDays(settings.documents?.versionRetentionDays),
+    };
+    return this.filterSettingsForUser({ ...settings, documents, schoolYear }, user);
+  }
+
+  private filterSettingsForUser(settings: any, user?: { role?: string }): any {
+    // Los consumidores internos omiten el usuario y requieren el registro completo.
+    if (!user || user.role === UserRole.ADMIN) return settings;
+
+    return {
+      id: settings.id,
+      institution: settings.institution,
+      schoolYear: settings.schoolYear,
+      appearance: settings.appearance,
+      createdAt: settings.createdAt,
+      updatedAt: settings.updatedAt,
+    } satisfies PublicSystemSettings;
   }
 
   async updateInstitution(dto: UpdateInstitutionDto) {
@@ -182,15 +225,10 @@ export class SettingsService {
     return { logoPath };
   }
 
-  async updateSchoolYear(dto: UpdateSchoolYearDto) {
-    const current = await this.getSettings();
-    const merged = { ...(current.schoolYear as object), ...dto };
-    const updated = await this.prisma.systemSettings.update({
-      where: { id: 1 },
-      data: { schoolYear: merged },
-    });
-    this.cache = updated;
-    return updated;
+  async updateSchoolYear(_dto: UpdateSchoolYearDto): Promise<never> {
+    throw new ConflictException(
+      'El año lectivo se administra en Años lectivos. Usa /dashboard/academic-years para actualizar el catálogo y seleccionar el año actual.',
+    );
   }
 
   async updateAppearance(dto: UpdateAppearanceDto) {
@@ -253,9 +291,40 @@ export class SettingsService {
     return (s.documents as DocumentSettings).allowedMimeTypes ?? [];
   }
 
+  async getVersionRetentionDays(): Promise<number> {
+    // Historial y respuestas de conservación también reflejan cambios de otros procesos.
+    return (await this.getAuthoritativeVersionRetentionDays()) ?? 30;
+  }
+
+  async getAuthoritativeVersionRetentionDays(
+    database: Pick<Prisma.TransactionClient, 'systemSettings'> = this.prisma,
+  ): Promise<number | null> {
+    // No consultar ni modificar la caché local para una decisión destructiva.
+    const settings = await database.systemSettings.findUnique({
+      where: { id: 1 }, select: { documents: true },
+    });
+    return authoritativeRetentionDays(settings?.documents);
+  }
+
   async getMaxVersionsPerDocument(): Promise<number> {
     const s = await this.getSettings();
     return (s.documents as DocumentSettings).maxVersionsPerDocument ?? 10;
+  }
+
+  async getSessionTimeoutMinutes(): Promise<number> {
+    const settings = await this.getSettings();
+    const value = (settings.security as Partial<SecuritySettings> | undefined)?.sessionTimeoutMinutes;
+    return this.validPositiveInteger(value) ? value : DEFAULT_SECURITY.sessionTimeoutMinutes;
+  }
+
+  async getMaxLoginAttempts(): Promise<number> {
+    const settings = await this.getSettings();
+    const value = (settings.security as Partial<SecuritySettings> | undefined)?.maxLoginAttempts;
+    return this.validPositiveInteger(value) ? value : DEFAULT_SECURITY.maxLoginAttempts;
+  }
+
+  private validPositiveInteger(value: unknown): value is number {
+    return typeof value === 'number' && Number.isInteger(value) && value > 0;
   }
 
   invalidateCache(): void {

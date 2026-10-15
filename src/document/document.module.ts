@@ -10,27 +10,37 @@ import { DocumentTemplateModule } from '../document-template/document-template.m
 import { SettingsModule } from '../settings/settings.module';
 import { DirectoryModule } from '../directory/directory.module';
 import { WorkflowModule } from '../workflow/workflow.module';
+import { OfficeContentModule } from './office-content/office-content.module';
+import { DocumentPageCountService } from './document-page-count.service';
+import { DocumentPreviewController } from './document-preview.controller';
+import { TextExtractionModule } from './text-extraction/text-extraction.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
   imports: [
+    OfficeContentModule,
+    TextExtractionModule,
     MulterModule.register({
       dest: './uploads',
     }),
     DocumentTemplateModule,
     SettingsModule,
     DirectoryModule,
+    AuditModule,
     forwardRef(() => WorkflowModule),
   ],
-  controllers: [DocumentController],
+  controllers: [DocumentController, DocumentPreviewController],
   providers: [
     DocumentService,
     ThumbnailService,
     PrismaService,
     DocumentNumberingService,
+    DocumentPageCountService,
   ],
   exports: [
     DocumentService,
     ThumbnailService,
+    DocumentPageCountService,
     DocumentNumberingService,
     DocumentModule,
   ],

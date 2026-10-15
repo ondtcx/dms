@@ -10,10 +10,12 @@ import { RolesGuard } from './guards/roles.guard';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthorizationService } from './compatibility/authorization.service';
 import { PermissionGuard } from './guards/permission.guard';
+import { SettingsModule } from '../settings/settings.module';
 
 @Module({
   imports: [
     UserModule,
+    SettingsModule,
     /* JwtModule.register({
       global: true,
       secret: jwtConstants.secret,

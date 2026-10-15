@@ -3,10 +3,14 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { UserRole } from '../auth/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
+import { DirectoryService } from '../directory/directory.service';
+import { assertWorkflowEditable } from '../document/document-workflow-edit.policy';
 import { BatchUpdateDto } from './dto/batch-update.dto';
 import { BatchDeleteDto } from './dto/batch-delete.dto';
 import { BatchExportDto } from './dto/batch-export.dto';
@@ -19,7 +23,38 @@ import { join } from 'path';
 export class BatchService {
   private readonly logger = new Logger(BatchService.name);
 
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly directory: DirectoryService,
+  ) {}
+
+  // Bloquea en orden estable todas las filas objetivo dentro de la transacción
+  // Serializable; sin este bloqueo previo los guardianes de recepción podrían
+  // leer estado obsoleto. Una lista vacía no genera SQL inválido.
+  private async lockDocuments(db: Prisma.TransactionClient, documentIds: number[]) {
+    const ids = [...new Set(documentIds)].sort((a, b) => a - b);
+    if (!ids.length) return;
+    await db.$queryRaw(
+      Prisma.sql`SELECT id FROM "Document" WHERE id IN (${Prisma.join(ids)}) ORDER BY id FOR UPDATE`,
+    );
+  }
+
+  // Toda mutación en lote comparte comprobación y escritura en una única
+  // transacción; un conflicto de serialización exige repetir la petición.
+  private async bulkTransaction<T>(
+    operation: (db: Prisma.TransactionClient) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await this.prisma.$transaction(operation, {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+      });
+    } catch (error) {
+      if ((error as { code?: string })?.code === 'P2034') {
+        throw new ConflictException('El lote cambió durante la operación. Vuelve a intentarlo');
+      }
+      throw error;
+    }
+  }
 
   /**
    * Actualización masiva de documentos
@@ -27,57 +62,75 @@ export class BatchService {
   async batchUpdate(batchUpdateDto: BatchUpdateDto, userId: string) {
     const { documentIds, ...updateData } = batchUpdateDto;
 
-    // Verificar que todos los documentos existen y el usuario tiene permisos
-    const documents = await this.prisma.document.findMany({
-      where: {
-        id: { in: documentIds },
-      },
-      select: {
-        id: true,
-        uploadedById: true,
-      },
-    });
+    return this.bulkTransaction(async (db) => {
+      await this.lockDocuments(db, documentIds);
 
-    if (documents.length !== documentIds.length) {
-      throw new NotFoundException('Algunos documentos no fueron encontrados');
-    }
+      // Verificar que todos los documentos existen y el usuario tiene permisos
+      const documents = await db.document.findMany({
+        where: {
+          id: { in: documentIds },
+        },
+        select: {
+          id: true,
+          uploadedById: true,
+          directoryId: true,
+          receptionOriginDirectoryId: true,
+        },
+      });
 
-    // Verificar permisos
-    const unauthorizedDocs = documents.filter(
-      (doc) => doc.uploadedById !== userId,
-    );
-    if (unauthorizedDocs.length > 0) {
-      // Verificar si tiene permisos en cada documento
-      for (const doc of unauthorizedDocs) {
-        const hasPermission = await this.prisma.documentPermission.findFirst({
-          where: {
-            documentId: doc.id,
-            OR: [{ userId }],
-            canEdit: true,
-          },
-        });
+      if (documents.length !== documentIds.length) {
+        throw new NotFoundException('Algunos documentos no fueron encontrados');
+      }
 
-        if (!hasPermission) {
-          throw new ForbiddenException(
-            `No tienes permiso para editar el documento ${doc.id}`,
-          );
+      // Verificar permisos ordinarios previos sin alterar su semántica
+      const unauthorizedDocs = documents.filter(
+        (doc) => doc.uploadedById !== userId,
+      );
+      if (unauthorizedDocs.length > 0) {
+        // Verificar si tiene permisos en cada documento
+        for (const doc of unauthorizedDocs) {
+          const hasPermission = await db.documentPermission.findFirst({
+            where: {
+              documentId: doc.id,
+              OR: [{ userId }],
+              canEdit: true,
+            },
+          });
+
+          if (!hasPermission) {
+            throw new ForbiddenException(
+              `No tienes permiso para editar el documento ${doc.id}`,
+            );
+          }
         }
       }
-    }
 
-    // Realizar la actualización masiva
-    const result = await this.prisma.document.updateMany({
-      where: {
-        id: { in: documentIds },
-      },
-      data: updateData,
+      // Guardián de recepción: solo el autor con participación viva. Los
+      // documentos ordinarios no se ven afectados por este candado. Para los
+      // documentos de recepción se aplica además la misma regla de edición con
+      // workflow activo que usa la actualización individual, con rol USER
+      // neutro para impedir el bypass global de ADMIN.
+      for (const doc of documents) {
+        const reception = await this.directory.assertDocumentMutation(db, doc, userId, 'edit');
+        if (reception) {
+          await assertWorkflowEditable(db, doc.id, userId, UserRole.USER);
+        }
+      }
+
+      // Realizar la actualización masiva
+      const result = await db.document.updateMany({
+        where: {
+          id: { in: documentIds },
+        },
+        data: updateData,
+      });
+
+      return {
+        success: true,
+        updated: result.count,
+        documentIds,
+      };
     });
-
-    return {
-      success: true,
-      updated: result.count,
-      documentIds,
-    };
   }
 
   /**
@@ -86,62 +139,87 @@ export class BatchService {
   async batchDelete(batchDeleteDto: BatchDeleteDto, userId: string) {
     const { documentIds, permanent } = batchDeleteDto;
 
-    // Verificar que todos los documentos existen y el usuario tiene permisos
-    const documents = await this.prisma.document.findMany({
-      where: {
-        id: { in: documentIds },
-      },
-      select: {
-        id: true,
-        uploadedById: true,
-        versions: { select: { path: true }, take: 1 },
-      },
-    });
+    return this.bulkTransaction(async (db) => {
+      await this.lockDocuments(db, documentIds);
 
-    if (documents.length !== documentIds.length) {
-      throw new NotFoundException('Algunos documentos no fueron encontrados');
-    }
-
-    // Verificar permisos
-    const unauthorizedDocs = documents.filter(
-      (doc) => doc.uploadedById !== userId,
-    );
-    if (unauthorizedDocs.length > 0) {
-      // Verificar si tiene permisos en cada documento
-      for (const doc of unauthorizedDocs) {
-        const hasPermission = await this.prisma.documentPermission.findFirst({
-          where: {
-            documentId: doc.id,
-            OR: [{ userId }],
-            canDelete: true,
-          },
-        });
-
-        if (!hasPermission) {
-          throw new ForbiddenException(
-            `No tienes permiso para eliminar el documento ${doc.id}`,
-          );
-        }
-      }
-    }
-
-    if (permanent) {
-      // Eliminación permanente
-      await this.prisma.document.deleteMany({
+      // Verificar que todos los documentos existen y el usuario tiene permisos
+      const documents = await db.document.findMany({
         where: {
           id: { in: documentIds },
         },
+        select: {
+          id: true,
+          uploadedById: true,
+          directoryId: true,
+          receptionOriginDirectoryId: true,
+        },
       });
 
-      return {
-        success: true,
-        deleted: documents.length,
-        permanent: true,
-        documentIds,
-      };
-    } else {
+      if (documents.length !== documentIds.length) {
+        throw new NotFoundException('Algunos documentos no fueron encontrados');
+      }
+
+      // Verificar permisos ordinarios previos sin alterar su semántica
+      const unauthorizedDocs = documents.filter(
+        (doc) => doc.uploadedById !== userId,
+      );
+      if (unauthorizedDocs.length > 0) {
+        // Verificar si tiene permisos en cada documento
+        for (const doc of unauthorizedDocs) {
+          const hasPermission = await db.documentPermission.findFirst({
+            where: {
+              documentId: doc.id,
+              OR: [{ userId }],
+              canDelete: true,
+            },
+          });
+
+          if (!hasPermission) {
+            throw new ForbiddenException(
+              `No tienes permiso para eliminar el documento ${doc.id}`,
+            );
+          }
+        }
+      }
+
+      if (permanent) {
+        // Rechazo íntegro: cualquier objetivo con origen o carpeta de recepción
+        // vigente impide la eliminación permanente, sin importar rol ni permisos.
+        for (const doc of documents) {
+          const scope = await this.directory.resolveDocumentReceptionScope(
+            db,
+            doc,
+            userId,
+          );
+          if (scope.reception) {
+            throw new ForbiddenException(
+              'No se puede eliminar permanentemente un documento de recepción en lote',
+            );
+          }
+        }
+
+        // Eliminación permanente
+        await db.document.deleteMany({
+          where: {
+            id: { in: documentIds },
+          },
+        });
+
+        return {
+          success: true,
+          deleted: documents.length,
+          permanent: true,
+          documentIds,
+        };
+      }
+
+      // La papelera es una retirada: solo el autor vivo y sin revisión activa.
+      for (const doc of documents) {
+        await this.directory.assertDocumentMutation(db, doc, userId, 'withdraw');
+      }
+
       // Soft delete
-      await this.prisma.document.updateMany({
+      await db.document.updateMany({
         where: {
           id: { in: documentIds },
         },
@@ -157,7 +235,7 @@ export class BatchService {
         permanent: false,
         documentIds,
       };
-    }
+    });
   }
 
   /**
@@ -179,6 +257,8 @@ export class BatchService {
         id: true,
         versions: { select: { filename: true, path: true }, take: 1 },
         uploadedById: true,
+        directoryId: true,
+        receptionOriginDirectoryId: true,
       },
     });
 
@@ -186,8 +266,21 @@ export class BatchService {
       throw new NotFoundException('No se encontraron documentos para exportar');
     }
 
-    // Verificar permisos
+    // Verificar permisos antes de crear cualquier cabecera o stream. Los
+    // documentos de recepción usan el guardián canónico de lectura (revisores y
+    // pares vivos según la política vigente) en lugar de exigir concesiones
+    // ordinarias irrelevantes; los documentos ordinarios mantienen su contrato.
+    const readDb = this.prisma as unknown as Prisma.TransactionClient;
     for (const doc of documents) {
+      const scope = await this.directory.resolveDocumentReceptionScope(
+        readDb,
+        doc,
+        userId,
+      );
+      if (scope.reception) {
+        await this.directory.assertReceptionRead(readDb, doc.id, scope);
+        continue;
+      }
       if (doc.uploadedById !== userId) {
         const hasPermission = await this.prisma.documentPermission.findFirst({
           where: {
@@ -245,62 +338,86 @@ export class BatchService {
    * Restaurar documentos eliminados (soft delete) en lote
    */
   async batchRestore(documentIds: number[], userId: string) {
-    // Verificar que todos los documentos existen y están eliminados
-    const documents = await this.prisma.document.findMany({
-      where: {
-        id: { in: documentIds },
-        deletedAt: { not: null },
-      },
-      select: {
-        id: true,
-        uploadedById: true,
-      },
-    });
+    return this.bulkTransaction(async (db) => {
+      await this.lockDocuments(db, documentIds);
 
-    if (documents.length === 0) {
-      throw new NotFoundException(
-        'No se encontraron documentos eliminados para restaurar',
+      // Verificar que todos los documentos existen y están eliminados
+      const documents = await db.document.findMany({
+        where: {
+          id: { in: documentIds },
+          deletedAt: { not: null },
+        },
+        select: {
+          id: true,
+          uploadedById: true,
+          directoryId: true,
+          receptionOriginDirectoryId: true,
+        },
+      });
+
+      if (documents.length === 0) {
+        throw new NotFoundException(
+          'No se encontraron documentos eliminados para restaurar',
+        );
+      }
+
+      // Verificar permisos ordinarios previos sin alterar su semántica
+      const unauthorizedDocs = documents.filter(
+        (doc) => doc.uploadedById !== userId,
       );
-    }
+      if (unauthorizedDocs.length > 0) {
+        for (const doc of unauthorizedDocs) {
+          const hasPermission = await db.documentPermission.findFirst({
+            where: {
+              documentId: doc.id,
+              OR: [{ userId }],
+              canEdit: true,
+            },
+          });
 
-    // Verificar permisos
-    const unauthorizedDocs = documents.filter(
-      (doc) => doc.uploadedById !== userId,
-    );
-    if (unauthorizedDocs.length > 0) {
-      for (const doc of unauthorizedDocs) {
-        const hasPermission = await this.prisma.documentPermission.findFirst({
-          where: {
-            documentId: doc.id,
-            OR: [{ userId }],
-            canEdit: true,
-          },
-        });
-
-        if (!hasPermission) {
-          throw new ForbiddenException(
-            `No tienes permiso para restaurar el documento ${doc.id}`,
-          );
+          if (!hasPermission) {
+            throw new ForbiddenException(
+              `No tienes permiso para restaurar el documento ${doc.id}`,
+            );
+          }
         }
       }
-    }
 
-    // Restaurar documentos
-    await this.prisma.document.updateMany({
-      where: {
-        id: { in: documentIds },
-      },
-      data: {
-        deletedAt: null,
-        deletedById: null,
-      },
+      // La restauración actualiza TODOS los IDs solicitados, no solo los
+      // eliminados; todo objetivo de recepción debe ser un autor vivo y sin
+      // revisión activa antes de escribir, incluso en una entrada mixta.
+      const targets = await db.document.findMany({
+        where: {
+          id: { in: documentIds },
+        },
+        select: {
+          id: true,
+          uploadedById: true,
+          directoryId: true,
+          receptionOriginDirectoryId: true,
+        },
+      });
+      for (const doc of targets) {
+        await this.directory.assertDocumentMutation(db, doc, userId, 'withdraw');
+      }
+
+      // Restaurar documentos
+      await db.document.updateMany({
+        where: {
+          id: { in: documentIds },
+        },
+        data: {
+          deletedAt: null,
+          deletedById: null,
+        },
+      });
+
+      return {
+        success: true,
+        restored: documents.length,
+        documentIds,
+      };
     });
-
-    return {
-      success: true,
-      restored: documents.length,
-      documentIds,
-    };
   }
 
   // ============ Gestión de lotes de documentos ============

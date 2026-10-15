@@ -1,355 +1,195 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# DMS Backend — API de gestión documental
 
-<p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://coveralls.io/github/nestjs/nest?branch=master" target="_blank"><img src="https://coveralls.io/repos/github/nestjs/nest/badge.svg?branch=master#9" alt="Coverage" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+API REST del sistema de gestión documental para instituciones educativas. Vive en el directorio `dms-backend/` del monorepo `dms-fullstack` y es consumida por la aplicación web `dms-frontend`.
 
-## Description
+Gestiona el ciclo completo del documento: creación y carga, tipificación, versionado, composición, plantillas, flujos de aprobación, firma electrónica, búsqueda, compartición por directorios y trazabilidad de auditoría.
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Stack
 
-## Project setup
+| Componente | Versión |
+| --- | --- |
+| Node.js | 20 (`Dockerfile`) |
+| NestJS | 10 (`@nestjs/common` 10.4, `@nestjs/core` 10, `@nestjs/platform-express` 10.4) |
+| TypeScript | 5.1 |
+| PostgreSQL + Prisma ORM | Prisma 6.2 |
+| Autenticación | `@nestjs/jwt` 11, `bcrypt` |
+| Documentación de API | `@nestjs/swagger` 8, Swagger UI |
+| Pruebas | Jest 29, Supertest |
+| Procesamiento documental | `pdf-lib`, `pdf-parse`, `mammoth`, `docxtemplater`, `exceljs`, `sharp`, `tesseract.js` |
+| Firma electrónica | `@signpdf/*`, `node-forge` |
+| Edición/visualización en línea | OnlyOffice, `docx-preview`, Puppeteer |
 
-````bash
-$ npm install
+## Requisitos previos
 
-# 🌱 Seed de Base de Datos
+- Node.js 20.
+- PostgreSQL accesible desde `DATABASE_URL`.
+- Chromium para la generación de miniaturas DOCX con Puppeteer. En desarrollo, Puppeteer descarga su propio navegador al instalar dependencias; la imagen Docker ya instala Chromium.
+- Opcional: OnlyOffice Document Server para edición en línea.
+- Opcional: modelo OCR en español, descargado con `npm run ocr:setup`.
 
-Este proyecto utiliza Prisma Seed para poblar la base de datos con datos iniciales, incluyendo el usuario administrador.
+## Puesta en marcha
 
-## Prerequisitos
-
-Asegúrate de tener instaladas las siguientes dependencias:
 ```bash
-npm install -D ts-node @types/node
-npm install dotenv
-````
+cd dms-backend
+npm install
 
-## Configuración
+# Variables de entorno
+cp .env.example .env
+# Edita .env con la conexión real a PostgreSQL y secretos propios
 
-### 1. Variables de Entorno
-
-Crea o actualiza tu archivo `.env` con las credenciales del administrador:
-
-```env
 # Base de datos
-DATABASE_URL="postgresql://user:password@localhost:5432/mydb"
-
-# JWT
-JWT_SECRET="tu-secreto-jwt"
-
-# Credenciales del Admin (para seed)
-ADMIN_EMAIL="admin@miempresa.com"
-ADMIN_PASSWORD="Admin123!"
-ADMIN_NAME="Administrador Principal"
-
-# Entorno
-NODE_ENV="development"
-```
-
-### 2. Archivo de Seed
-
-El archivo de seed se encuentra en `prisma/seed.ts` y crea:
-
-- ✅ Un usuario administrador (ADMIN)
-- ✅ Usuarios de prueba (solo en desarrollo)
-
-## Ejecución del Seed
-
-### Opción 1: Comando directo (Recomendado)
-
-```bash
-npx prisma db seed
-```
-
-### Opción 2: Script de npm
-
-```bash
+npx prisma migrate dev
 npm run seed
+
+# Servidor en modo desarrollo
+npm run start:dev
 ```
 
-### Opción 3: Con reset de base de datos
+`npm run seed` también puede ejecutarse mediante `npx prisma db seed` (configurado en la sección `prisma` de `package.json`).
 
-⚠️ **ADVERTENCIA:** Esto eliminará todos los datos existentes.
+### Datos de ejemplo del seed
+
+`prisma/seed.ts` crea o actualiza, de forma idempotente mediante `upsert`:
+
+- Usuarios institucionales de demostración con roles `ADMIN`, `RECTOR`, `VICERRECTOR`, `COORDINADOR`, `SECRETARIO` y `PROFESOR` (`prisma/seed.ts:8-30`).
+- Matriz de roles y permisos, categorías, tipos de documento, año académico y una plantilla de documento.
+
+Las credenciales de esos usuarios están definidas en `prisma/seed.ts`. `npm run seed:documents` agrega documentos de ejemplo.
+
+## Variables de entorno
+
+Tomadas de `.env.example`:
+
+| Variable | Descripción | Ejemplo |
+| --- | --- | --- |
+| `DATABASE_URL` | Cadena de conexión de PostgreSQL. Si la contraseña contiene caracteres especiales, deben ir codificados (`@` → `%40`). | `postgresql://postgres:your_password@localhost:5432/dms?schema=public` |
+| `PORT` | Puerto HTTP de la API. Si no se define, el proceso escucha en `3000` (`src/main.ts:72`). | `3001` |
+| `JWT_SECRET` | Secreto de firma de los tokens JWT (`openssl rand -hex 64`). | `your-jwt-secret-here` |
+| `JWT_EXPIRATION` | Vigencia del token emitido. | `30d` |
+| `CATALOG_AUTHORIZATION_ENABLED` | Activa la autorización respaldada por catálogo; permanece deshabilitada hasta validar paridad. | `false` |
+| `FILE_SECRET` | Secreto para URLs firmadas de archivos (`openssl rand -hex 64`). | `your-file-secret-here` |
+| `API_URL` | URL pública de la API, usada en callbacks y referencias internas. | `http://localhost:3001/api` |
+| `ONLYOFFICE_URL` | URL de OnlyOffice Document Server (opcional). | `http://localhost:8080` |
+| `ONLYOFFICE_SECRET` | Secreto compartido con OnlyOffice. | `your-onlyoffice-secret-here` |
+| `ONLYOFFICE_CALLBACK_HOST` | Host al que OnlyOffice devuelve los callbacks cuando corre en Docker. | `http://host.docker.internal:3001` |
+
+El archivo `.env` no se versiona. No publiques secretos reales en el repositorio.
+
+## Scripts disponibles
+
+| Script | Qué hace |
+| --- | --- |
+| `npm run build` | Compila con Nest CLI a `dist/`. |
+| `npm run start` | Ejecuta la aplicación sin observación de cambios. |
+| `npm run start:dev` | Ejecuta en modo desarrollo con recarga automática. |
+| `npm run start:debug` | Igual que `start:dev`, con depurador activo. |
+| `npm run start:prod` | Ejecuta el artefacto compilado (`node dist/main`). |
+| `npm run lint` | ESLint con corrección automática sobre `src`, `apps`, `libs` y `test`. |
+| `npm run format` | Prettier sobre `src/**/*.ts` y `test/**/*.ts`. |
+| `npm test` | Pruebas unitarias con Jest. |
+| `npm run test:watch` | Jest en modo observación. |
+| `npm run test:cov` | Jest con cobertura. |
+| `npm run test:debug` | Jest con inspector de Node. |
+| `npm run test:e2e` | Pruebas end-to-end con la configuración `test/jest-e2e.json`. |
+| `npm run seed` | Datos iniciales (`prisma/seed.ts`). |
+| `npm run seed:documents` | Documentos de ejemplo (`prisma/seed-documents.ts`). |
+| `npm run backfill:page-count` | Recalcula el conteo de páginas de documentos existentes. |
+| `npm run ocr:setup` | Descarga el modelo OCR en español y verifica su hash. |
+
+## Estructura del proyecto
+
+```txt
+dms-backend/
+├─ prisma/            # Esquema, migraciones y seeds
+├─ src/               # Código de la aplicación
+├─ test/              # Pruebas end-to-end y su configuración
+├─ docs/              # Documentación de OCR y búsqueda
+├─ scripts/           # Utilidades de operación (modelo OCR, backfills)
+├─ uploads/           # Archivos subidos, servidos en /files
+└─ Dockerfile
+```
+
+Módulos principales bajo `src/`:
+
+| Módulo | Responsabilidad |
+| --- | --- |
+| `auth/` | Autenticación JWT, guards y capa de compatibilidad de autorización. |
+| `user/`, `role/`, `permission/` | Usuarios, roles institucionales, permisos y asignaciones. |
+| `document/` | Documentos, versiones, contenido, miniaturas y flujo de oficina. |
+| `document-composition/` | Composición y ensamblado de documentos. |
+| `document-template/` | Plantillas de documento y datos asociados. |
+| `document-type/`, `category/`, `academic-year/` | Catálogos académicos. |
+| `workflow/` | Plantillas de flujo, etapas, transiciones y aprobaciones. |
+| `directory/` | Directorios, herencia y concesiones de acceso efectivas. |
+| `document-change-request/` | Solicitudes de cambio sobre documentos. |
+| `batch/` | Operaciones y lotes documentales. |
+| `search/` | Búsqueda de texto completo e indexación. |
+| `audit/` | Bitácora de auditoría. |
+| `notification/` | Notificaciones y preferencias por usuario. |
+| `onlyoffice/` | Edición en línea y recepción de callbacks. |
+| `storage/` | Almacenamiento de archivos y protección de archivos de recepción. |
+| `settings/` | Configuración del sistema. |
+| `tasks/` | Tareas programadas. |
+| `common/`, `config/`, `prisma/` | Utilidades transversales, configuración y acceso a datos. |
+
+## Capacidades
+
+- **Documentos y versionado**: alta, metadatos, versiones (`DocumentVersion`), comentarios, trazabilidad y papelera.
+- **Tipificación y catálogos**: categorías, tipos de documento, secciones, años académicos, cursos y materias.
+- **Plantillas**: plantillas de documento con datos y generación por lotes a partir de plantillas.
+- **Flujos de trabajo**: plantillas versionadas, etapas, transiciones, aprobaciones y eventos; incluye solicitudes de cambio.
+- **Firma electrónica**: firma de PDF con certificados P12/`node-forge`.
+- **Búsqueda**: indexación de contenido, búsqueda de texto completo y OCR en español.
+- **Compartición y permisos**: directorios con herencia, concesiones de acceso efectivas y compartición directa de documentos.
+- **Recepción de documentos**: envíos de recepción con archivos protegidos.
+- **Auditoría y notificaciones**: registro de auditoría, notificaciones y preferencias.
+- **Edición en línea**: integración con OnlyOffice y previsualización de documentos de oficina.
+
+## API y URLs locales
+
+| Recurso | URL |
+| --- | --- |
+| API (prefijo global `api`, `src/main.ts:14`) | `http://localhost:3001/api` |
+| Swagger UI (`src/main.ts:58`) | `http://localhost:3001/api/docs` |
+| Archivos subidos (`src/app.module.ts:36-39`) | `http://localhost:3001/files` |
+
+CORS habilitado con credenciales para `http://localhost:3000` (frontend), `http://localhost:8080` (OnlyOffice) y los hosts `host.docker.internal` (`src/main.ts:16-24`).
+
+La validación global de entrada usa `ValidationPipe` con `whitelist` y `forbidNonWhitelisted`, por lo que las propiedades no declaradas en los DTO se rechazan.
+
+## Pruebas
 
 ```bash
-npx prisma migrate reset
+# Suite completa de pruebas unitarias
+npm test
+
+# Un archivo de prueba específico
+npx jest --runTestsByPath src/auth/auth.service.spec.ts
+
+# Cobertura
+npm run test:cov
+
+# End-to-end
+npm run test:e2e
 ```
 
-Este comando ejecuta:
+Las pruebas unitarias viven junto al código como `*.spec.ts` dentro de `src/` (93 archivos al momento de esta documentación) y Jest las descubre con `testRegex: .*\.spec\.ts$` y `rootDir: src`. Las pruebas end-to-end están en `test/` y cubren la aplicación base, documentos, roles, flujos de trabajo, configuración centralizada y el backfill de catálogo de roles.
 
-1. Elimina la base de datos
-2. Crea una nueva base de datos
-3. Ejecuta todas las migraciones
-4. Ejecuta el seed automáticamente
-
-## Verificación
-
-Después de ejecutar el seed, deberías ver un mensaje como:
-
-```
-🌱 Iniciando seed...
-✅ Admin creado: {
-  id: 1,
-  email: 'admin@miempresa.com',
-  role: 'ADMIN'
-}
-✅ Usuario de prueba creado: {
-  id: 2,
-  email: 'user@example.com'
-}
-🎉 Seed completado!
-```
-
-## Login con el Admin
-
-Una vez creado el administrador, puedes iniciar sesión:
+## Docker
 
 ```bash
-POST http://localhost:3000/auth/login
-Content-Type: application/json
-
-{
-  "email": "admin@miempresa.com",
-  "password": "Admin123!"
-}
+docker build -t dms-backend .
+docker run --env-file .env -p 3001:3001 dms-backend
 ```
 
-**Respuesta:**
-
-```json
-{
-  "user": {
-    "id": 1,
-    "email": "admin@miempresa.com",
-    "name": "Administrador Principal",
-    "role": "ADMIN",
-    "createdAt": "2024-01-01T00:00:00.000Z"
-  },
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
-
-## Usuarios Creados por Defecto
-
-| Email                 | Password    | Rol   | Entorno          |
-| --------------------- | ----------- | ----- | ---------------- |
-| `admin@miempresa.com` | `Admin123!` | ADMIN | Todos            |
-| `user@example.com`    | `User123!`  | USER  | Solo Development |
-
-## Personalización
-
-### Cambiar credenciales del admin
-
-Edita las variables de entorno en `.env`:
-
-```env
-ADMIN_EMAIL="tu-email@empresa.com"
-ADMIN_PASSWORD="TuPasswordSegura123!"
-ADMIN_NAME="Tu Nombre"
-```
-
-Y vuelve a ejecutar:
-
-```bash
-npx prisma db seed
-```
-
-### Agregar más usuarios iniciales
-
-Edita `prisma/seed.ts` y agrega más usuarios en la función `main()`:
-
-```typescript
-const moderator = await prisma.user.upsert({
-  where: { email: 'moderator@example.com' },
-  update: {},
-  create: {
-    email: 'moderator@example.com',
-    password: await bcrypt.hash('Moderator123!', 10),
-    name: 'Moderador',
-    role: UserRole.MODERATOR,
-  },
-});
-```
-
-## Solución de Problemas
-
-### Error: "Usuario ya existe"
-
-Si el usuario admin ya existe, el seed no lo duplicará gracias a `upsert`. Para recrearlo:
-
-```bash
-# Eliminar usuario existente en Prisma Studio
-npx prisma studio
-
-# O resetear completamente la BD
-npx prisma migrate reset
-```
-
-### Error: "Cannot find module 'bcrypt'"
-
-```bash
-npm install bcrypt
-npm install -D @types/bcrypt
-```
-
-### Error: "Cannot find module 'ts-node'"
-
-```bash
-npm install -D ts-node @types/node
-```
-
-## Uso en Producción
-
-### Opción 1: Ejecutar manualmente
-
-```bash
-# En el servidor de producción
-NODE_ENV=production npx prisma db seed
-```
-
-### Opción 2: En el despliegue automático
-
-Agrega el comando al script de deploy:
-
-```json
-{
-  "scripts": {
-    "deploy": "prisma migrate deploy && prisma db seed"
-  }
-}
-```
-
-### Opción 3: Solo en primera instalación
-
-```bash
-# Ejecutar solo si no existe ningún admin
-npx prisma db seed
-```
-
-## Seguridad
-
-⚠️ **IMPORTANTE:**
-
-- Cambia la contraseña del admin inmediatamente después del primer login en producción
-- No uses contraseñas por defecto en producción
-- Mantén las credenciales en variables de entorno, nunca en el código
-- Agrega `.env` a `.gitignore`
-
-```gitignore
-# .gitignore
-.env
-.env.local
-.env.production
-```
-
-## Comandos Útiles
-
-```bash
-# Ver base de datos en navegador
-npx prisma studio
-
-# Verificar estado de migraciones
-npx prisma migrate status
-
-# Crear nueva migración
-npx prisma migrate dev --name nombre_migracion
-
-# Regenerar cliente de Prisma
-npx prisma generate
-
-# Ejecutar seed
-npx prisma db seed
-
-# Reset completo (⚠️ elimina todos los datos)
-npx prisma migrate reset
-```
-
-## Referencias
-
-- [Documentación de Prisma Seed](https://www.prisma.io/docs/guides/database/seed-database)
-- [Prisma Client API](https://www.prisma.io/docs/concepts/components/prisma-client)
-
-## Compile and run the project
-
-```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
-```
-
-## Run tests
-
-```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ npm install -g mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
-
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+La imagen parte de `node:20-bookworm-slim`, instala Chromium y sus fuentes para Puppeteer, compila el proyecto y arranca `node dist/main.js` exponiendo el puerto `3001`.
+
+## Documentación relacionada
+
+- [`docs/ocr.md`](./docs/ocr.md) — preparación del modelo OCR y comportamiento esperado.
+- [`docs/search.md`](./docs/search.md) — búsqueda de texto completo e indexación.
+- [`SWAGGER_GUIDE.md`](./SWAGGER_GUIDE.md) — uso de la documentación Swagger.
+- [`DOCUMENT_TEMPLATES_API.md`](./DOCUMENT_TEMPLATES_API.md) — API de plantillas de documento.
+- [`MIGRATION-GUIDE.md`](./MIGRATION-GUIDE.md) — guía de migración de datos.
+- [`../docs/architecture/backend.md`](../docs/architecture/backend.md) — arquitectura del backend dentro del monorepo.
+- [`../docs/development/getting-started.md`](../docs/development/getting-started.md) — puesta en marcha del monorepo completo.

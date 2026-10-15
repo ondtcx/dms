@@ -5,9 +5,14 @@ import {
   IsInt,
   IsDateString,
   IsArray,
+  IsBoolean,
+  IsIn,
   Min,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
+
+const toBoolean = ({ value }: { value: unknown }) =>
+  value === 'true' ? true : value === 'false' ? false : value;
 
 export class SearchQueryDto {
   @ApiPropertyOptional({
@@ -25,8 +30,22 @@ export class SearchQueryDto {
   })
   @IsOptional()
   @IsArray()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
   @Type(() => Number)
   categoryIds?: number[];
+
+  @ApiPropertyOptional({
+    description: 'IDs de tipos documentales institucionales',
+    type: [Number],
+    example: [1, 2],
+  })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Type(() => Number)
+  documentTypeIds?: number[];
 
   @ApiPropertyOptional({
     description: 'IDs de cursos',
@@ -35,6 +54,8 @@ export class SearchQueryDto {
   })
   @IsOptional()
   @IsArray()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
   @Type(() => Number)
   courseIds?: number[];
 
@@ -45,6 +66,8 @@ export class SearchQueryDto {
   })
   @IsOptional()
   @IsArray()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
   @Type(() => Number)
   subjectIds?: number[];
 
@@ -96,6 +119,7 @@ export class SearchQueryDto {
   })
   @IsOptional()
   @IsArray()
+  @IsString({ each: true })
   mimetypes?: string[];
 
   @ApiPropertyOptional({
@@ -103,7 +127,8 @@ export class SearchQueryDto {
     example: true,
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(toBoolean)
+  @IsBoolean()
   isPublic?: boolean;
 
   @ApiPropertyOptional({
@@ -112,8 +137,19 @@ export class SearchQueryDto {
     default: false,
   })
   @IsOptional()
-  @Type(() => Boolean)
+  @Transform(toBoolean)
+  @IsBoolean()
   includeDeleted?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Buscar también en el contenido de los documentos',
+    example: false,
+    default: false,
+  })
+  @IsOptional()
+  @Transform(toBoolean)
+  @IsBoolean()
+  includeContent?: boolean = false;
 
   @ApiPropertyOptional({
     description: 'Número de página',
@@ -145,6 +181,7 @@ export class SearchQueryDto {
   })
   @IsOptional()
   @IsString()
+  @IsIn(['relevance', 'createdAt', 'updatedAt', 'filename', 'size'])
   sortBy?: string = 'relevance';
 
   @ApiPropertyOptional({
@@ -155,5 +192,6 @@ export class SearchQueryDto {
   })
   @IsOptional()
   @IsString()
+  @IsIn(['asc', 'desc'])
   sortOrder?: 'asc' | 'desc' = 'desc';
 }

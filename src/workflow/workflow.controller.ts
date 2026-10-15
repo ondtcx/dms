@@ -1,19 +1,19 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireAnyPermission, RequirePermission } from '../auth/decorators/permission.decorator';
 import { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import { CreateWorkflowVersionDto } from './dto/create-workflow-version.dto';
+import { UpdateWorkflowDefinitionMetadataDto } from './dto/update-workflow-definition-metadata.dto';
+import { ValidateWorkflowVersionDto } from './dto/validate-workflow-version.dto';
 import { ReassignWorkflowAssignmentDto } from './dto/reassign-workflow-assignment.dto';
 import { StartWorkflowDto } from './dto/start-workflow.dto';
 import { WorkflowTransitionDto } from './dto/workflow-transition.dto';
 import { WorkflowService } from './workflow.service';
-import { WorkflowFeatureGuard } from './workflow-feature.guard';
 
 @ApiTags('workflows')
 @ApiBearerAuth('JWT-auth')
 @Controller()
-@UseGuards(WorkflowFeatureGuard)
 export class WorkflowController {
   constructor(private readonly workflowService: WorkflowService) {}
 
@@ -33,15 +33,39 @@ export class WorkflowController {
     return this.workflowService.createDefinition(dto, user.id);
   }
 
+  @Get('workflow-definitions/:id')
+  @RequirePermission('workflow.templates.manage')
+  findDefinition(@Param('id', ParseIntPipe) id: number) { return this.workflowService.findDefinition(id); }
+
+  @Patch('workflow-definitions/:id')
+  @RequirePermission('workflow.templates.manage')
+  updateMetadata(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateWorkflowDefinitionMetadataDto) {
+    return this.workflowService.updateMetadata(id, dto);
+  }
+
   @Post('workflow-definitions/:id/versions')
   @RequirePermission('workflow.templates.manage')
   createVersion(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateWorkflowVersionDto) {
     return this.workflowService.createVersion(id, dto);
   }
 
-  @Post('workflow-definitions/:id/activate')
+  @Post('workflow-definitions/:templateId/versions/:versionId/validate')
   @RequirePermission('workflow.templates.manage')
-  activate(@Param('id', ParseIntPipe) id: number) { return this.workflowService.activate(id); }
+  validateVersion(@Param('templateId', ParseIntPipe) templateId: number, @Param('versionId', ParseIntPipe) versionId: number, @Body() dto: ValidateWorkflowVersionDto) {
+    return this.workflowService.validateVersion(templateId, versionId, dto);
+  }
+
+  @Post('workflow-definitions/:templateId/versions/:versionId/activate')
+  @RequirePermission('workflow.templates.manage')
+  activate(@Param('templateId', ParseIntPipe) templateId: number, @Param('versionId', ParseIntPipe) versionId: number) {
+    return this.workflowService.activate(templateId, versionId);
+  }
+
+  @Post('workflow-definitions/:templateId/versions/:versionId/deactivate')
+  @RequirePermission('workflow.templates.manage')
+  deactivate(@Param('templateId', ParseIntPipe) templateId: number, @Param('versionId', ParseIntPipe) versionId: number) {
+    return this.workflowService.deactivate(templateId, versionId);
+  }
 
   @Post('documents/:id/workflows')
   @RequirePermission('workflow.start')

@@ -40,10 +40,13 @@ import { createReadStream, promises as fsPromises } from 'fs';
 import { DocumentService } from './document.service';
 import { ThumbnailService } from './thumbnail.service';
 import { UploadDocumentDto } from './dto/upload-document.dto';
+import { UploadMultipleDocumentsDto } from './dto/upload-multiple-documents.dto';
 import { UpdateDocumentDto } from './dto/update-document.dto';
 import { QueryDocumentDto } from './dto/query-document.dto';
 import { SaveContentDto } from './dto/save-content.dto';
 import { CalendarQueryDto } from './dto/calendar-query.dto';
+import { AuditLogQueryDto } from '../audit/dto/audit-log-query.dto';
+import { AuditAction } from '@prisma/client';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../auth/role.enum';
@@ -56,6 +59,7 @@ import { DocumentTemplateService } from '../document-template/document-template.
 import { SettingsService } from '../settings/settings.service';
 import { RequirePermission } from '../auth/decorators/permission.decorator';
 import { MoveDocumentDto } from './dto/move-document.dto';
+import { UpdateVersionRetentionDto } from './dto/update-version-retention.dto';
 import { WorkflowService } from '../workflow/workflow.service';
 import { StartWorkflowDto } from '../workflow/dto/start-workflow.dto';
 
@@ -85,8 +89,13 @@ export class DocumentController {
 
   @Get(':id/workflow-history')
   @RequirePermission('workflow.view')
-  @ApiOperation({ summary: 'Consultar el historial de workflows de un documento' })
-  getWorkflowHistory(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+  @ApiOperation({
+    summary: 'Consultar el historial de workflows de un documento',
+  })
+  getWorkflowHistory(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
     return this.workflowService.history(id, user.id, user.role);
   }
 
@@ -203,15 +212,24 @@ export class DocumentController {
       },
     },
   })
-  createFromTemplate(
+  async createFromTemplate(
     @Body() createDocumentFromTemplateDto: CreateDocumentFromTemplateDto,
     @CurrentUser() user: any,
   ) {
-    return this.documentTemplateService.createDocumentFromTemplate(
+    const document = await this.documentTemplateService.createDocumentFromTemplate(
       createDocumentFromTemplateDto,
       user.id,
       user.role,
     );
+    // Another service commits the document; the event is appended after that
+    // commit and never reverts a creation that already succeeded.
+    if (document?.id != null) {
+      await this.documentsService.recordLifecycleAudit({
+        action: AuditAction.CREATE,
+        documentId: document.id,
+      });
+    }
+    return document;
   }
 
   @Post('batch-from-template')
@@ -240,16 +258,25 @@ export class DocumentController {
   @ApiBody({
     schema: {
       type: 'object',
+      required: ['file'],
       properties: {
         file: {
           type: 'string',
           format: 'binary',
         },
         description: { type: 'string' },
+        originDate: {
+          type: 'string',
+          format: 'date',
+          description: 'Fecha de origen opcional YYYY-MM-DD',
+        },
+        directoryId: { type: 'integer' },
         isPublic: { type: 'boolean' },
         documentTypeId: {
           type: 'integer',
-          description: 'ID del tipo de documento activo',
+          nullable: true,
+          description:
+            'ID del tipo de documento activo; null u omitido representa el tipo genérico',
         },
       },
     },
@@ -266,8 +293,14 @@ export class DocumentController {
     @Body() uploadDocumentDto: UploadDocumentDto,
     @CurrentUser() user: any,
   ) {
+    if (!file) throw new BadRequestException('Selecciona un archivo');
     await this.validateFile(file);
-    return this.documentsService.upload(file, uploadDocumentDto, user.id, user.role);
+    return this.documentsService.upload(
+      file,
+      uploadDocumentDto,
+      user.id,
+      user.role,
+    );
   }
 
   @Post('upload-multiple')
@@ -276,6 +309,7 @@ export class DocumentController {
   @ApiBody({
     schema: {
       type: 'object',
+      required: ['files', 'metadata'],
       properties: {
         files: {
           type: 'array',
@@ -284,11 +318,14 @@ export class DocumentController {
             format: 'binary',
           },
         },
-        description: { type: 'string' },
-        isPublic: { type: 'boolean' },
-        documentTypeId: {
+        metadata: {
+          type: 'string',
+          description:
+            'Array JSON ordenado con description, documentTypeId y originDate opcional por archivo',
+        },
+        directoryId: {
           type: 'integer',
-          description: 'ID del tipo de documento activo común para los archivos',
+          description: 'Directorio común autorizado de destino',
         },
       },
     },
@@ -302,9 +339,11 @@ export class DocumentController {
   )
   async uploadMultiple(
     @UploadedFiles() files: Express.Multer.File[],
-    @Body() uploadDocumentDto: UploadDocumentDto,
+    @Body() uploadDocumentDto: UploadMultipleDocumentsDto,
     @CurrentUser() user: any,
   ) {
+    if (!files?.length)
+      throw new BadRequestException('Selecciona al menos un archivo');
     for (const file of files) {
       await this.validateFile(file);
     }
@@ -320,8 +359,14 @@ export class DocumentController {
   @ApiOperation({ summary: 'Mover un documento a un directorio lógico' })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({ status: 200, description: 'Documento movido' })
-  @ApiResponse({ status: 404, description: 'Documento o directorio no encontrado' })
-  @ApiResponse({ status: 403, description: 'Sin permiso para mover el documento' })
+  @ApiResponse({
+    status: 404,
+    description: 'Documento o directorio no encontrado',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin permiso para mover el documento',
+  })
   moveToDirectory(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: MoveDocumentDto,
@@ -468,12 +513,66 @@ export class DocumentController {
     );
   }
 
+  @Get(':id/audit')
+  @ApiOperation({
+    summary: 'Consultar la bitácora de auditoría de un documento',
+    description:
+      'Devuelve los eventos de auditoría del documento ordenados del más reciente al más antiguo. Requiere visibilidad vigente y ser propietario, administrador o rector.',
+  })
+  @ApiParam({ name: 'id', description: 'ID del documento' })
+  @ApiResponse({
+    status: 200,
+    description: 'Eventos de auditoría paginados, del más reciente al más antiguo',
+    schema: {
+      example: {
+        data: [
+          {
+            id: 'clxaudit0001',
+            action: 'VIEW',
+            resource: 'DOCUMENT',
+            resourceId: '42',
+            documentId: 42,
+            actorId: 'cmhtlluz80000eba0by5adzbj',
+            actorEmail: 'admin@example.com',
+            actorName: 'Administrador',
+            actorRole: 'admin',
+            ipAddress: '203.0.113.10',
+            userAgent: 'Mozilla/5.0',
+            requestId: 'req-1',
+            metadata: null,
+            createdAt: '2026-02-01T12:00:00.000Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        limit: 20,
+      },
+    },
+  })
+  @ApiResponse({ status: 401, description: 'Autenticación requerida' })
+  @ApiResponse({
+    status: 403,
+    description: 'Sin autorización para consultar la auditoría',
+  })
+  @ApiResponse({ status: 404, description: 'Documento no encontrado' })
+  getAudit(
+    @Param('id', ParseIntPipe) id: number,
+    @Query() query: AuditLogQueryDto,
+    @CurrentUser() user: any,
+  ) {
+    const auditRole = [user.role, ...(user.roles ?? [])].find(
+      role => role === UserRole.ADMIN || role === UserRole.RECTOR,
+    ) ?? user.role;
+    return this.documentsService.getAuditTrail(id, query, user.id, auditRole);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Obtener información de un documento' })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({ status: 200, description: 'Información del documento' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   findOne(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
+    // El detalle incluye capacidades, pero no registra acceso al archivo.
     return this.documentsService.findOne(id, user.id, user.role, true);
   }
 
@@ -543,7 +642,11 @@ export class DocumentController {
     const doc = await this.documentsService.findOne(id, user.id, user.role);
     const currentVersion = doc.versions?.[0];
 
-    if (!currentVersion?.path || !currentVersion.mimetype || !currentVersion.createdAt) {
+    if (
+      !currentVersion?.path ||
+      !currentVersion.mimetype ||
+      !currentVersion.createdAt
+    ) {
       throw new NotFoundException(
         'Thumbnail no disponible: el documento no tiene una versión válida',
       );
@@ -579,11 +682,13 @@ export class DocumentController {
       );
     }
 
+    // Revalidar después de generar/consultar la miniatura, antes de abrir sus bytes.
+    await this.documentsService.findOne(id, user.id, user.role);
     const file = createReadStream(thumbnailPath);
 
     res.set({
       'Content-Type': 'image/jpeg',
-      'Cache-Control': 'no-cache',
+      'Cache-Control': 'private, no-store',
     });
 
     return new StreamableFile(file);
@@ -605,17 +710,25 @@ export class DocumentController {
   })
   @ApiResponse({ status: 403, description: 'Sin permiso para editar' })
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
-  updateFromTemplate(
+  async updateFromTemplate(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateDocumentFromTemplateDto,
     @CurrentUser() user: any,
   ) {
-    return this.documentTemplateService.updateDocumentFromTemplate(
+    const document = await this.documentTemplateService.updateDocumentFromTemplate(
       id,
       dto,
       user.id,
       user.role,
     );
+    // Regeneration committed by another service: best-effort event afterwards.
+    if (document?.id != null) {
+      await this.documentsService.recordLifecycleAudit({
+        action: AuditAction.UPDATE,
+        documentId: document.id,
+      });
+    }
+    return document;
   }
 
   @Patch(':id')
@@ -718,9 +831,8 @@ export class DocumentController {
   }
 
   @Delete(':id/permanent')
-  @Roles(UserRole.ADMIN)
   @ApiOperation({
-    summary: 'Eliminar permanentemente un documento (Solo ADMIN)',
+    summary: 'Eliminar permanentemente un documento propio',
   })
   @ApiParam({ name: 'id', description: 'ID del documento' })
   @ApiResponse({
@@ -742,6 +854,17 @@ export class DocumentController {
   @ApiResponse({ status: 404, description: 'Documento no encontrado' })
   getVersions(@Param('id', ParseIntPipe) id: number, @CurrentUser() user: any) {
     return this.documentsService.getVersions(id, user.id, user.role);
+  }
+
+  @Patch(':id/versions/:version/retention')
+  @ApiOperation({ summary: 'Actualizar la conservación de una versión' })
+  updateVersionRetention(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('version', ParseIntPipe) version: number,
+    @Body() dto: UpdateVersionRetentionDto,
+    @CurrentUser() user: any,
+  ) {
+    return this.documentsService.updateVersionRetention(id, version, dto, user?.id, user?.role);
   }
 
   @Post(':id/versions/:version/restore')

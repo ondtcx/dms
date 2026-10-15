@@ -1,8 +1,8 @@
 //src/storage/storage.service.ts
 import { Injectable } from '@nestjs/common';
-import { join, dirname } from 'path';
-import { existsSync, mkdirSync, copyFileSync, unlinkSync } from 'fs';
-import { createHash } from 'crypto';
+import { join, dirname, resolve } from 'path';
+import { existsSync, mkdirSync, copyFileSync, unlinkSync, writeFileSync, readFileSync, openSync, closeSync } from 'fs';
+import { createHash, randomUUID } from 'crypto';
 import { createReadStream } from 'fs';
 
 export interface StorageLocation {
@@ -210,5 +210,28 @@ export class StorageService {
       temp: this.tempPath,
       thumbnails: this.thumbnailPath,
     };
+  }
+
+  // Fuera de uploads: ningún montaje estático puede publicar propuestas pendientes.
+  writePrivateCorrection(buffer: Buffer): string {
+    const directory = resolve(process.cwd(), 'private-storage', 'change-requests');
+    this.ensureDirectoryExists(directory);
+    const path = join(directory, randomUUID());
+    const descriptor = openSync(path, 'wx', 0o600);
+    try {
+      writeFileSync(descriptor, buffer);
+    } catch (error) {
+      closeSync(descriptor);
+      this.deleteFile(path);
+      throw error;
+    }
+    closeSync(descriptor);
+    return path;
+  }
+
+  readPrivateCorrection(path: string): Buffer {
+    const directory = resolve(process.cwd(), 'private-storage', 'change-requests');
+    if (dirname(resolve(path)) !== directory) throw new Error('Ruta privada inválida');
+    return readFileSync(path);
   }
 }

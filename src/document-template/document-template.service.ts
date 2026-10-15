@@ -6,6 +6,8 @@ import {
   Inject,
   forwardRef,
   Logger,
+  ConflictException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentGeneratorService } from './document-generator.service';
@@ -15,11 +17,19 @@ import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CreateDocumentFromTemplateDto } from './dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from './dto/update-document-from-template.dto';
 import { CreateBatchFromTemplateDto } from './dto/create-batch-from-template.dto';
+import { sharingManagerSelect, assertSharingManager, assertSharingDocumentAvailable } from '../auth/utils/document-sharing.policy';
 import { UserRole } from '../auth/role.enum';
+import { Prisma, WorkflowStatus } from '@prisma/client';
+import { randomUUID } from 'crypto';
+import { DirectoryService } from '../directory/directory.service';
 import * as fs from 'fs';
 import * as path from 'path';
 import Handlebars from 'handlebars';
 import { ThumbnailService } from '../document/thumbnail.service';
+import {
+  DocumentPageCountService,
+  type PageCountTarget,
+} from '../document/document-page-count.service';
 import { DocumentNumberingService } from '../document/document-numbering.service';
 import { SettingsService } from '../settings/settings.service';
 
@@ -49,6 +59,10 @@ export class DocumentTemplateService {
     @Inject(forwardRef(() => ThumbnailService))
     private thumbnailService: ThumbnailService,
     private settingsService: SettingsService,
+    private directoryService: DirectoryService,
+    // Metadato derivado del recuento de páginas. La inyección es opcional para
+    // que los constructores directos sigan compilando; el módulo siempre lo provee.
+    @Optional() private readonly pageCountService?: DocumentPageCountService,
   ) {}
 
   /**
@@ -115,29 +129,30 @@ export class DocumentTemplateService {
     userId: string,
   ) {
     const { documentTypeId, categoryId } = createDocumentTemplateDto;
-    const documentType = documentTypeId === undefined
-      ? await this.prisma.documentType.findFirst({
-          where: { isDefault: true, isActive: true },
-          select: { id: true, isActive: true, categoryId: true },
-          orderBy: { id: 'asc' },
-        })
-      : await this.prisma.documentType.findUnique({
-          where: { id: documentTypeId },
-          select: { id: true, isActive: true, categoryId: true },
-        });
+    // El tipo genérico es la ausencia de tipo concreto: null u omitido.
+    const documentType =
+      documentTypeId === undefined || documentTypeId === null
+        ? null
+        : await this.prisma.documentType.findUnique({
+            where: { id: documentTypeId },
+            select: { id: true, isActive: true, categoryId: true },
+          });
 
-    if (!documentType && documentTypeId === undefined) {
-      throw new BadRequestException(
-        'No hay un tipo de documento predeterminado activo configurado',
-      );
-    }
-    if (!documentType) {
+    if (
+      documentTypeId !== undefined &&
+      documentTypeId !== null &&
+      !documentType
+    ) {
       throw new BadRequestException('El tipo de documento no existe');
     }
-    if (!documentType.isActive) {
+    if (documentType && !documentType.isActive) {
       throw new BadRequestException('El tipo de documento está inactivo');
     }
-    if (categoryId !== undefined && categoryId !== documentType.categoryId) {
+    if (
+      documentType &&
+      categoryId !== undefined &&
+      categoryId !== documentType.categoryId
+    ) {
       throw new BadRequestException(
         'La categoría indicada no corresponde al tipo de documento seleccionado',
       );
@@ -146,8 +161,8 @@ export class DocumentTemplateService {
     const template = await this.prisma.documentTemplate.create({
       data: {
         ...createDocumentTemplateDto,
-        documentTypeId: documentType.id,
-        categoryId: categoryId ?? documentType.categoryId,
+        documentTypeId: documentType?.id ?? null,
+        categoryId: categoryId ?? documentType?.categoryId ?? null,
         createdById: userId,
       },
       include: {
@@ -275,6 +290,74 @@ export class DocumentTemplateService {
     return template;
   }
 
+  // Valida y resuelve el par categoría/tipo en una actualización parcial de
+  // plantilla con la misma semántica que la creación: un tipo concreto exige
+  // existencia y actividad y deriva su categoría; `null` limpia al genérico;
+  // un cambio solo de categoría no puede invalidar un tipo concreto existente.
+  private async resolveUpdateClassification(
+    template: { documentTypeId?: number | null; categoryId?: number | null },
+    updateDocumentTemplateDto: UpdateDocumentTemplateDto,
+  ): Promise<{ documentTypeId?: number | null; categoryId?: number | null }> {
+    const typeProvided = updateDocumentTemplateDto.documentTypeId !== undefined;
+    const categoryProvided =
+      updateDocumentTemplateDto.categoryId !== undefined;
+
+    if (typeProvided && updateDocumentTemplateDto.documentTypeId !== null) {
+      const documentType = await this.prisma.documentType.findUnique({
+        where: { id: updateDocumentTemplateDto.documentTypeId },
+        select: { id: true, isActive: true, categoryId: true },
+      });
+      if (!documentType) {
+        throw new BadRequestException('El tipo de documento no existe');
+      }
+      if (!documentType.isActive) {
+        throw new BadRequestException('El tipo de documento está inactivo');
+      }
+      if (
+        categoryProvided &&
+        updateDocumentTemplateDto.categoryId !== documentType.categoryId
+      ) {
+        throw new BadRequestException(
+          'La categoría indicada no corresponde al tipo de documento seleccionado',
+        );
+      }
+      return {
+        documentTypeId: documentType.id,
+        categoryId: documentType.categoryId,
+      };
+    }
+
+    if (typeProvided) {
+      return {
+        documentTypeId: null,
+        ...(categoryProvided
+          ? { categoryId: updateDocumentTemplateDto.categoryId }
+          : {}),
+      };
+    }
+
+    if (categoryProvided) {
+      const existingTypeId = template.documentTypeId ?? null;
+      if (existingTypeId !== null) {
+        const existingType = await this.prisma.documentType.findUnique({
+          where: { id: existingTypeId },
+          select: { id: true, isActive: true, categoryId: true },
+        });
+        if (
+          existingType &&
+          existingType.categoryId !== updateDocumentTemplateDto.categoryId
+        ) {
+          throw new BadRequestException(
+            'La categoría indicada no corresponde al tipo de documento seleccionado',
+          );
+        }
+      }
+      return { categoryId: updateDocumentTemplateDto.categoryId };
+    }
+
+    return {};
+  }
+
   async update(
     id: number,
     updateDocumentTemplateDto: UpdateDocumentTemplateDto,
@@ -282,10 +365,20 @@ export class DocumentTemplateService {
     userRole: UserRole,
   ) {
     const template = await this.findOne(id, userId, userRole);
+    const classification = await this.resolveUpdateClassification(
+      template,
+      updateDocumentTemplateDto,
+    );
 
     const updatedTemplate = await this.prisma.documentTemplate.update({
       where: { id },
-      data: updateDocumentTemplateDto,
+      data: {
+        ...updateDocumentTemplateDto,
+        documentTypeId: classification.documentTypeId,
+        ...(classification.categoryId !== undefined
+          ? { categoryId: classification.categoryId }
+          : {}),
+      },
       include: {
         createdBy: {
           select: { id: true, name: true, email: true, role: true },
@@ -962,6 +1055,28 @@ export class DocumentTemplateService {
     });
   }
 
+  private async assertTemplateMutation(
+    db: Prisma.TransactionClient,
+    document: Prisma.DocumentGetPayload<{ include: { directory: { select: { receptionEnabled: true } } } }>,
+    dto: UpdateDocumentFromTemplateDto, userId: string, userRole: UserRole,
+  ) {
+    await assertSharingDocumentAvailable(db, document);
+    const reception = await this.directoryService.assertDocumentMutation(db, document, userId, 'edit');
+    if (!reception && ![UserRole.ADMIN, UserRole.RECTOR].includes(userRole) && document.uploadedById !== userId)
+      throw new ForbiddenException('No tienes permiso para editar este documento');
+    if (dto.isPublic !== undefined && dto.isPublic !== document.isPublic) {
+      const manager = await db.user.findUnique({ where: { id: userId }, select: sharingManagerSelect });
+      assertSharingManager(document, manager);
+    }
+    if (!reception) return;
+    const workflow = await db.documentWorkflow.findFirst({ where: {
+      documentId: document.id, active: true,
+      status: { in: [WorkflowStatus.PENDING, WorkflowStatus.IN_PROGRESS, WorkflowStatus.CHANGES_REQUESTED] },
+    }, select: { status: true, initiatedById: true } });
+    if (workflow && !(workflow.status === WorkflowStatus.CHANGES_REQUESTED && workflow.initiatedById === userId))
+      throw new ForbiddenException('No se puede editar un documento con un workflow activo');
+  }
+
   async updateDocumentFromTemplate(
     id: number,
     dto: UpdateDocumentFromTemplateDto,
@@ -971,23 +1086,16 @@ export class DocumentTemplateService {
     // 1. Verificar que el documento existe y no está eliminado
     const document = await this.prisma.document.findUnique({
       where: { id, deletedAt: null },
-      include: { templateData: true, versions: { orderBy: { version: 'desc' }, take: 1 } },
+      include: { templateData: true, versions: { orderBy: { version: 'desc' }, take: 1 }, directory: { select: { receptionEnabled: true } } },
     });
 
     if (!document) {
       throw new NotFoundException('Documento no encontrado');
     }
 
-    // 2. Verificar ownership: el dueño, admin y director pueden editar
-    const canEdit =
-      userRole === UserRole.ADMIN ||
-      userRole === UserRole.RECTOR ||
-      document.uploadedById === userId;
-    if (!canEdit) {
-      throw new ForbiddenException(
-        'No tienes permiso para editar este documento',
-      );
-    }
+    // Revalidar antes de generar bytes; esta comprobación no autoriza la escritura final.
+    await this.assertTemplateMutation(this.prisma, document, dto, userId, userRole);
+    if (!document.versions[0]) throw new NotFoundException('Versión actual no encontrada');
 
     // 3. Verificar que el documento fue creado desde una plantilla
     if (!document.templateData?.templateId) {
@@ -1077,82 +1185,108 @@ export class DocumentTemplateService {
       mimetype = 'application/pdf';
     }
 
-    // 7. Guardar nuevo archivo en disco
+    // Guardar solo después del bloqueo y la autorización vigente; un fallo de
+    // persistencia elimina únicamente la ruta independiente de esta operación.
     const uploadsDir = path.join(process.cwd(), 'uploads');
-    if (!fs.existsSync(uploadsDir)) {
-      fs.mkdirSync(uploadsDir, { recursive: true });
-    }
-
-    const newStoredName = `${Date.now()}-${baseFilename}`;
-    const newFilePath = await this.documentGenerator.saveDocumentToFile(
-      documentBuffer,
-      newStoredName,
-      uploadsDir,
-    );
-    const fileStats = fs.statSync(newFilePath);
-
-    // 8. Crear registro de versión anterior antes de actualizar
-    const newVersion = document.currentVersion + 1;
-
-    await this.prisma.documentVersion.create({
-      data: {
-        documentId: id,
-        version: newVersion,
-        filename: dto.filename || document.versions[0].filename,
-        storedName: newStoredName,
-        mimetype,
-        size: fileStats.size,
-        path: newFilePath,
-        comment: `Versión ${newVersion} (edición por formulario)`,
-        createdById: userId,
-        source: 'REEMPLAZO_MANUAL',
-      },
-    });
-
-    // 9. Actualizar documento en BD
-    const updatedDocument = await this.prisma.document.update({
-      where: { id },
-      data: {
-        currentVersion: newVersion,
-        templateData: {
-          update: {
-            formData: dto.formData,
-          }
-        },
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
-        ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
-      },
-      include: {
-        uploadedBy: {
-          select: { id: true, name: true, email: true, role: true },
-        },
-        templateData: {
-          select: {
-            template: {
+    const newStoredName = `${randomUUID()}.${fileExtension}`;
+    let newFilePath: string | null = null;
+    let pageCountTarget: PageCountTarget | null = null;
+    let updatedDocument: any;
+    try {
+      updatedDocument = await this.prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM "Document" WHERE id = ${id} FOR UPDATE`;
+        const locked = await tx.document.findUnique({ where: { id }, include: {
+          templateData: true, versions: { orderBy: { version: 'desc' }, take: 1 }, directory: { select: { receptionEnabled: true } },
+        } });
+        if (!locked) throw new NotFoundException('Documento no encontrado');
+        await this.assertTemplateMutation(tx, locked, dto, userId, userRole);
+        if (locked.currentVersion !== document.currentVersion || locked.versions[0]?.id !== document.versions[0].id ||
+          locked.templateData?.templateId !== document.templateData?.templateId)
+          throw new ConflictException('El documento cambió durante la generación. Vuelve a intentarlo');
+        const destination = path.join(uploadsDir, newStoredName);
+        if (locked.versions.some(version => path.resolve(version.path) === path.resolve(destination)) || fs.existsSync(destination))
+          throw new ConflictException('La ruta de destino ya está en uso');
+        newFilePath = destination;
+        await this.documentGenerator.saveDocumentToFile(documentBuffer, newStoredName, uploadsDir);
+        const fileStats = fs.statSync(newFilePath);
+        const newVersion = locked.currentVersion + 1;
+        await tx.documentVersion.update({ where: { id: locked.versions[0].id }, data: { supersededAt: new Date() } });
+        const workflow = await tx.documentWorkflow.findFirst({ where: {
+          documentId: id, active: true, status: WorkflowStatus.CHANGES_REQUESTED,
+        }, select: { id: true } });
+        const version = await tx.documentVersion.create({
+          data: {
+            documentId: id,
+            version: newVersion,
+            filename: dto.filename || locked.versions[0].filename || baseFilename,
+            storedName: newStoredName,
+            mimetype,
+            size: fileStats.size,
+            path: newFilePath,
+            comment: `Versión ${newVersion} (edición por formulario)`,
+            createdById: userId,
+            source: workflow ? 'CAMBIOS_SOLICITADOS' : 'REEMPLAZO_MANUAL',
+            workflowId: workflow?.id ?? null,
+          },
+        });
+        pageCountTarget = { id: version.id, path: version.path, mimetype: version.mimetype };
+        if (workflow && version?.id) {
+          await tx.documentWorkflow.update({ where: { id: workflow.id }, data: { documentVersionId: version.id } });
+        }
+        const updated = await tx.document.update({
+          where: { id },
+          data: {
+            currentVersion: newVersion,
+            templateData: {
+              update: {
+                formData: dto.formData,
+              },
+            },
+            ...(dto.description !== undefined && { description: dto.description }),
+            ...(dto.categoryId !== undefined && { categoryId: dto.categoryId }),
+            ...(dto.isPublic !== undefined && { isPublic: dto.isPublic }),
+          },
+          include: {
+            uploadedBy: {
+              select: { id: true, name: true, email: true, role: true },
+            },
+            templateData: {
+              select: {
+                template: {
+                  select: {
+                    id: true,
+                    name: true,
+                    documentType: { select: { id: true, name: true } },
+                  },
+                },
+              },
+            },
+            category: {
               select: {
                 id: true,
                 name: true,
-                documentType: { select: { id: true, name: true } },
+                color: true,
+                icon: true,
               },
             },
           },
-        },
-        category: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            icon: true,
-          },
-        },
-      },
-    });
+        });
+        await tx.documentAccess.create({ data: { documentId: id, userId, action: 'UPDATE' } });
+        return updated;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 30000 });
+    } catch (error) {
+      if (newFilePath) {
+        try { await fs.promises.unlink(newFilePath); }
+        catch { this.logger.error('No se pudo compensar el archivo de plantilla no confirmado'); }
+      }
+      if ((error as { code?: string })?.code === 'P2034') throw new ConflictException('La autorización cambió durante la operación. Vuelve a intentarlo');
+      throw error;
+    }
 
-    // 10. Regenerar thumbnail con el nuevo archivo
+    // Un fallo posterior a la confirmación no elimina el archivo comprometido.
     try {
       await this.thumbnailService.regenerateThumbnail(
-        newFilePath,
+        newFilePath!,
         id,
         mimetype,
       );
@@ -1163,9 +1297,8 @@ export class DocumentTemplateService {
       );
     }
 
-    await this.prisma.documentAccess.create({
-      data: { documentId: id, userId, action: 'UPDATE' },
-    });
+    if (pageCountTarget)
+      this.pageCountService?.record(pageCountTarget).catch(() => {});
 
     return updatedDocument;
   }

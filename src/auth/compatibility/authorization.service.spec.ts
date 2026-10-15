@@ -9,6 +9,13 @@ describe('AuthorizationService', () => {
         name: 'User One',
         role: 'user',
         authRevision: 1,
+        lastActivityAt: new Date(),
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        totpSecret: null,
+        totpPendingSecret: null,
+        totpEnabled: false,
+        totpRecoveryCodeHashes: [],
         phoneNumber: null,
         position: null,
         createdAt: new Date(),
@@ -68,5 +75,45 @@ describe('AuthorizationService', () => {
       permissions: [],
       authRevision: 3,
     });
+  });
+
+  it('routes permission reads through the supplied transaction client, never the root connection', async () => {
+    const root: any = {
+      user: { findUnique: jest.fn().mockResolvedValue({
+        role: 'user',
+        authRevision: 1,
+        roleAssignments: [{ role: { key: 'reviewer', isActive: true, permissions: [{ permission: { key: 'workflow.approve' } }] } }],
+      }) },
+    };
+    const tx: any = { user: { findUnique: jest.fn().mockResolvedValue({
+      role: 'user',
+      authRevision: 1,
+      roleAssignments: [],
+    }) } };
+    const service = new AuthorizationService(root);
+
+    await expect((service as any).hasPermission('u1', 'workflow.approve', tx)).resolves.toBe(false);
+    expect(tx.user.findUnique).toHaveBeenCalledTimes(1);
+    expect(root.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the final transaction loses the mapping that granted the permission', async () => {
+    const root: any = {
+      user: { findUnique: jest.fn().mockResolvedValue({
+        role: 'admin',
+        authRevision: 1,
+        roleAssignments: [{ role: { key: 'reviewer', isActive: true, permissions: [{ permission: { key: 'workflow.approve' } }] } }],
+      }) },
+    };
+    const tx: any = { user: { findUnique: jest.fn().mockResolvedValue({
+      role: 'admin',
+      authRevision: 2,
+      roleAssignments: [],
+    }) } };
+    const service = new AuthorizationService(root);
+
+    await expect(service.hasPermission('u1', 'workflow.approve')).resolves.toBe(true);
+    await expect((service as any).hasPermission('u1', 'workflow.approve', tx)).resolves.toBe(false);
+    expect(root.user.findUnique).toHaveBeenCalledTimes(1);
   });
 });
