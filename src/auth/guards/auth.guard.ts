@@ -10,6 +10,7 @@ import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SettingsService } from '../../settings/settings.service';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -18,6 +19,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly settings: SettingsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -47,17 +49,37 @@ export class AuthGuard implements CanActivate {
 
       const currentUser = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { authRevision: true, role: true, email: true, name: true },
+        select: {
+          authRevision: true,
+          role: true,
+          email: true,
+          name: true,
+          lastActivityAt: true,
+        },
       });
       if (!currentUser) throw new UnauthorizedException('User no longer exists');
       if (payload.authRevision !== undefined && payload.authRevision !== currentUser.authRevision) {
         throw new UnauthorizedException('Authorization state is outdated');
       }
 
+      const timeoutMinutes = await this.settings.getSessionTimeoutMinutes();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() - timeoutMinutes * 60_000);
+      if (currentUser.lastActivityAt < expiresAt) {
+        throw new UnauthorizedException('Session expired due to inactivity');
+      }
+
+      // Use the request start time as the update value so concurrent requests cannot move activity backwards.
+      await this.prisma.user.updateMany({
+        where: { id: payload.sub, lastActivityAt: { lt: now } },
+        data: { lastActivityAt: now },
+      });
+
       request['user'] = {
         ...payload,
         id: payload.sub,
         email: currentUser.email,
+        name: currentUser.name,
         role: currentUser.role,
         authRevision: currentUser.authRevision,
       };

@@ -63,6 +63,23 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Get('2fa/status')
+  @ApiBearerAuth('JWT-auth')
+  getTotpStatus(@CurrentUser() user: any) { return this.authService.getTotpStatus(user.id); }
+
+  @Post('2fa/setup')
+  @ApiBearerAuth('JWT-auth')
+  setupTotp(@CurrentUser() user: any) { return this.authService.setupTotp(user.id); }
+
+  @Post('2fa/enable')
+  @ApiBearerAuth('JWT-auth')
+  enableTotp(@CurrentUser() user: any, @Body('code') code: string) { return this.authService.enableTotp(user.id, code); }
+
+  @Post('2fa/disable')
+  @ApiBearerAuth('JWT-auth')
+  @ApiResponse({ status: 400, description: 'Código inválido o 2FA no está habilitado' })
+  disableTotp(@CurrentUser() user: any, @Body('code') code: string) { return this.authService.disableTotp(user.id, code); }
+
   @Post('register')
   @Roles(UserRole.ADMIN)
   @HttpCode(HttpStatus.CREATED)

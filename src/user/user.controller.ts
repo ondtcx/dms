@@ -19,6 +19,7 @@ import {
 import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireAnyPermission, RequirePermission } from '../auth/decorators/permission.decorator';
 
@@ -93,7 +94,7 @@ export class UserController {
   })
   async updateMyProfile(
     @CurrentUser() user: any,
-    @Body() updateUserDto: UpdateUserDto,
+    @Body() updateUserDto: UpdateMyProfileDto,
   ) {
     return this.userService.update(user.sub, updateUserDto);
   }

@@ -51,6 +51,10 @@ export class GrantDocumentPermissionDto {
   @IsOptional()
   canEdit?: boolean;
 
+  @IsBoolean()
+  @IsOptional()
+  canUploadVersion?: boolean;
+
   @ApiPropertyOptional({
     description: 'Permiso de eliminación',
     example: false,

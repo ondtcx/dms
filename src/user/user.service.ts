@@ -2,12 +2,18 @@ import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { User } from '@prisma/client';
+import { Prisma, User, UserRole } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
+
+type PublicUser = Omit<User, 'password' | 'failedLoginAttempts' | 'lockedUntil' | 'lastActivityAt' | 'totpSecret' | 'totpPendingSecret' | 'totpEnabled' | 'totpRecoveryCodeHashes'> & {
+  catalogRoles?: { id: number; key: string; label: string; isActive: boolean }[];
+};
 
 const userProjection = {
   id: true,
@@ -33,7 +39,11 @@ function toUserProjection<T extends { roleAssignments?: { role: unknown }[] }>(u
 export class UserService {
   constructor(private prisma: PrismaService) {}
 
-  async create(user: CreateUserDto): Promise<Omit<User, 'password'>> {
+  async create(user: CreateUserDto): Promise<PublicUser> {
+    const { catalogRoleId, ...legacyUser } = user;
+    if (catalogRoleId !== undefined && (!Number.isSafeInteger(catalogRoleId) || catalogRoleId < 1)) {
+      throw new BadRequestException('Selecciona un único ID de rol válido');
+    }
     const existingUser = await this.prisma.user.findUnique({
       where: { email: user.email },
     });
@@ -44,21 +54,42 @@ export class UserService {
 
     const hashedPassword = await bcrypt.hash(user.password, 10);
 
+    if (catalogRoleId !== undefined) {
+      return this.prisma.$transaction(
+        async (tx) => {
+          const role = await tx.role.findUnique({ where: { id: catalogRoleId } });
+          if (!role) throw new NotFoundException('Rol no encontrado');
+          if (!role.isActive) throw new ForbiddenException('No se puede asignar un rol inactivo');
+          const createdUser = await tx.user.create({
+            data: {
+              ...legacyUser,
+              password: hashedPassword,
+              role: UserRole.user,
+              roleAssignments: { create: { roleId: catalogRoleId } },
+            },
+            select: userProjection,
+          });
+          return toUserProjection(createdUser) as PublicUser;
+        },
+        { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      );
+    }
+
     const newUser = await this.prisma.user.create({
       data: {
-        ...user,
+        ...legacyUser,
         password: hashedPassword,
       },
     });
 
-    const { password, ...result } = newUser;
+    const { password, failedLoginAttempts, lockedUntil, lastActivityAt, totpSecret, totpPendingSecret, totpEnabled, totpRecoveryCodeHashes, ...result } = newUser;
 
     return result;
   }
 
-  async findAll(): Promise<Omit<User, 'password'>[]> {
+  async findAll(): Promise<PublicUser[]> {
     const users = await this.prisma.user.findMany({ select: userProjection });
-    return users.map(toUserProjection) as Omit<User, 'password'>[];
+    return users.map(toUserProjection) as PublicUser[];
   }
 
   async findAllForSelection(
@@ -74,14 +105,14 @@ export class UserService {
     });
   }
 
-  async findById(id: string): Promise<Omit<User, 'password'>> {
+  async findById(id: string): Promise<PublicUser> {
     const userFound = await this.prisma.user.findUnique({ where: { id }, select: userProjection });
 
     if (!userFound) {
       throw new NotFoundException('User not found');
     }
 
-    return toUserProjection(userFound) as Omit<User, 'password'>;
+    return toUserProjection(userFound) as PublicUser;
   }
 
   async findByEmail(email: string): Promise<any> {
@@ -93,11 +124,17 @@ export class UserService {
         name: true,
         role: true,
         authRevision: true,
+        lastActivityAt: true,
+        failedLoginAttempts: true,
+        lockedUntil: true,
         phoneNumber: true,
         position: true,
         createdAt: true,
         updatedAt: true,
         password: true,
+        totpSecret: true,
+        totpEnabled: true,
+        totpRecoveryCodeHashes: true,
         roleAssignments: {
           select: { role: { select: { id: true, key: true, label: true, isActive: true } } },
         },
@@ -114,7 +151,10 @@ export class UserService {
   async update(
     id: string,
     user: UpdateUserDto,
-  ): Promise<Omit<User, 'password'>> {
+  ): Promise<PublicUser> {
+    if (user.catalogRoleId !== undefined) {
+      throw new BadRequestException('La selección de catálogo solo se admite al crear un usuario');
+    }
     await this.findById(id); // Check if user exists
 
     const updatedUser = await this.prisma.user.update({

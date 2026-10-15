@@ -5,11 +5,24 @@ import {
   IsString,
   MinLength,
   IsEnum,
+  IsInt,
+  Min,
+  ValidateIf,
 } from 'class-validator';
 import { UserRole } from '../../auth/role.enum';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateUserDto {
+  @ApiPropertyOptional({
+    description: 'ID del rol activo de catálogo seleccionado',
+    example: 12,
+    minimum: 1,
+  })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsInt()
+  @Min(1)
+  catalogRoleId?: number;
+
   @ApiProperty({
     description: 'Nombre completo del usuario',
     example: 'María García',
