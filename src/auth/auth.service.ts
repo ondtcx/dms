@@ -16,7 +16,10 @@ import { UserRole } from './role.enum';
 import { AuthorizationProfile, AuthorizationService } from './compatibility/authorization.service';
 import { SettingsService } from '../settings/settings.service';
 
-export type AuthenticatedProfile = Omit<AuthorizationProfile, 'user'> & { user: any };
+export type AuthenticatedProfile = Omit<AuthorizationProfile, 'user'> & {
+  user: any;
+  twoFactorSetupRequired: boolean;
+};
 
 const BASE32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
 export function generateTotpSecret(): string {
@@ -154,6 +157,7 @@ export class AuthService {
       if (!valid) throw new UnauthorizedException({ code: 'TWO_FACTOR_REQUIRED', message: 'Se requiere un código de autenticación de dos factores' });
     }
 
+    const twoFactorSetupRequired = !user.totpEnabled && (await this.settings.getRequire2FA());
     const authorization = await this.authorization.getAuthorization(user.id);
     const payload = {
       email: user.email,
@@ -170,6 +174,7 @@ export class AuthService {
       roles: authorization.roles,
       permissions: authorization.permissions,
       authRevision: authorization.authRevision,
+      twoFactorSetupRequired,
     };
   }
 
@@ -208,9 +213,14 @@ export class AuthService {
   }
 
   async getProfile(userId: string): Promise<AuthenticatedProfile> {
-    const [profileUser, authorization] = await Promise.all([
+    const [profileUser, authorization, totp, require2FA] = await Promise.all([
       this.userService.findById(userId),
       this.authorization.getAuthorization(userId),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { totpEnabled: true },
+      }),
+      this.settings.getRequire2FA(),
     ]);
 
     return {
@@ -218,7 +228,16 @@ export class AuthService {
       roles: authorization.roles,
       permissions: authorization.permissions,
       authRevision: authorization.authRevision,
+      twoFactorSetupRequired: require2FA && totp?.totpEnabled !== true,
     };
+  }
+
+  async logout(userId: string): Promise<{ message: string }> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { authRevision: { increment: 1 } },
+    });
+    return { message: 'Sesión cerrada' };
   }
 
   async generateResetToken(userId: string): Promise<{ token: string; expiresAt: string }> {
