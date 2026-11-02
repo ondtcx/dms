@@ -164,8 +164,8 @@ export async function grantResourceAccess(db: any, resource: any, actorId: strin
   const ownerId = kind === 'document' ? resource.uploadedById : resource.createdById;
   if (dto.userId === actorId || dto.userId === ownerId) throw new BadRequestException('Destinatario inválido');
   const access = await requireResourceAccess(db, resource, actorId, kind, 'canShare');
-  const recipient = await db.user.findUnique({ where: { id: dto.userId }, select: { id: true, lockedUntil: true } });
-  if (!recipient || recipient.lockedUntil > new Date()) throw new BadRequestException('Destinatario no disponible');
+  const recipient = await db.user.findUnique({ where: { id: dto.userId }, select: { id: true, isActive: true, lockedUntil: true } });
+  if (!recipient || recipient.isActive === false || recipient.lockedUntil > new Date()) throw new BadRequestException('Destinatario no disponible');
   const flags = { canView: true, canEdit: dto.canEdit === true, canUploadVersion: dto.canUploadVersion === true, canShare: dto.canShare === true };
   assertGrantSubset(access.capabilities, flags);
   const parent = access.capabilities.owner || access.ownershipSource != null ? null : access.grants.find(g =>

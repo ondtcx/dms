@@ -97,7 +97,7 @@ export class DocumentChangeRequestService {
     assertChangeRequestManager(document, actor);
     await assertChangeRequestDocument(this.prisma, document);
     if (typeof query !== 'string' || query.trim().length < 2 || query.length > 100) throw new BadRequestException('Búsqueda inválida');
-    return this.prisma.user.findMany({ where: { id: { not: actorId }, AND: [
+    return this.prisma.user.findMany({ where: { id: { not: actorId }, isActive: true, AND: [
       { OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }] },
       { OR: [{ name: { contains: query.trim(), mode: 'insensitive' } }, { email: { contains: query.trim(), mode: 'insensitive' } }] },
     ] }, select: { id: true, name: true, email: true }, take: 20, orderBy: { id: 'asc' } });
@@ -109,7 +109,7 @@ export class DocumentChangeRequestService {
     await assertChangeRequestDocument(this.prisma, document);
     if (typeof recipientId !== 'string' || !recipientId || recipientId.length > 128) throw new BadRequestException('Destinatario inválido');
     const recipient = await this.prisma.user.findUnique({ where: { id: recipientId }, select: changeRequestActorSelect });
-    if (!recipient || recipient.lockedUntil > new Date()) throw new BadRequestException('Destinatario no disponible');
+    if (!recipient || recipient.isActive === false || recipient.lockedUntil > new Date()) throw new BadRequestException('Destinatario no disponible');
     return { hasAccess: Boolean(await this.readable(this.prisma, documentId, recipient)) };
   }
 
@@ -124,7 +124,7 @@ export class DocumentChangeRequestService {
       const current = document.versions[0];
       if (!current || current.version !== document.currentVersion) throw new ConflictException('Versión principal no disponible');
       const recipient = await tx.user.findUnique({ where: { id: dto.recipientId }, select: changeRequestActorSelect });
-      if (!recipient || recipient.lockedUntil > new Date()) throw new BadRequestException('Destinatario no disponible');
+      if (!recipient || recipient.isActive === false || recipient.lockedUntil > new Date()) throw new BadRequestException('Destinatario no disponible');
       if (!await this.readable(tx, documentId, recipient)) {
         if (dto.confirmShare !== true) throw new ConflictException('Debes confirmar compartir acceso de lectura con el destinatario');
         // Las raíces de la vista de acceso pertenecen al propietario. La solicitud

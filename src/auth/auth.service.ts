@@ -136,6 +136,10 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    if (user.isActive === false) {
+      throw new UnauthorizedException('Credenciales inválidas');
+    }
+
     await this.prisma.user.update({
       where: { id: user.id },
       data: { failedLoginAttempts: 0, lockedUntil: null, lastActivityAt: now },
@@ -222,6 +226,9 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Usuario no encontrado');
+    }
+    if (user.isActive === false) {
+      throw new BadRequestException('El usuario está desactivado');
     }
 
     // Invalidate any existing unused tokens for this user

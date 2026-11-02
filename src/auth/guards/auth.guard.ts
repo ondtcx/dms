@@ -52,12 +52,14 @@ export class AuthGuard implements CanActivate {
         select: {
           authRevision: true,
           role: true,
+          isActive: true,
           email: true,
           name: true,
           lastActivityAt: true,
         },
       });
       if (!currentUser) throw new UnauthorizedException('User no longer exists');
+      if (currentUser.isActive === false) throw new UnauthorizedException('User is deactivated');
       if (payload.authRevision !== undefined && payload.authRevision !== currentUser.authRevision) {
         throw new UnauthorizedException('Authorization state is outdated');
       }

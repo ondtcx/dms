@@ -136,6 +136,18 @@ describe('RoleService', () => {
     expect(tx.userRoleAssignment.create).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects assigning a catalog role to an inactive user', async () => {
+    const tx = {
+      role: { findUnique: jest.fn().mockResolvedValue({ id: 1, isActive: true }) },
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', isActive: false }) },
+      userRoleAssignment: { create: jest.fn() },
+    };
+    const service = new RoleService({ $transaction: jest.fn(async (callback: any) => callback(tx)) } as any);
+
+    await expect(service.assign(1, 'u1')).rejects.toThrow('desactivado');
+    expect(tx.userRoleAssignment.create).not.toHaveBeenCalled();
+  });
+
   it('checks authority when removing an assignment and bumps its revision', async () => {
     const tx = {
       userRoleAssignment: { delete: jest.fn() },

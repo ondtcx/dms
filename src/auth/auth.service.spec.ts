@@ -36,6 +36,42 @@ describe('TOTP flows', () => {
     });
   });
 
+  it('does not generate reset tokens for a deactivated user', async () => {
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', isActive: false }) },
+    };
+    const service = new AuthService({} as any, {} as any, prisma as any, {} as any, {} as any);
+
+    await expect(service.generateResetToken('u1')).rejects.toMatchObject({ status: 400 });
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an inactive user even with the correct password', async () => {
+    const user = {
+      id: 'u1',
+      email: 'inactive@example.com',
+      password: 'hash',
+      role: 'user',
+      isActive: false,
+      lockedUntil: null,
+      totpEnabled: false,
+      totpRecoveryCodeHashes: [],
+    };
+    const service = new AuthService(
+      { findByEmail: jest.fn().mockResolvedValue(user) } as any,
+      {} as any,
+      { user: { update: jest.fn() } } as any,
+      {} as any,
+      {} as any,
+    );
+    jest.spyOn(require('bcrypt'), 'compare').mockResolvedValue(true);
+
+    await expect(service.login({ email: user.email, password: 'correct' })).rejects.toMatchObject({
+      status: 401,
+      response: { message: 'Credenciales inválidas' },
+    });
+  });
+
   it('uses the generic invalid-credentials response for an unknown email', async () => {
     const userService = { findByEmail: jest.fn().mockRejectedValue(new NotFoundException('User not found')) };
     const service = new AuthService(userService as any, {} as any, {} as any, {} as any, {} as any);

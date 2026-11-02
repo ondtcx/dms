@@ -21,6 +21,10 @@ const userProjection = {
   email: true,
   name: true,
   role: true,
+  isActive: true,
+  deactivatedAt: true,
+  deactivatedById: true,
+  deactivationReason: true,
   authRevision: true,
   phoneNumber: true,
   position: true,
@@ -131,8 +135,15 @@ export class UserService {
     return result;
   }
 
-  async findAll(): Promise<PublicUser[]> {
-    const users = await this.prisma.user.findMany({ select: userProjection });
+  async findAll(status: 'active' | 'inactive' | 'all' = 'active'): Promise<PublicUser[]> {
+    if (!['active', 'inactive', 'all'].includes(status)) {
+      throw new BadRequestException('Estado de usuario inválido');
+    }
+    const where =
+      status === 'all'
+        ? undefined
+        : { isActive: status === 'active' };
+    const users = await this.prisma.user.findMany({ where, select: userProjection });
     return users.map(toUserProjection) as PublicUser[];
   }
 
@@ -140,7 +151,10 @@ export class UserService {
     excludeUserId?: string,
   ): Promise<{ id: string; name: string; email: string }[]> {
     return this.prisma.user.findMany({
-      where: excludeUserId ? { id: { not: excludeUserId } } : undefined,
+      where: {
+        isActive: true,
+        ...(excludeUserId ? { id: { not: excludeUserId } } : {}),
+      },
       select: {
         id: true,
         name: true,
@@ -167,6 +181,7 @@ export class UserService {
         email: true,
         name: true,
         role: true,
+        isActive: true,
         authRevision: true,
         lastActivityAt: true,
         failedLoginAttempts: true,
@@ -216,6 +231,10 @@ export class UserService {
         email: true,
         name: true,
         role: true,
+        isActive: true,
+        deactivatedAt: true,
+        deactivatedById: true,
+        deactivationReason: true,
         authRevision: true,
         phoneNumber: true,
         position: true,
@@ -227,15 +246,109 @@ export class UserService {
     return updatedUser;
   }
 
-  async remove(id: string): Promise<{ message: string }> {
-    await this.findById(id); // Check if user exists
+  async deactivate(
+    id: string,
+    actorId: string,
+    reason?: string,
+  ): Promise<{ message: string }> {
+    if (id === actorId) {
+      throw new ConflictException('No puedes desactivar tu propia cuenta');
+    }
 
-    await this.prisma.user.delete({
+    await this.prisma.$transaction(
+      async (tx) => {
+        const userFound = await tx.user.findUnique({ where: { id }, select: userProjection });
+        if (!userFound) {
+          throw new NotFoundException('User not found');
+        }
+        const user = toUserProjection(userFound) as PublicUser;
+        if (user.isActive === false) {
+          throw new ConflictException('El usuario ya está desactivado');
+        }
+
+        const [workflowAssignments, authoredChangeRequests, receivedChangeRequests] = await Promise.all([
+          tx.workflowAssignment.count({
+            where: { userId: id, status: 'PENDING', workflow: { active: true } },
+          }),
+          tx.documentChangeRequest.count({
+            where: {
+              requestedById: id,
+              status: { in: ['PENDING', 'IN_PROGRESS', 'CORRECTION_SUBMITTED'] },
+            },
+          }),
+          tx.documentChangeRequest.count({
+            where: {
+              recipientId: id,
+              status: { in: ['PENDING', 'IN_PROGRESS', 'CORRECTION_SUBMITTED'] },
+            },
+          }),
+        ]);
+
+        const changeRequests = authoredChangeRequests + receivedChangeRequests;
+        if (workflowAssignments > 0 || changeRequests > 0) {
+          throw new ConflictException({
+            message: 'El usuario tiene trabajo pendiente. Reasigna o cierra sus tareas antes de desactivarlo.',
+            pending: { workflowAssignments, changeRequests },
+          });
+        }
+
+        const targetRoles = new Set([
+          user.role,
+          ...(user.catalogRoles ?? []).map((role) => role.key),
+        ]);
+        if (targetRoles.has(UserRole.admin)) {
+          const otherActiveAdmins = await tx.user.count({
+            where: {
+              id: { not: id },
+              isActive: true,
+              OR: [
+                { role: UserRole.admin },
+                { roleAssignments: { some: { role: { key: UserRole.admin, isActive: true } } } },
+              ],
+            },
+          });
+          if (otherActiveAdmins === 0) {
+            throw new ConflictException('No puedes desactivar al último administrador activo');
+          }
+        }
+
+        await tx.user.update({
+          where: { id },
+          data: {
+            isActive: false,
+            deactivatedAt: new Date(),
+            deactivatedById: actorId,
+            deactivationReason: reason ?? null,
+            authRevision: { increment: 1 },
+          },
+        });
+        await tx.passwordResetToken.deleteMany({
+          where: { userId: id, usedAt: null },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return { message: 'Usuario desactivado exitosamente' };
+  }
+
+  async reactivate(id: string, _actorId: string): Promise<{ message: string }> {
+    const user = await this.findById(id);
+    if (user.isActive !== false) {
+      throw new ConflictException('El usuario ya está activo');
+    }
+
+    await this.prisma.user.update({
       where: { id },
+      data: {
+        isActive: true,
+        deactivatedAt: null,
+        deactivatedById: null,
+        deactivationReason: null,
+        authRevision: { increment: 1 },
+      },
     });
 
-    return {
-      message: 'User deleted successfully',
-    };
+    return { message: 'Usuario reactivado exitosamente' };
   }
 }

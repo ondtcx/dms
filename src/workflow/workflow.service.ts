@@ -635,10 +635,11 @@ export class WorkflowService {
           document: { select: { id: true, uploadedById: true, directoryId: true, receptionOriginDirectoryId: true } },
         },
       }),
-      this.prisma.user.findUnique({ where: { id: dto.userId }, select: { id: true, name: true } }),
+      this.prisma.user.findUnique({ where: { id: dto.userId }, select: { id: true, name: true, isActive: true } }),
     ]);
     if (!workflow || workflow.id !== workflowId) throw new NotFoundException('Workflow no encontrado');
     if (!target) throw new NotFoundException('Usuario de destino no encontrado');
+    if (target.isActive === false) throw new BadRequestException('El usuario de destino está desactivado');
     const assignment = workflow.assignments.find((item) => item.id === assignmentId);
     const scope = await this.resolveReceptionScope(workflow.document, userId);
     // Gestión de asignaciones sigue exigiendo el permiso vigente; en recepción se
@@ -729,7 +730,7 @@ export class WorkflowService {
     const result: any[] = [];
     for (const stage of stages) {
       const users = await db.user.findMany({
-        where: { OR: [{ role: stage.roleKey }, { roleAssignments: { some: { role: { key: stage.roleKey, isActive: true } } } }] },
+        where: { isActive: true, OR: [{ role: stage.roleKey }, { roleAssignments: { some: { role: { key: stage.roleKey, isActive: true } } } }] },
         select: { id: true, name: true, role: true },
       } as any);
       if (!users.length) throw new BadRequestException(`No hay usuarios asignables para el rol ${stage.roleKey}`);

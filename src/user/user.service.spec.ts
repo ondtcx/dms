@@ -309,4 +309,169 @@ describe('UserService', () => {
       );
     });
   });
+  describe('deactivation', () => {
+    const actorId = 'admin-1';
+    let prisma: any;
+    let target: any;
+
+    beforeEach(() => {
+      target = {
+        id: 'u1',
+        email: 'u1@example.com',
+        name: 'User One',
+        role: 'user',
+        isActive: true,
+        roleAssignments: [],
+      };
+      prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue(target),
+          findMany: jest.fn().mockResolvedValue([target]),
+          update: jest.fn().mockResolvedValue({ ...target, isActive: false }),
+          count: jest.fn().mockResolvedValue(1),
+          delete: jest.fn(),
+        },
+        workflowAssignment: { count: jest.fn().mockResolvedValue(0) },
+        documentChangeRequest: { count: jest.fn().mockResolvedValue(0) },
+        passwordResetToken: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        $transaction: jest.fn((callback: any) => callback(prisma)),
+      };
+      service = new UserService(prisma as any);
+    });
+
+    it('deactivates without deleting the user and revokes pending reset tokens', async () => {
+      await expect(service.deactivate('u1', actorId, 'Renuncia')).resolves.toEqual({
+        message: 'Usuario desactivado exitosamente',
+      });
+
+      expect(prisma.user.delete).not.toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: expect.objectContaining({
+          isActive: false,
+          deactivatedAt: expect.any(Date),
+          deactivatedById: actorId,
+          deactivationReason: 'Renuncia',
+          authRevision: { increment: 1 },
+        }),
+      });
+      expect(prisma.passwordResetToken.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', usedAt: null },
+      });
+    });
+
+    it('blocks self-deactivation', async () => {
+      await expect(service.deactivate('u1', 'u1')).rejects.toThrow(ConflictException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an already inactive user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...target, isActive: false });
+      await expect(service.deactivate('u1', actorId)).rejects.toThrow(ConflictException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks deactivation while the user has active workflow assignments', async () => {
+      prisma.workflowAssignment.count.mockResolvedValue(2);
+
+      await expect(service.deactivate('u1', actorId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          message: expect.stringContaining('trabajo pendiente'),
+          pending: expect.objectContaining({ workflowAssignments: 2 }),
+        }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('does not block on assignments from cancelled or rejected workflows', async () => {
+      prisma.workflowAssignment.count.mockImplementation((args: any) =>
+        Promise.resolve(args?.where?.workflow?.active === true ? 0 : 1),
+      );
+
+      await expect(service.deactivate('u1', actorId)).resolves.toEqual({
+        message: 'Usuario desactivado exitosamente',
+      });
+      expect(prisma.workflowAssignment.count).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            userId: 'u1',
+            status: 'PENDING',
+            workflow: expect.objectContaining({ active: true }),
+          }),
+        }),
+      );
+    });
+
+    it('blocks deactivation while the user has open change requests', async () => {
+      prisma.documentChangeRequest.count
+        .mockResolvedValueOnce(1)
+        .mockResolvedValueOnce(0);
+
+      await expect(service.deactivate('u1', actorId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          pending: expect.objectContaining({ changeRequests: 1 }),
+        }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks deactivation of the last active administrator', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...target,
+        role: 'admin',
+        roleAssignments: [],
+      });
+      prisma.user.count.mockResolvedValue(0);
+
+      await expect(service.deactivate('u1', actorId)).rejects.toThrow(
+        'No puedes desactivar al último administrador activo',
+      );
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('reactivates a user and invalidates old tokens', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...target, isActive: false });
+
+      await expect(service.reactivate('u1', actorId)).resolves.toEqual({
+        message: 'Usuario reactivado exitosamente',
+      });
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: expect.objectContaining({
+          isActive: true,
+          deactivatedAt: null,
+          deactivatedById: null,
+          deactivationReason: null,
+          authRevision: { increment: 1 },
+        }),
+      });
+    });
+
+    it('filters active users by default and supports explicit status filters', async () => {
+      await service.findAll();
+      expect(prisma.user.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { isActive: true } }),
+      );
+
+      await service.findAll('inactive');
+      expect(prisma.user.findMany).toHaveBeenLastCalledWith(
+        expect.objectContaining({ where: { isActive: false } }),
+      );
+
+      await service.findAll('all');
+      expect(prisma.user.findMany).toHaveBeenLastCalledWith(
+        expect.not.objectContaining({ where: expect.anything() }),
+      );
+    });
+
+    it('only lists active users for selection', async () => {
+      await service.findAllForSelection();
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isActive: true } }),
+      );
+    });
+  });
+
 });

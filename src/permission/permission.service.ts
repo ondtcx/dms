@@ -81,7 +81,7 @@ export class PermissionService {
     const { document } = await this.manager(documentId, actorId);
     const { query } = this.validated(SearchSharingRecipientsDto, input);
     return this.prisma.user.findMany({
-      where: { id: { notIn: [actorId, document.uploadedById] }, AND: [
+      where: { id: { notIn: [actorId, document.uploadedById] }, isActive: true, AND: [
         { OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }] },
         { OR: [{ name: { contains: query, mode: 'insensitive' } }, { email: { contains: query, mode: 'insensitive' } }] },
       ] },

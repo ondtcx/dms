@@ -542,6 +542,7 @@ export class DirectoryService {
     if (typeof q !== 'string' || q.trim().length < 2 || q.length > 100) throw new BadRequestException('Consulta inválida');
     return this.prisma.user.findMany({ where: {
       id: { notIn: [user.id, directory.createdById] },
+      isActive: true,
       AND: [{ OR: [{ lockedUntil: null }, { lockedUntil: { lte: new Date() } }] },
         { OR: [{ name: { contains: q.trim(), mode: 'insensitive' } }, { email: { contains: q.trim(), mode: 'insensitive' } }] }],
     }, select: { id: true, name: true, email: true }, take: 20, orderBy: { id: 'asc' } });
@@ -590,7 +591,8 @@ export class DirectoryService {
     return this.prisma.$transaction(async (db: any) => {
       await this.receptionContext(id, user, db, 'manageParticipants');
       if (dto.userId !== undefined) {
-        if (!await db.user.findUnique({ where: { id: dto.userId }, select: { id: true } })) throw new BadRequestException('Usuario no válido');
+        const participant = await db.user.findUnique({ where: { id: dto.userId }, select: { id: true, isActive: true } });
+        if (!participant || participant.isActive === false) throw new BadRequestException('Usuario no válido');
         return db.directoryUserParticipant.upsert({ where: { directoryId_userId: { directoryId: id, userId: dto.userId } },
           create: { directoryId: id, userId: dto.userId, peerRead: dto.peerRead }, update: { peerRead: dto.peerRead } });
       }
@@ -618,7 +620,8 @@ export class DirectoryService {
       }
       const existing = await db.directoryDelegate.findUnique({ where: { directoryId_userId: { directoryId: id, userId: targetId } } });
       if (existing && !canGrantReceptionDelegate(capabilities, user.id, targetId, existing)) throw new ForbiddenException('No puedes modificar un delegado con permisos superiores');
-      if (!await db.user.findUnique({ where: { id: targetId }, select: { id: true } })) throw new BadRequestException('Usuario no válido');
+      const delegate = await db.user.findUnique({ where: { id: targetId }, select: { id: true, isActive: true } });
+      if (!delegate || delegate.isActive === false) throw new BadRequestException('Usuario no válido');
       const flags = { full: dto.full === true, configure: dto.configure === true, manageParticipants: dto.manageParticipants === true,
         readAll: dto.readAll === true || dto.review === true, review: dto.review === true, manageDelegates: dto.manageDelegates === true, manageStructure: dto.manageStructure === true };
       return db.directoryDelegate.upsert({ where: { directoryId_userId: { directoryId: id, userId: targetId } },
@@ -644,7 +647,7 @@ export class DirectoryService {
     if (!Number.isInteger(take) || take < 1 || take > 50 || (q !== undefined && (q.length < 2 || q.length > 100))) throw new BadRequestException('Consulta de destinatarios no válida');
     if (kind === 'users') {
       if (!q) throw new BadRequestException('Escribe al menos dos caracteres para buscar usuarios');
-      return this.prisma.user.findMany({ where: { OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] },
+      return this.prisma.user.findMany({ where: { isActive: true, OR: [{ name: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] },
         select: { id: true, name: true, email: true }, orderBy: { id: 'asc' }, take });
     }
     return this.prisma.role.findMany({ where: { isActive: true, ...(q ? { OR: [{ key: { contains: q, mode: 'insensitive' } }, { label: { contains: q, mode: 'insensitive' } }] } : {}) },

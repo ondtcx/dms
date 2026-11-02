@@ -6,6 +6,7 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -20,6 +21,7 @@ import { UserService } from './user.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
+import { DeactivateUserDto } from './dto/deactivate-user.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireAnyPermission, RequirePermission } from '../auth/decorators/permission.decorator';
 
@@ -62,8 +64,8 @@ export class UserController {
     status: 403,
     description: 'Acceso denegado - Se requiere rol admin',
   })
-  async findAll() {
-    return this.userService.findAll();
+  async findAll(@Query('status') status?: 'active' | 'inactive' | 'all') {
+    return this.userService.findAll(status);
   }
 
   // Rutas específicas ANTES de rutas con parámetros
@@ -200,20 +202,20 @@ export class UserController {
   @RequirePermission('users.manage')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Eliminar usuario (Solo ADMIN)',
-    description: 'Elimina permanentemente un usuario del sistema',
+    summary: 'Desactivar usuario (Solo ADMIN)',
+    description: 'Desactiva al usuario sin eliminar su historial. Bloquea su acceso de inmediato.',
   })
   @ApiParam({
     name: 'id',
-    description: 'ID del usuario a eliminar',
+    description: 'ID del usuario a desactivar',
     example: 1,
   })
   @ApiResponse({
     status: 200,
-    description: 'Usuario eliminado exitosamente',
+    description: 'Usuario desactivado exitosamente',
     schema: {
       example: {
-        message: 'Usuario eliminado exitosamente',
+        message: 'Usuario desactivado exitosamente',
       },
     },
   })
@@ -225,7 +227,36 @@ export class UserController {
     status: 403,
     description: 'Acceso denegado - Se requiere rol admin',
   })
-  remove(@Param('id') id: string) {
-    return this.userService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() actor: any,
+    @Body() dto: DeactivateUserDto,
+  ) {
+    return this.userService.deactivate(id, actor?.sub, dto?.reason);
+  }
+
+  @Post(':id/reactivate')
+  @ApiBearerAuth('JWT-auth')
+  @RequirePermission('users.manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Reactivar usuario (Solo ADMIN)',
+    description: 'Reactiva un usuario desactivado y renueva su autoridad.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del usuario a reactivar',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario reactivado exitosamente',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El usuario ya está activo',
+  })
+  async reactivate(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.userService.reactivate(id, actor?.sub);
   }
 }

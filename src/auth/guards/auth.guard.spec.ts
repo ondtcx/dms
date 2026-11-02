@@ -36,6 +36,17 @@ describe('AuthGuard migration compatibility', () => {
     await expect(guard.canActivate(context(request()))).rejects.toThrow('Invalid token');
   });
 
+  it('rejects a token belonging to a deactivated user', async () => {
+    const guard = new AuthGuard(
+      { verifyAsync: jest.fn().mockResolvedValue({ sub: 'u1', authRevision: 2 }) } as any,
+      { getAllAndOverride: jest.fn().mockReturnValue(false) } as any,
+      { get: jest.fn().mockReturnValue('secret') } as any,
+      { user: { findUnique: jest.fn().mockResolvedValue({ authRevision: 2, role: 'user', isActive: false }), updateMany: jest.fn() } } as any,
+      { getSessionTimeoutMinutes: jest.fn().mockResolvedValue(480) } as any,
+    );
+    await expect(guard.canActivate(context(request()))).rejects.toThrow('Invalid token');
+  });
+
   it('rejects a token with a stale revision', async () => {
     const guard = new AuthGuard(
       { verifyAsync: jest.fn().mockResolvedValue({ sub: 'u1', authRevision: 1 }) } as any,
