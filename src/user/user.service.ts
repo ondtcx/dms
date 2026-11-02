@@ -10,6 +10,7 @@ import { Prisma, User, UserRole } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import bcrypt from 'bcrypt';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { AuthorizationService } from '../auth/compatibility/authorization.service';
 
 type PublicUser = Omit<User, 'password' | 'failedLoginAttempts' | 'lockedUntil' | 'lastActivityAt' | 'totpSecret' | 'totpPendingSecret' | 'totpEnabled' | 'totpRecoveryCodeHashes'> & {
   catalogRoles?: { id: number; key: string; label: string; isActive: boolean }[];
@@ -37,9 +38,47 @@ function toUserProjection<T extends { roleAssignments?: { role: unknown }[] }>(u
 
 @Injectable()
 export class UserService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly authorization?: AuthorizationService,
+  ) {}
 
-  async create(user: CreateUserDto): Promise<PublicUser> {
+  private async assertCanAssignLegacyRole(actorId: string | undefined, role: UserRole | undefined) {
+    if (role === undefined || role === UserRole.user) return;
+    if (!actorId || !this.authorization) {
+      throw new ForbiddenException('Solo un administrador puede asignar roles legacy');
+    }
+    const { roles } = await this.authorization.getAuthorization(actorId);
+    if (!roles.includes(UserRole.admin)) {
+      throw new ForbiddenException('Solo un administrador puede asignar roles legacy');
+    }
+  }
+
+  private async assertCanChangeLegacyRole(actorId: string | undefined) {
+    if (!actorId || !this.authorization) {
+      throw new ForbiddenException('Solo un administrador puede cambiar el rol legacy');
+    }
+    const { roles } = await this.authorization.getAuthorization(actorId);
+    if (!roles.includes(UserRole.admin)) {
+      throw new ForbiddenException('Solo un administrador puede cambiar el rol legacy');
+    }
+  }
+
+  private async assertCanAssignCatalogRole(
+    actorId: string | undefined,
+    role: { key: string },
+  ) {
+    if (role.key !== UserRole.admin) return;
+    if (!actorId || !this.authorization) {
+      throw new ForbiddenException('Solo un administrador puede asignar el rol admin');
+    }
+    const { roles } = await this.authorization.getAuthorization(actorId);
+    if (!roles.includes(UserRole.admin)) {
+      throw new ForbiddenException('Solo un administrador puede asignar el rol admin');
+    }
+  }
+
+  async create(user: CreateUserDto, actorId?: string): Promise<PublicUser> {
     const { catalogRoleId, ...legacyUser } = user;
     if (catalogRoleId !== undefined && (!Number.isSafeInteger(catalogRoleId) || catalogRoleId < 1)) {
       throw new BadRequestException('Selecciona un único ID de rol válido');
@@ -52,6 +91,10 @@ export class UserService {
       throw new ConflictException('User already exists');
     }
 
+    if (catalogRoleId === undefined) {
+      await this.assertCanAssignLegacyRole(actorId, user.role);
+    }
+
     const hashedPassword = await bcrypt.hash(user.password, 10);
 
     if (catalogRoleId !== undefined) {
@@ -60,6 +103,7 @@ export class UserService {
           const role = await tx.role.findUnique({ where: { id: catalogRoleId } });
           if (!role) throw new NotFoundException('Rol no encontrado');
           if (!role.isActive) throw new ForbiddenException('No se puede asignar un rol inactivo');
+          await this.assertCanAssignCatalogRole(actorId, role);
           const createdUser = await tx.user.create({
             data: {
               ...legacyUser,
@@ -151,15 +195,22 @@ export class UserService {
   async update(
     id: string,
     user: UpdateUserDto,
+    actorId?: string,
   ): Promise<PublicUser> {
     if (user.catalogRoleId !== undefined) {
       throw new BadRequestException('La selección de catálogo solo se admite al crear un usuario');
     }
-    await this.findById(id); // Check if user exists
+    const existingUser = await this.findById(id); // Check if user exists
+    const roleChanged = user.role !== undefined && user.role !== existingUser.role;
+    if (roleChanged) {
+      await this.assertCanChangeLegacyRole(actorId);
+    }
 
     const updatedUser = await this.prisma.user.update({
       where: { id },
-      data: user,
+      data: roleChanged
+        ? { ...user, authRevision: { increment: 1 } }
+        : user,
       select: {
         id: true,
         email: true,

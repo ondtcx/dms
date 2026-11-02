@@ -158,8 +158,8 @@ export class UserController {
     status: 403,
     description: 'Acceso denegado - Se requiere rol admin',
   })
-  async create(@Body() user: CreateUserDto) {
-    return this.userService.create(user);
+  async create(@CurrentUser() actor: any, @Body() user: CreateUserDto) {
+    return this.userService.create(user, actor?.sub);
   }
 
   @Patch(':id')
@@ -188,10 +188,11 @@ export class UserController {
   })
   async update(
     @Param('id') id: string,
+    @CurrentUser() actor: any,
     @Body()
     updatedUser: UpdateUserDto,
   ) {
-    return this.userService.update(id, updatedUser);
+    return this.userService.update(id, updatedUser, actor?.sub);
   }
 
   @Delete(':id')

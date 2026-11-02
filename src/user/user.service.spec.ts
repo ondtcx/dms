@@ -3,6 +3,7 @@ import { UserService } from './user.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { UserRole } from '../auth/role.enum';
 import { resolveEffectiveRoleKeys } from '../role/compatibility-resolver';
+import { AuthorizationService } from '../auth/compatibility/authorization.service';
 import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 jest.mock('bcrypt', () => ({ __esModule: true, default: { hash: jest.fn().mockResolvedValue('hashed') } }));
@@ -17,6 +18,10 @@ describe('UserService', () => {
         {
           provide: PrismaService,
           useValue: {},
+        },
+        {
+          provide: AuthorizationService,
+          useValue: { getAuthorization: jest.fn() },
         },
       ],
     }).compile();
@@ -87,10 +92,15 @@ describe('UserService', () => {
       expect(prisma.user.create).not.toHaveBeenCalled();
     });
 
-    it('preserves legacy creation without a catalog selection', async () => {
+    it('allows an admin to create a legacy role without a catalog selection', async () => {
       prisma.user.create.mockResolvedValue({ id: 'legacy', role: 'profesor', password: 'hashed' });
       const { catalogRoleId, ...legacy } = input;
-      await expect(service.create({ ...legacy, role: UserRole.PROFESOR })).resolves.toEqual({ id: 'legacy', role: 'profesor' });
+      const authorization = {
+        getAuthorization: jest.fn().mockResolvedValue({ roles: ['admin'], permissions: ['users.manage'], authRevision: 0 }),
+      };
+      const adminService = new UserService(prisma as any, authorization as any);
+
+      await expect(adminService.create({ ...legacy, role: UserRole.PROFESOR }, 'admin-1')).resolves.toEqual({ id: 'legacy', role: 'profesor' });
       expect(prisma.$transaction).not.toHaveBeenCalled();
     });
 
@@ -149,5 +159,154 @@ describe('UserService', () => {
     service = new UserService(prisma as any);
 
     await expect(service.findByEmail(user.email)).resolves.toEqual(expect.objectContaining({ catalogRoles: [] }));
+  });
+
+  describe('legacy role authority', () => {
+    const actorId = 'actor-1';
+    let prisma: any;
+    let authorization: any;
+
+    const allowAdmin = () => authorization.getAuthorization.mockResolvedValue({
+      roles: ['admin'],
+      permissions: ['users.manage', 'roles.manage'],
+      authRevision: 0,
+    });
+    const allowUserManager = () => authorization.getAuthorization.mockResolvedValue({
+      roles: ['user'],
+      permissions: ['users.manage'],
+      authRevision: 0,
+    });
+    const legacyInput = {
+      name: 'Legacy User',
+      email: 'legacy@example.com',
+      password: 'Password123!',
+    };
+
+    beforeEach(() => {
+      authorization = { getAuthorization: jest.fn() };
+      prisma = {
+        user: {
+          findUnique: jest.fn().mockResolvedValue(null),
+          create: jest.fn(),
+          update: jest.fn(),
+        },
+        $transaction: jest.fn(),
+      };
+      service = new UserService(prisma, authorization);
+    });
+
+    it('blocks a users.manage caller from promoting itself to admin', async () => {
+      allowUserManager();
+      prisma.user.findUnique.mockResolvedValue({ id: actorId, role: 'user', roleAssignments: [] });
+
+      await expect(
+        service.update(actorId, { role: UserRole.ADMIN } as any, actorId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks a users.manage caller from creating a legacy admin', async () => {
+      allowUserManager();
+
+      await expect(
+        service.create({ ...legacyInput, role: UserRole.ADMIN } as any, actorId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
+
+    it('blocks a users.manage caller from assigning the admin catalog role', async () => {
+      allowUserManager();
+      const adminRole = { id: 9, key: 'admin', label: 'Admin', isActive: true };
+      const tx = { role: { findUnique: jest.fn().mockResolvedValue(adminRole) }, user: { create: jest.fn() } };
+      prisma.$transaction.mockImplementation((callback: any) => callback(tx));
+
+      await expect(
+        service.create({ ...legacyInput, catalogRoleId: 9 } as any, actorId),
+      ).rejects.toThrow(ForbiddenException);
+      expect(tx.user.create).not.toHaveBeenCalled();
+    });
+
+    it('allows an admin to create users with a legacy role', async () => {
+      allowAdmin();
+      prisma.user.create.mockResolvedValue({ id: 'new-user', role: 'profesor' });
+
+      await expect(
+        service.create({ ...legacyInput, role: UserRole.PROFESOR } as any, actorId),
+      ).resolves.toEqual({ id: 'new-user', role: 'profesor' });
+    });
+
+    it('allows an admin to assign the admin catalog role', async () => {
+      allowAdmin();
+      const adminRole = { id: 9, key: 'admin', label: 'Admin', isActive: true };
+      const tx = {
+        role: { findUnique: jest.fn().mockResolvedValue(adminRole) },
+        user: { create: jest.fn().mockResolvedValue({ id: 'new-admin', role: 'user', roleAssignments: [{ role: adminRole }] }) },
+      };
+      prisma.$transaction.mockImplementation((callback: any) => callback(tx));
+
+      await expect(
+        service.create({ ...legacyInput, catalogRoleId: 9 } as any, actorId),
+      ).resolves.toEqual(expect.objectContaining({ id: 'new-admin' }));
+    });
+
+    it('keeps self-registration at role user without an actor', async () => {
+      prisma.user.create.mockResolvedValue({ id: 'registered', role: 'user' });
+
+      await expect(service.create({ ...legacyInput, role: UserRole.USER } as any)).resolves.toEqual({
+        id: 'registered',
+        role: 'user',
+      });
+      expect(authorization.getAuthorization).not.toHaveBeenCalled();
+    });
+
+    it('allows a users.manage caller to update profile fields without a role', async () => {
+      allowUserManager();
+      prisma.user.findUnique.mockResolvedValue({ id: 'target', role: 'user', roleAssignments: [] });
+      prisma.user.update.mockResolvedValue({ id: 'target', role: 'user', name: 'Updated' });
+
+      await expect(service.update('target', { name: 'Updated' } as any, actorId)).resolves.toEqual({
+        id: 'target',
+        role: 'user',
+        name: 'Updated',
+      });
+      expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty('authRevision');
+    });
+
+    it('allows a users.manage caller to save an unchanged legacy role', async () => {
+      allowUserManager();
+      prisma.user.findUnique.mockResolvedValue({ id: 'target', role: 'user', roleAssignments: [] });
+      prisma.user.update.mockResolvedValue({ id: 'target', role: 'user', name: 'Renamed' });
+
+      await expect(
+        service.update('target', { name: 'Renamed', role: UserRole.USER } as any, actorId),
+      ).resolves.toEqual({ id: 'target', role: 'user', name: 'Renamed' });
+      expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty('authRevision');
+    });
+
+    it('does not bump authRevision on an admin no-op role save', async () => {
+      allowAdmin();
+      prisma.user.findUnique.mockResolvedValue({ id: 'target', role: 'user', roleAssignments: [] });
+      prisma.user.update.mockResolvedValue({ id: 'target', role: 'user', name: 'Renamed' });
+
+      await expect(
+        service.update('target', { name: 'Renamed', role: UserRole.USER } as any, actorId),
+      ).resolves.toEqual({ id: 'target', role: 'user', name: 'Renamed' });
+      expect(prisma.user.update.mock.calls[0][0].data).not.toHaveProperty('authRevision');
+    });
+
+    it('bumps authRevision when an admin changes a legacy role', async () => {
+      allowAdmin();
+      prisma.user.findUnique.mockResolvedValue({ id: 'target', role: 'user', roleAssignments: [] });
+      prisma.user.update.mockResolvedValue({ id: 'target', role: 'secretario', authRevision: 1 });
+
+      await expect(
+        service.update('target', { role: UserRole.SECRETARIO } as any, actorId),
+      ).resolves.toEqual(expect.objectContaining({ authRevision: 1 }));
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ role: UserRole.SECRETARIO, authRevision: { increment: 1 } }),
+        }),
+      );
+    });
   });
 });
