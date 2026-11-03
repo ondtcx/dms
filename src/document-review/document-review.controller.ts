@@ -15,13 +15,16 @@ export class DocumentReviewController {
   constructor(private readonly reviews: DocumentReviewService) {}
 
   @Get('pending')
-  pending() {
-    return this.reviews.pending();
+  pending(@CurrentUser() user: any) {
+    return this.reviews.pending(user);
   }
 
   @Get(':documentId')
-  get(@Param('documentId', ParseIntPipe) documentId: number) {
-    return this.reviews.get(documentId);
+  get(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.reviews.get(documentId, user);
   }
 
   @Post(':documentId/submit')

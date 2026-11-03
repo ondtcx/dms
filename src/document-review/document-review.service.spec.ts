@@ -15,13 +15,21 @@ describe('DocumentReviewService', () => {
   function setup(status: DocumentReviewStatus = DocumentReviewStatus.DRAFT) {
     const prisma: any = {
       documentReview: {
+        findFirst: jest.fn().mockResolvedValue(review(status)),
         findUnique: jest.fn().mockResolvedValue(review(status)),
         update: jest.fn().mockImplementation(({ data }) => ({ ...review(status), ...data })),
       },
       documentReviewEvent: { create: jest.fn().mockResolvedValue({}) },
       notificationPreference: { findUnique: jest.fn().mockResolvedValue(null) },
       notification: { create: jest.fn().mockResolvedValue({}) },
-      user: { findFirst: jest.fn().mockResolvedValue({ id: 'reviewer-1', name: 'Revisor' }) },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({ id: 'reviewer-1', name: 'Revisor' }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: user.id,
+          role: 'admin',
+          roleAssignments: [],
+        }),
+      },
     };
     prisma.$transaction = jest.fn(async (callback: any) => callback(prisma));
     return { service: new DocumentReviewService(prisma), prisma };

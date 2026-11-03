@@ -8,6 +8,8 @@ import {
   DocumentReviewStatus,
   NotificationType,
 } from '@prisma/client';
+import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
+import { UserRole } from '../auth/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 
 type ReviewUser = { id: string; name?: string | null; role?: string | null };
@@ -16,9 +18,33 @@ type ReviewUser = { id: string; name?: string | null; role?: string | null };
 export class DocumentReviewService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async find(documentId: number) {
-    const review = await this.prisma.documentReview.findUnique({
-      where: { documentId },
+  private async accessFilter(user: ReviewUser) {
+    if (!user?.id) return { id: -1 };
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        role: true,
+        roleAssignments: {
+          where: { role: { isActive: true } },
+          select: { role: { select: { id: true, key: true, isActive: true } } },
+        },
+      },
+    });
+    return buildDocumentAccessFilter({
+      id: user.id,
+      role: (dbUser?.role ?? user.role) as unknown as UserRole,
+      assignments: (dbUser?.roleAssignments ?? []).map(({ role }) => role),
+    });
+  }
+
+  private async find(documentId: number, user?: ReviewUser) {
+    const access = user ? await this.accessFilter(user) : undefined;
+    const scope = access
+      ? { OR: [{ document: access }, { reviewerId: user?.id ?? '' }] }
+      : {};
+    const review = await this.prisma.documentReview.findFirst({
+      where: { documentId, ...scope },
       include: {
         document: {
           select: {
@@ -38,13 +64,17 @@ export class DocumentReviewService {
     return review;
   }
 
-  async get(documentId: number) {
-    return this.find(documentId);
+  async get(documentId: number, user: ReviewUser) {
+    return this.find(documentId, user);
   }
 
-  async pending() {
+  async pending(user: ReviewUser) {
+    const access = await this.accessFilter(user);
     return this.prisma.documentReview.findMany({
-      where: { status: DocumentReviewStatus.IN_REVIEW },
+      where: {
+        status: DocumentReviewStatus.IN_REVIEW,
+        OR: [{ document: access }, { reviewerId: user.id }],
+      },
       include: {
         document: {
           select: {
@@ -90,7 +120,7 @@ export class DocumentReviewService {
     reviewerId?: string,
     reviewerName?: string,
   ) {
-    const review = await this.find(documentId);
+    const review = await this.find(documentId, user);
     if (
       review.status !== DocumentReviewStatus.DRAFT &&
       review.status !== DocumentReviewStatus.CHANGES_REQUESTED
@@ -147,7 +177,7 @@ export class DocumentReviewService {
   }
 
   async approve(documentId: number, user: ReviewUser, observation?: string) {
-    const review = await this.find(documentId);
+    const review = await this.find(documentId, user);
     if (review.status !== DocumentReviewStatus.IN_REVIEW) {
       throw new BadRequestException('El documento no está en revisión');
     }
@@ -193,7 +223,7 @@ export class DocumentReviewService {
     if (!observation?.trim()) {
       throw new BadRequestException('La observación es obligatoria');
     }
-    const review = await this.find(documentId);
+    const review = await this.find(documentId, user);
     if (review.status !== DocumentReviewStatus.IN_REVIEW) {
       throw new BadRequestException('El documento no está en revisión');
     }
