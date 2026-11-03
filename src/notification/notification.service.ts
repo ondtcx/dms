@@ -20,6 +20,14 @@ export class NotificationService {
     return { data, unreadCount, page, limit };
   }
 
+  async readAll(actorId: string) {
+    const result = await this.prisma.notification.updateMany({
+      where: { userId: actorId, status: 'UNREAD' },
+      data: { status: 'READ', readAt: new Date() },
+    });
+    return { read: true, count: result.count };
+  }
+
   async read(actorId: string, id: number) {
     if (!Number.isSafeInteger(id) || id < 1) throw new BadRequestException('Notificación inválida');
     const result = await this.prisma.notification.updateMany({

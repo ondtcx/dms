@@ -16,6 +16,11 @@ export class NotificationController {
     return this.notifications.list(actor.id, page === undefined ? 1 : Number(page), limit === undefined ? 20 : Number(limit));
   }
 
+  @Patch('read-all')
+  readAll(@CurrentUser() actor: any) {
+    return this.notifications.readAll(actor.id);
+  }
+
   @Patch(':id/read')
   read(@CurrentUser() actor: any, @Param('id', ParseIntPipe) id: number) {
     return this.notifications.read(actor.id, id);
