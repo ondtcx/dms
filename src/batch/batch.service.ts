@@ -17,7 +17,7 @@ import { BatchExportDto } from './dto/batch-export.dto';
 import archiver from 'archiver';
 import { createReadStream, existsSync } from 'fs';
 import { Response } from 'express';
-import { join } from 'path';
+import { isAbsolute, join } from 'path';
 
 @Injectable()
 export class BatchService {
@@ -343,7 +343,10 @@ export class BatchService {
 
     // Agregar archivos al ZIP
     for (const doc of documents) {
-      const filePath = join(process.cwd(), doc.versions[0].path);
+      const storedPath = doc.versions[0].path;
+      const filePath = isAbsolute(storedPath)
+        ? storedPath
+        : join(process.cwd(), storedPath);
 
       if (existsSync(filePath)) {
         archive.append(createReadStream(filePath), { name: doc.versions[0].filename });
