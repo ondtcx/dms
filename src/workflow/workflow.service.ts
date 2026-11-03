@@ -335,6 +335,11 @@ export class WorkflowService {
   }
 
   async start(documentId: number, dto: StartWorkflowDto, userId: string, userRole: string) {
+
+    if (process.env.WORKFLOW_CONFIGURABLE_ENABLED === 'false') {
+      throw new ForbiddenException('El workflow configurable está deshabilitado');
+    }
+
     const document = await this.prisma.document.findUnique({
       where: { id: documentId },
       include: { versions: { orderBy: { version: 'desc' }, take: 1 }, workflow: { where: { active: true } } },

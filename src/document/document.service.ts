@@ -355,6 +355,7 @@ export class DocumentService {
             : {}),
 
           search: { create: { extractedText } },
+          review: { create: { status: 'DRAFT' } },
 
           versions: {
             create: [
@@ -377,6 +378,7 @@ export class DocumentService {
           academic: true,
           search: true,
           templateData: true,
+          review: true,
           versions: { orderBy: { version: 'desc' }, take: 1 },
           uploadedBy: {
             select: { id: true, name: true, email: true, role: true },
@@ -762,6 +764,11 @@ export class DocumentService {
           },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
+        review: {
+          include: {
+            events: { orderBy: { createdAt: 'desc' as const }, take: 100 },
+          },
+        },
         uploadedBy: {
           select: {
             id: true,
@@ -884,6 +891,11 @@ export class DocumentService {
           },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
+        review: {
+          include: {
+            events: { orderBy: { createdAt: 'desc' as const }, take: 100 },
+          },
+        },
         uploadedBy: {
           select: {
             id: true,

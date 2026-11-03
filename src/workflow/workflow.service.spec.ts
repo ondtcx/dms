@@ -6,8 +6,10 @@ describe('WorkflowService', () => {
   let service: WorkflowService;
   let prisma: any;
   let authorization: any;
+  const previousWorkflowFlag = process.env.WORKFLOW_CONFIGURABLE_ENABLED;
 
   beforeEach(() => {
+    process.env.WORKFLOW_CONFIGURABLE_ENABLED = 'true';
     prisma = {
       $transaction: jest.fn(),
       document: { findUnique: jest.fn() },
@@ -20,9 +22,23 @@ describe('WorkflowService', () => {
     service = new WorkflowService(prisma, authorization);
   });
 
+  afterAll(() => {
+    if (previousWorkflowFlag === undefined) {
+      delete process.env.WORKFLOW_CONFIGURABLE_ENABLED;
+    } else {
+      process.env.WORKFLOW_CONFIGURABLE_ENABLED = previousWorkflowFlag;
+    }
+  });
+
   it('rejects non-sequential definitions and unsupported empty stages', () => {
     expect(() => (service as any).validateStages([])).toThrow(BadRequestException);
     expect(() => (service as any).validateStages([{ order: 2, roleKey: 'coordinador' }])).toThrow(BadRequestException);
+  });
+
+  it('rejects starts when the configurable workflow is disabled', async () => {
+    process.env.WORKFLOW_CONFIGURABLE_ENABLED = 'false';
+    await expect(service.start(10, {}, 'owner', 'profesor')).rejects.toBeInstanceOf(ForbiddenException);
+    process.env.WORKFLOW_CONFIGURABLE_ENABLED = 'true';
   });
 
   it('creates a new version without mutating the active version', async () => {
@@ -967,6 +983,7 @@ describe('start definition authority final checks', () => {
   });
 
   beforeEach(() => {
+    process.env.WORKFLOW_CONFIGURABLE_ENABLED = 'true';
     prisma = {
       $transaction: jest.fn(),
       document: { findUnique: jest.fn().mockResolvedValue(document) },

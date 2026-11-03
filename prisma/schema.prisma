@@ -109,6 +109,22 @@ enum DocumentTemplateActivityAction {
   DUPLICATED
 }
 
+enum DocumentReviewStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  ARCHIVED
+}
+
+enum DocumentReviewAction {
+  CREATED
+  SUBMITTED
+  APPROVED
+  RETURNED
+  ARCHIVED
+}
+
 enum AuthoringStatus {
   DRAFT
   IN_REVIEW
@@ -906,6 +922,7 @@ model Document {
   search       DocumentSearch?
   templateData DocumentTemplateData?
   authoring    DocumentAuthoring?
+  review       DocumentReview?
   contentVersions DocumentContentVersion[]
 
   // Tipo de documento (jerarquía: Section → Category → DocumentType)
@@ -1311,6 +1328,41 @@ model DocumentTemplateActivity {
 
   @@index([templateId, createdAt])
   @@index([versionId])
+}
+
+model DocumentReview {
+  id              Int                   @id @default(autoincrement())
+  documentId      Int                   @unique
+  document        Document              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  status          DocumentReviewStatus  @default(DRAFT)
+  documentVersionId Int?
+  submittedAt     DateTime?
+  reviewerId      String?
+  reviewerName    String?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  reviewedByName  String?
+  observation     String?               @db.Text
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  events          DocumentReviewEvent[]
+
+  @@index([status])
+}
+
+model DocumentReviewEvent {
+  id          Int                   @id @default(autoincrement())
+  reviewId    Int
+  review      DocumentReview        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  action      DocumentReviewAction
+  fromStatus  DocumentReviewStatus?
+  toStatus    DocumentReviewStatus
+  actorId     String
+  actorName   String?
+  observation String?               @db.Text
+  createdAt   DateTime              @default(now())
+
+  @@index([reviewId, createdAt])
 }
 
 // Estado de elaboración de un documento creado desde una plantilla.

@@ -29,6 +29,7 @@ import { NotificationModule } from './notification/notification.module';
 import { DocumentChangeRequestModule } from './document-change-request/document-change-request.module';
 import { TransferModule } from './transfer/transfer.module';
 import { AuthoringModule } from './authoring/authoring.module';
+import { DocumentReviewModule } from './document-review/document-review.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { AuthoringModule } from './authoring/authoring.module';
     DocumentChangeRequestModule,
     TransferModule,
     AuthoringModule,
+    DocumentReviewModule,
   ],
   controllers: [AppController],
   providers: [AppService],
