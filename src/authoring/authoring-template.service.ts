@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DocumentTemplateActivityAction,
   Prisma,
   TemplateVersionStatus,
 } from '@prisma/client';
@@ -42,6 +43,36 @@ export class AuthoringTemplateService {
 
   private fieldsOf(value: unknown): AuthoringField[] {
     return normalizeFields(value).fields;
+  }
+
+  private async recordActivity(
+    tx: any,
+    templateId: number,
+    action: DocumentTemplateActivityAction,
+    user: { id?: string; name?: string },
+    versionId?: number | null,
+    metadata?: Record<string, any> | null,
+  ) {
+    await tx.documentTemplateActivity.create({
+      data: {
+        templateId,
+        versionId: versionId ?? null,
+        action,
+        actorId: user?.id ?? 'system',
+        actorName: user?.name ?? null,
+        metadata: metadata ?? undefined,
+      },
+    });
+  }
+
+  async activity(templateId: number) {
+    await this.get(templateId);
+    return this.prisma.documentTemplateActivity.findMany({
+      where: { templateId },
+      include: { version: { select: { version: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
   }
 
   async list(includeDrafts = false) {
@@ -105,7 +136,11 @@ export class AuthoringTemplateService {
     return version;
   }
 
-  async create(dto: CreateAuthoringTemplateDto, userId: string) {
+  async create(
+    dto: CreateAuthoringTemplateDto,
+    user: { id?: string; name?: string },
+  ) {
+    const userId = user?.id ?? 'system';
     const fields = this.fieldsOf(dto.fields);
     const numberPrefix = this.normalizePrefix(dto.numberPrefix);
     const bodyHtml = dto.bodyHtml?.trim();
@@ -129,7 +164,7 @@ export class AuthoringTemplateService {
         },
       });
 
-      await tx.documentTemplateVersion.create({
+      const firstVersion = await tx.documentTemplateVersion.create({
         data: {
           templateId: template.id,
           version: 1,
@@ -152,6 +187,37 @@ export class AuthoringTemplateService {
         },
       });
 
+      await this.recordActivity(
+        tx,
+        template.id,
+        DocumentTemplateActivityAction.CREATED,
+        user,
+        firstVersion.id,
+        {
+          version: 1,
+          duplicatedFromId: dto.duplicatedFromId ?? null,
+        },
+      );
+      if (dto.duplicatedFromId) {
+        const source = await tx.documentTemplate.findUnique({
+          where: { id: dto.duplicatedFromId },
+          select: { id: true },
+        });
+        if (source) {
+          await this.recordActivity(
+            tx,
+            source.id,
+            DocumentTemplateActivityAction.DUPLICATED,
+            user,
+            null,
+            {
+              newTemplateId: template.id,
+              newTemplateName: template.name,
+            },
+          );
+        }
+      }
+
       return tx.documentTemplate.findUnique({
         where: { id: template.id },
         include: TEMPLATE_INCLUDE,
@@ -159,7 +225,11 @@ export class AuthoringTemplateService {
     });
   }
 
-  async update(id: number, dto: UpdateAuthoringTemplateDto) {
+  async update(
+    id: number,
+    dto: UpdateAuthoringTemplateDto,
+    user: { id?: string; name?: string },
+  ) {
     await this.get(id);
     if (dto.bodyHtml !== undefined || dto.fields !== undefined) {
       throw new BadRequestException(
@@ -167,23 +237,38 @@ export class AuthoringTemplateService {
       );
     }
 
-    return this.prisma.documentTemplate.update({
-      where: { id },
-      data: {
-        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
-        ...(dto.description !== undefined
-          ? { description: dto.description?.trim() || null }
-          : {}),
-      },
-      include: TEMPLATE_INCLUDE,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.documentTemplate.update({
+        where: { id },
+        data: {
+          ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+          ...(dto.description !== undefined
+            ? { description: dto.description?.trim() || null }
+            : {}),
+        },
+        include: TEMPLATE_INCLUDE,
+      });
+      await this.recordActivity(
+        tx,
+        id,
+        DocumentTemplateActivityAction.UPDATED,
+        user,
+        null,
+        {
+          name: updated.name,
+          description: updated.description,
+        },
+      );
+      return updated;
     });
   }
 
   async createVersion(
     templateId: number,
     dto: CreateAuthoringTemplateVersionDto,
-    userId: string,
+    user: { id?: string; name?: string },
   ) {
+    const userId = user?.id ?? 'system';
     const template = await this.get(templateId);
     const latest = template.versions[0];
     if (!latest) throw new NotFoundException('La plantilla no tiene versiones');
@@ -197,11 +282,12 @@ export class AuthoringTemplateService {
       dto.numberPrefix ?? latest.numberPrefix,
     );
 
-    return this.prisma.documentTemplateVersion.create({
-      data: {
-        templateId,
-        version: latest.version + 1,
-        status: TemplateVersionStatus.DRAFT,
+    return this.prisma.$transaction(async (tx) => {
+      const version = await tx.documentTemplateVersion.create({
+        data: {
+          templateId,
+          version: latest.version + 1,
+          status: TemplateVersionStatus.DRAFT,
         bodyHtml,
         styles: dto.styles !== undefined ? dto.styles : latest.styles,
         headerHtml:
@@ -227,9 +313,19 @@ export class AuthoringTemplateService {
         fields: { fields } as any,
         pageSize: dto.pageSize ?? latest.pageSize,
         orientation: dto.orientation ?? latest.orientation,
-        numberPrefix,
-        createdById: userId,
-      },
+          numberPrefix,
+          createdById: userId,
+        },
+      });
+      await this.recordActivity(
+        tx,
+        templateId,
+        DocumentTemplateActivityAction.VERSION_CREATED,
+        user,
+        version.id,
+        { version: version.version },
+      );
+      return version;
     });
   }
 
@@ -244,10 +340,24 @@ export class AuthoringTemplateService {
     }
 
     return this.prisma.$transaction(async (tx) => {
+      const previous = await tx.documentTemplateVersion.findMany({
+        where: { templateId, status: TemplateVersionStatus.PUBLISHED },
+        select: { id: true, version: true },
+      });
       await tx.documentTemplateVersion.updateMany({
         where: { templateId, status: TemplateVersionStatus.PUBLISHED },
         data: { status: TemplateVersionStatus.RETIRED },
       });
+      for (const retired of previous) {
+        await this.recordActivity(
+          tx,
+          templateId,
+          DocumentTemplateActivityAction.VERSION_RETIRED,
+          user,
+          retired.id,
+          { version: retired.version },
+        );
+      }
       const published = await tx.documentTemplateVersion.update({
         where: { id: versionId },
         data: {
@@ -268,6 +378,14 @@ export class AuthoringTemplateService {
           orientation: published.orientation,
         },
       });
+      await this.recordActivity(
+        tx,
+        templateId,
+        DocumentTemplateActivityAction.VERSION_PUBLISHED,
+        user,
+        published.id,
+        { version: published.version },
+      );
       return tx.documentTemplate.findUnique({
         where: { id: templateId },
         include: TEMPLATE_INCLUDE,
@@ -275,13 +393,36 @@ export class AuthoringTemplateService {
     });
   }
 
-  async deactivate(templateId: number) {
+  async deactivate(
+    templateId: number,
+    user: { id?: string; name?: string },
+  ) {
     await this.get(templateId);
     return this.prisma.$transaction(async (tx) => {
+      const published = await tx.documentTemplateVersion.findMany({
+        where: { templateId, status: TemplateVersionStatus.PUBLISHED },
+        select: { id: true, version: true },
+      });
       await tx.documentTemplateVersion.updateMany({
         where: { templateId, status: TemplateVersionStatus.PUBLISHED },
         data: { status: TemplateVersionStatus.RETIRED },
       });
+      for (const retired of published) {
+        await this.recordActivity(
+          tx,
+          templateId,
+          DocumentTemplateActivityAction.VERSION_RETIRED,
+          user,
+          retired.id,
+          { version: retired.version },
+        );
+      }
+      await this.recordActivity(
+        tx,
+        templateId,
+        DocumentTemplateActivityAction.DEACTIVATED,
+        user,
+      );
       return tx.documentTemplate.update({
         where: { id: templateId },
         data: { isActive: false },

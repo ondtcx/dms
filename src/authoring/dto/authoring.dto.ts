@@ -101,6 +101,11 @@ export class CreateAuthoringTemplateDto {
   @IsNotEmpty()
   @MaxLength(12)
   numberPrefix: string;
+
+  @ApiPropertyOptional({ description: 'Plantilla de origen si es una copia' })
+  @IsInt()
+  @IsOptional()
+  duplicatedFromId?: number;
 }
 
 export class UpdateAuthoringTemplateDto extends PartialType(

@@ -75,7 +75,7 @@ export class AuthoringController {
     @Body() dto: CreateAuthoringTemplateDto,
     @CurrentUser() user: any,
   ) {
-    return this.templates.create(dto, user.id);
+    return this.templates.create(dto, user);
   }
 
   @Patch('templates/:id')
@@ -84,8 +84,9 @@ export class AuthoringController {
   updateTemplate(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateAuthoringTemplateDto,
+    @CurrentUser() user: any,
   ) {
-    return this.templates.update(id, dto);
+    return this.templates.update(id, dto, user);
   }
 
   @Post('templates/:id/versions')
@@ -96,7 +97,7 @@ export class AuthoringController {
     @Body() dto: CreateAuthoringTemplateVersionDto,
     @CurrentUser() user: any,
   ) {
-    return this.templates.createVersion(id, dto, user.id);
+    return this.templates.createVersion(id, dto, user);
   }
 
   @Post('templates/:id/versions/:versionId/publish')
@@ -113,8 +114,17 @@ export class AuthoringController {
   @Post('templates/:id/deactivate')
   @RequirePermission('authoring.templates.manage')
   @ApiOperation({ summary: 'Desactivar una plantilla' })
-  deactivateTemplate(@Param('id', ParseIntPipe) id: number) {
-    return this.templates.deactivate(id);
+  deactivateTemplate(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.templates.deactivate(id, user);
+  }
+
+  @Get('templates/:id/activity')
+  @ApiOperation({ summary: 'Consultar la actividad de una plantilla' })
+  templateActivity(@Param('id', ParseIntPipe) id: number) {
+    return this.templates.activity(id);
   }
 
   @Get('templates/:id/preview')

@@ -99,6 +99,16 @@ enum TemplateVersionStatus {
   RETIRED
 }
 
+enum DocumentTemplateActivityAction {
+  CREATED
+  UPDATED
+  VERSION_CREATED
+  VERSION_PUBLISHED
+  VERSION_RETIRED
+  DEACTIVATED
+  DUPLICATED
+}
+
 enum AuthoringStatus {
   DRAFT
   IN_REVIEW
@@ -1234,6 +1244,7 @@ model DocumentTemplate {
   variableSchema  Json? // JSON Schema para validación de variables
   catalog         String          @default("legacy") // legacy | institutional
   versions        DocumentTemplateVersion[]
+  activities      DocumentTemplateActivity[]
   documentTemplateData DocumentTemplateData[] // Documentos creados con esta plantilla
   batches         DocumentBatch[] // Lotes generados con esta plantilla
   createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
@@ -1278,9 +1289,26 @@ model DocumentTemplateVersion {
 
   templateData       DocumentTemplateData[]
   authoringDocuments DocumentAuthoring[]
+  activities         DocumentTemplateActivity[]
 
   @@unique([templateId, version])
   @@index([templateId, status])
+}
+
+model DocumentTemplateActivity {
+  id        Int                            @id @default(autoincrement())
+  templateId Int
+  template  DocumentTemplate               @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  versionId Int?
+  version   DocumentTemplateVersion?       @relation(fields: [versionId], references: [id], onDelete: SetNull)
+  action    DocumentTemplateActivityAction
+  actorId   String
+  actorName String?
+  metadata  Json?
+  createdAt DateTime                       @default(now())
+
+  @@index([templateId, createdAt])
+  @@index([versionId])
 }
 
 // Estado de elaboración de un documento creado desde una plantilla.
