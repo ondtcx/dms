@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import {
   DocumentTemplateActivityAction,
+  NotificationType,
   Prisma,
   TemplateVersionStatus,
 } from '@prisma/client';
@@ -73,6 +74,50 @@ export class AuthoringTemplateService {
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
+  }
+
+  private async notifyPublishers(
+    templateId: number,
+    templateName: string,
+    version: { id: number; version: number },
+    actor: { id?: string; name?: string },
+  ) {
+    try {
+      const recipients = await this.prisma.user.findMany({
+        where: {
+          isActive: true,
+          ...(actor?.id ? { id: { not: actor.id } } : {}),
+          roleAssignments: {
+            some: {
+              role: {
+                isActive: true,
+                permissions: {
+                  some: {
+                    permission: {
+                      key: 'authoring.templates.publish',
+                      isActive: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        select: { id: true },
+      });
+      if (!recipients.length) return;
+      await this.prisma.notification.createMany({
+        data: recipients.map((recipient) => ({
+          userId: recipient.id,
+          type: NotificationType.TEMPLATE_VERSION_READY,
+          title: 'Versión de plantilla lista para publicar',
+          message: `${templateName} · versión ${version.version} está lista para publicar.`,
+          actionUrl: `/dashboard/elaboracion/plantillas/${templateId}`,
+        })),
+      });
+    } catch {
+      // La notificación no debe bloquear el guardado del diseño.
+    }
   }
 
   async list(includeDrafts = false) {
@@ -146,7 +191,7 @@ export class AuthoringTemplateService {
     const bodyHtml = dto.bodyHtml?.trim();
     if (!bodyHtml) throw new BadRequestException('El cuerpo de la plantilla es obligatorio');
 
-    return this.prisma.$transaction(async (tx) => {
+    const transaction = this.prisma.$transaction(async (tx) => {
       const template = await tx.documentTemplate.create({
         data: {
           name: dto.name.trim(),
@@ -223,6 +268,16 @@ export class AuthoringTemplateService {
         include: TEMPLATE_INCLUDE,
       });
     });
+    const created = await transaction;
+    if (created?.versions?.[0]) {
+      await this.notifyPublishers(
+        created.id,
+        created.name,
+        created.versions[0],
+        user,
+      );
+    }
+    return created;
   }
 
   async update(
@@ -282,7 +337,7 @@ export class AuthoringTemplateService {
       dto.numberPrefix ?? latest.numberPrefix,
     );
 
-    return this.prisma.$transaction(async (tx) => {
+    const createdVersion = await this.prisma.$transaction(async (tx) => {
       const version = await tx.documentTemplateVersion.create({
         data: {
           templateId,
@@ -327,6 +382,8 @@ export class AuthoringTemplateService {
       );
       return version;
     });
+    await this.notifyPublishers(templateId, template.name, createdVersion, user);
+    return createdVersion;
   }
 
   async publish(
