@@ -3,7 +3,7 @@ import Handlebars from 'handlebars';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentGeneratorService } from '../document-template/document-generator.service';
 import type { AuthoringField } from './authoring.types';
-import { ROLE_LABELS } from './authoring-fields';
+import { getByPath, normalizeFields, ROLE_LABELS } from './authoring-fields';
 import { fullPageFlowFrame, fullPageFrameHtml } from './page-frame-html';
 import { renderTiptapDoc } from './tiptap-renderer';
 import {
@@ -34,6 +34,7 @@ export interface AuthoringTemplateShape {
   pageFrame?: any;
   pageSize?: string | null;
   orientation?: string | null;
+  fields?: any;
 }
 
 @Injectable()
@@ -61,10 +62,12 @@ export class AuthoringRendererService {
       nombre: user.name ?? '',
       cargo: roleLabel,
     };
+    const prebody = this.buildPrebody(template, formData);
 
     return {
       ...formData,
       firmante,
+      prebody,
       institucion: institution,
       documento: {
         ...(formData.documento ?? {}),
@@ -85,6 +88,52 @@ export class AuthoringRendererService {
         draft: Boolean(options.draft),
       },
     };
+  }
+
+  private buildPrebody(
+    template: AuthoringTemplateShape,
+    formData: Record<string, any>,
+  ): string {
+    const fields = normalizeFields(template.fields).fields;
+    if (!fields.length) return '';
+    const excluded = new Set([
+      'contenido',
+      'firmante.nombre',
+      'firmante.cargo',
+      'acta.firmantes',
+      'acta.fecha',
+      'acta.hora',
+      'acta.lugar',
+    ]);
+    const rows = fields
+      .filter((field) => !excluded.has(field.key))
+      .map((field) => {
+        const value = getByPath(formData, field.key);
+        if (value === undefined || value === null || value === '') return '';
+        if (Array.isArray(value)) {
+          const items = value
+            .map((item) => String(item).trim())
+            .filter(Boolean)
+            .map((item) => `<li>${this.escapePrebody(item)}</li>`)
+            .join('');
+          return items
+            ? `<div class="prebody-row"><strong>${this.escapePrebody(field.label)}:</strong><ul>${items}</ul></div>`
+            : '';
+        }
+        return `<div class="prebody-row"><strong>${this.escapePrebody(field.label)}:</strong> ${this.escapePrebody(String(value)).replace(/\n/g, '<br/>')}</div>`;
+      })
+      .filter(Boolean)
+      .join('');
+    return rows ? `<div class="prebody">${rows}</div>` : '';
+  }
+
+  private escapePrebody(value: string): string {
+    return value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   private bodyHtmlForRender(template: AuthoringTemplateShape): string {

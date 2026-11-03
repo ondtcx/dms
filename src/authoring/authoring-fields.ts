@@ -254,6 +254,8 @@ export function normalizeDocumentPageFrame(
       align: ['left', 'center', 'right', 'justify'].includes(box.align)
         ? box.align
         : 'left',
+      center: Boolean(box.center),
+      raw: Boolean(box.raw),
       content,
     };
   });

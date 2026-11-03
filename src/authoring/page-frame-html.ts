@@ -1,6 +1,6 @@
 const FIT_SCRIPT = [
   "function fitLines() {",
-  "  for (const el of document.querySelectorAll('.editable-layer .txt')) {",
+  "  for (const el of document.querySelectorAll('.editable-layer .txt[data-target-width]')) {",
   "    el.style.transform = '';",
   "    const actual = el.getBoundingClientRect().width;",
   '    const expected = parseFloat(el.dataset.targetWidth) * 96 / 72;',
@@ -15,6 +15,10 @@ const RICH_TEXT_CSS = `
 .richtext { white-space: normal !important; line-height: 1.35 !important; text-align: justify; overflow: visible; }
 .richtext p { margin: 0 0 8pt; line-height: 1.35; text-align: justify; }
 .richtext p:last-child { margin-bottom: 0; }
+.prebody { margin: 0 0 10pt; }
+.prebody-row { margin: 0 0 3pt; line-height: 1.35; }
+.prebody-row strong { font-weight: 700; }
+.prebody ul { margin: 2pt 0 0 18pt; padding: 0; }
 .richtext ul, .richtext ol { margin: 0 0 8pt 18pt; padding: 0; }
 .richtext li { margin: 0 0 3pt; }
 .richtext h1 { font-size: 15pt; margin: 0 0 8pt; }
@@ -94,14 +98,19 @@ function boxStyle(box: any, position: 'absolute' | 'fixed' = 'absolute'): string
     `font-weight:${box.fontWeight ?? '400'}`,
     `font-style:${box.fontStyle ?? 'normal'}`,
     `color:${box.color ?? '#000000'}`,
-    `text-align:${box.align ?? 'left'}`,
+    `text-align:${box.center ? 'center' : box.align ?? 'left'}`,
+    ...(box.center ? ['left:50%', 'transform:translateX(-50%)'] : []),
   ].join(';');
 }
 
 function textBox(box: any, position: 'absolute' | 'fixed' = 'absolute'): string {
   const target = Number(box.width) > 0 ? ` data-target-width="${box.width}"` : '';
   const className = position === 'fixed' ? 'txt flow-fixed' : 'txt';
-  return `<span class="${className}" style="${boxStyle(box, position)};"${target}>${box.type === 'pageNumber' ? box.content : escapeHtml(box.content)}</span>`;
+  const content =
+    box.type === 'pageNumber' || box.raw
+      ? box.content
+      : escapeHtml(box.content);
+  return `<span class="${className}" style="${boxStyle(box, position)};"${target}>${content}</span>`;
 }
 
 function imageBox(box: any, position: 'absolute' | 'fixed' = 'absolute'): string {
@@ -124,6 +133,9 @@ export function fullPageFrameHtml(frame: any): string {
 }
 
 function signatureBlock(frame: any): string {
+  if (typeof frame?.signatureFlowHtml === 'string' && frame.signatureFlowHtml.trim()) {
+    return frame.signatureFlowHtml;
+  }
   const label = (id: string, fallback: string) =>
     escapeHtml(boxContent(frame, id, fallback).trim());
   const content = (id: string) => boxContent(frame, id);
@@ -161,8 +173,16 @@ function flowBoxAt(box: any, top: number, position: 'absolute' | 'fixed' = 'abso
   if (box.type === 'image') {
     return `<img src="${box.content}" style="position:${position};left:${box.x}pt;top:${top}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:contain;" />`;
   }
-  const target = Number(box.width) > 0 ? ` data-target-width="${box.width}"` : '';
-  return `<span class="txt" style="position:${position};left:${box.x}pt;top:${top}pt;font-size:${box.fontSize}pt;font-family:${box.fontFamily ?? 'Arial, sans-serif'};font-weight:${box.fontWeight ?? '400'};font-style:${box.fontStyle ?? 'normal'};color:${box.color ?? '#000000'};text-align:${box.align ?? 'left'};"${target}>${box.type === 'pageNumber' ? box.content : escapeHtml(box.content)}</span>`;
+  const target = Number(box.width) > 0 && !box.center ? ` data-target-width="${box.width}"` : '';
+  const content =
+    box.type === 'pageNumber' || box.raw
+      ? box.content
+      : escapeHtml(box.content);
+  const align = box.center ? 'center' : box.align ?? 'left';
+  const positionStyle = box.center
+    ? `left:50%;transform:translateX(-50%)`
+    : `left:${box.x}pt`;
+  return `<span class="txt" style="position:${position};${positionStyle};top:${top}pt;font-size:${box.fontSize}pt;font-family:${box.fontFamily ?? 'Arial, sans-serif'};font-weight:${box.fontWeight ?? '400'};font-style:${box.fontStyle ?? 'normal'};color:${box.color ?? '#000000'};text-align:${align};"${target}>${content}</span>`;
 }
 
 export function fullPageFlowFrame(frame: any): {
@@ -182,12 +202,17 @@ export function fullPageFlowFrame(frame: any): {
     .filter((box: any) => box.role === 'frame' && box.y >= 700)
     .map((box: any) => flowBoxAt(box, box.y - 702))
     .join('');
-  const titleBoxes = ['acta-5', 'acta-6', 'acta-7']
-    .map((id) => boxes.find((box: any) => box.id === id))
-    .filter(Boolean)
+  const body = boxes.find((box: any) => box.type === 'richText');
+  const titleBoxes = boxes
+    .filter(
+      (box: any) =>
+        box.type !== 'richText' &&
+        box.role !== 'frame' &&
+        body &&
+        box.y < body.y,
+    )
     .map((box: any) => flowBoxAt(box, box.y - 90))
     .join('');
-  const body = boxes.find((box: any) => box.type === 'richText');
   const headerTemplate = `<div style="position:relative;width:612pt;height:90pt;overflow:hidden;font-family:Arial,sans-serif;">
     <div style="position:absolute;left:0;top:0;width:612pt;height:90pt;">${headerBackground}</div>
     ${headerBoxes}

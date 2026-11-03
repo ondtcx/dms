@@ -2,6 +2,7 @@ import { PrismaClient, TemplateVersionStatus } from '@prisma/client';
 import * as fs from 'fs';
 import * as path from 'path';
 import { UserRole } from '../src/auth/role.enum';
+import { ACTA_FRAME_CONFIGS, buildActaFrame } from './acta-frame-variants';
 import {
   SAMPLE_BODY_PREFIX,
   SAMPLE_FOOTER_HTML,
@@ -103,34 +104,11 @@ ${watermark}
   ${signature}
 </div>`;
 
-const COMMON_TEMPLATE_NAMES = [
-  'Oficio institucional',
-  'Memorando institucional',
-  'Circular institucional',
-  'Acta institucional',
-  'Constancia institucional',
-  'Informe institucional',
-];
-
-function commonBody(bodyHtml: string): string {
-  let body = bodyHtml.replace(/\{\{>\s*institutionHeader\s*\}\}/g, '').trim();
-  if (!body.includes('data-authoring-left-bar')) {
-    body = `${SAMPLE_BODY_PREFIX}\n${body}`;
-  }
-  return body;
-}
-
-function signatureSafeStyles(stylesHtml: string | null): string {
-  const base = stylesHtml ?? '';
-  if (base.includes('break-inside: avoid')) return base;
-  return `${base}\n.signature { break-inside: avoid; page-break-inside: avoid; }`;
-}
-
-async function applyCommonInstitutionalFrames(
+async function applyActaFrames(
   prisma: PrismaClient,
   adminId: string,
 ): Promise<void> {
-  for (const name of COMMON_TEMPLATE_NAMES) {
+  for (const name of Object.keys(ACTA_FRAME_CONFIGS)) {
     const template = await prisma.documentTemplate.findFirst({
       where: { name, catalog: 'institutional' },
       include: { versions: { orderBy: { version: 'desc' } } },
@@ -139,22 +117,26 @@ async function applyCommonInstitutionalFrames(
     const latest = template.versions[0];
     if (!latest) continue;
 
+    const frame = buildActaFrame(name);
+    const config = ACTA_FRAME_CONFIGS[name];
     const latestFields = ((latest.fields as any)?.fields ?? []) as any[];
+    const latestFrame = latest.pageFrame as any;
     const already =
-      latest.headerHtml === SAMPLE_HEADER_HTML &&
-      latest.footerHtml === SAMPLE_FOOTER_HTML &&
-      latest.pageSize === 'Letter' &&
-      latest.bodyHtml.includes('data-authoring-left-bar') &&
-      !latest.bodyHtml.includes('institutionHeader') &&
-      (latest.styles ?? '').includes('break-inside: avoid') &&
+      latestFrame?.mode === 'fullPage' &&
+      latestFrame?.frameVersion === 2 &&
+      latestFrame?.signatureFlowHtml === config.signatureFlowHtml &&
+      latestFrame?.body?.boxes?.find((box: any) => box.id === 'acta-body')
+        ?.height === config.bodyHeight &&
+      latestFrame?.body?.boxes?.find((box: any) => box.id === 'acta-5')
+        ?.content === config.title &&
+      latestFrame?.body?.boxes?.find((box: any) => box.id === 'acta-7')
+        ?.content === config.date &&
       (name !== 'Constancia institucional' ||
         latestFields.some((field) => field.key === 'contenido'));
     if (already) continue;
 
-    let bodyHtml = latest.bodyHtml;
     let fields = latestFields;
     if (name === 'Constancia institucional') {
-      bodyHtml = CONSTANCIA_COMMON_BODY;
       fields = [
         ...latestFields.filter(
           (field) =>
@@ -169,27 +151,25 @@ async function applyCommonInstitutionalFrames(
         },
       ];
     }
-    const nextBody = commonBody(bodyHtml);
-    const nextStyles = signatureSafeStyles(latest.styles);
 
     await prisma.documentTemplateVersion.create({
       data: {
         templateId: template.id,
         version: latest.version + 1,
         status: TemplateVersionStatus.PUBLISHED,
-        bodyHtml: nextBody,
-        styles: nextStyles,
-        headerHtml: SAMPLE_HEADER_HTML,
-        footerHtml: SAMPLE_FOOTER_HTML,
-        marginTop: SAMPLE_MARGINS.marginTop,
-        marginBottom: SAMPLE_MARGINS.marginBottom,
-        marginLeft: SAMPLE_MARGINS.marginLeft,
-        marginRight: SAMPLE_MARGINS.marginRight,
+        bodyHtml: latest.bodyHtml,
+        styles: '',
+        headerHtml: null,
+        footerHtml: null,
+        marginTop: '0',
+        marginBottom: '0',
+        marginLeft: '0',
+        marginRight: '0',
         pageSize: 'Letter',
         orientation: 'portrait',
         numberPrefix: latest.numberPrefix,
-        pageFrame: latest.pageFrame,
-        signatures: latest.signatures,
+        pageFrame: frame as any,
+        signatures: null,
         fields: { fields } as any,
         createdById: adminId,
         publishedAt: new Date(),
@@ -207,8 +187,8 @@ async function applyCommonInstitutionalFrames(
       where: { id: template.id },
       data: {
         isActive: true,
-        htmlTemplate: nextBody,
-        styles: nextStyles,
+        htmlTemplate: latest.bodyHtml,
+        styles: '',
         fields: { fields } as any,
         pageSize: 'Letter',
         orientation: 'portrait',
@@ -560,5 +540,5 @@ export async function seedAuthoringTemplates(
   }
 
   await seedActaEntrega(prisma, adminId, category.id);
-  await applyCommonInstitutionalFrames(prisma, adminId);
+  await applyActaFrames(prisma, adminId);
 }
