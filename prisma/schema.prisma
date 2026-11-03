@@ -93,6 +93,39 @@ enum DocumentVersionSource {
   CAMBIOS_SOLICITADOS // Reemplazo en respuesta a un workflow activo
 }
 
+enum TemplateVersionStatus {
+  DRAFT
+  PUBLISHED
+  RETIRED
+}
+
+enum AuthoringStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  EMITTED
+  ARCHIVED
+}
+
+enum AuthoringAction {
+  CREATED
+  SAVED
+  SUBMITTED
+  APPROVED
+  RETURNED
+  EMITTED
+  ARCHIVED
+}
+
+enum ContentVersionReason {
+  DRAFT_SAVE
+  SENT_TO_REVIEW
+  RETURNED
+  APPROVED
+  EMITTED
+}
+
 enum NotificationType {
   DOCUMENT_SHARED // Documento compartido
   DOCUMENT_UPLOADED // Documento subido
@@ -860,6 +893,8 @@ model Document {
   academic     DocumentAcademic?
   search       DocumentSearch?
   templateData DocumentTemplateData?
+  authoring    DocumentAuthoring?
+  contentVersions DocumentContentVersion[]
 
   // Tipo de documento (jerarquía: Section → Category → DocumentType)
   documentTypeId Int? // Tipo del documento dentro de su categoría
@@ -1197,6 +1232,8 @@ model DocumentTemplate {
   previewImageUrl String? // URL de imagen de preview de la plantilla
   usageCount      Int             @default(0) // Contador de uso de la plantilla
   variableSchema  Json? // JSON Schema para validación de variables
+  catalog         String          @default("legacy") // legacy | institutional
+  versions        DocumentTemplateVersion[]
   documentTemplateData DocumentTemplateData[] // Documentos creados con esta plantilla
   batches         DocumentBatch[] // Lotes generados con esta plantilla
   createdBy       User            @relation(fields: [createdById], references: [id], onDelete: Cascade)
@@ -1209,6 +1246,93 @@ model DocumentTemplate {
   @@index([isPredefined])
   @@index([usageCount])
   @@index([createdById])
+  @@index([catalog])
+}
+
+// Versión inmutable del cuerpo, campos y configuración de una plantilla.
+model DocumentTemplateVersion {
+  id           Int                   @id @default(autoincrement())
+  templateId   Int
+  template     DocumentTemplate      @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  version      Int
+  status       TemplateVersionStatus @default(DRAFT)
+  bodyHtml     String                @db.Text
+  styles       String?               @db.Text
+  fields       Json
+  pageSize     String                @default("A4")
+  orientation  String                @default("portrait")
+  numberPrefix String
+  createdById  String
+  createdAt    DateTime              @default(now())
+  publishedAt  DateTime?
+
+  templateData       DocumentTemplateData[]
+  authoringDocuments DocumentAuthoring[]
+
+  @@unique([templateId, version])
+  @@index([templateId, status])
+}
+
+// Estado de elaboración de un documento creado desde una plantilla.
+model DocumentAuthoring {
+  id                Int                      @id @default(autoincrement())
+  documentId        Int                      @unique
+  document          Document                 @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  templateVersionId Int?
+  templateVersion   DocumentTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
+  status            AuthoringStatus          @default(DRAFT)
+  reviewerId        String?
+  reviewerName      String?
+  submittedAt       DateTime?
+  reviewedAt        DateTime?
+  reviewedById      String?
+  reviewedByName    String?
+  reviewObservation String?                  @db.Text
+  emittedAt         DateTime?
+  emittedById       String?
+  emittedByName     String?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  events DocumentAuthoringEvent[]
+
+  @@index([status])
+  @@index([reviewerId])
+  @@index([templateVersionId])
+}
+
+model DocumentAuthoringEvent {
+  id          Int               @id @default(autoincrement())
+  authoringId Int
+  authoring   DocumentAuthoring @relation(fields: [authoringId], references: [id], onDelete: Cascade)
+  action      AuthoringAction
+  fromStatus  AuthoringStatus?
+  toStatus    AuthoringStatus
+  observation String?           @db.Text
+  actorId     String
+  actorName   String?
+  createdAt   DateTime          @default(now())
+
+  @@index([authoringId])
+  @@index([createdAt])
+}
+
+// Snapshot del formulario y del HTML renderizado en hitos del flujo.
+model DocumentContentVersion {
+  id            Int                  @id @default(autoincrement())
+  documentId    Int
+  document      Document             @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version       Int
+  formData      Json
+  htmlSnapshot  String               @db.Text
+  reason        ContentVersionReason
+  createdById   String
+  createdByName String?
+  createdAt     DateTime             @default(now())
+
+  @@unique([documentId, version])
+  @@index([documentId])
+  @@index([createdAt])
 }
 
 // Lote de documentos generados desde una plantilla
@@ -1499,12 +1623,15 @@ model DocumentTemplateData {
   document   Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
   templateId Int?
   template   DocumentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  templateVersionId Int?
+  templateVersion   DocumentTemplateVersion? @relation(fields: [templateVersionId], references: [id], onDelete: SetNull)
   formData   Json?
   batchId    String?
   batch      DocumentBatch?    @relation(fields: [batchId], references: [id], onDelete: SetNull)
 
   @@index([documentId])
   @@index([templateId])
+  @@index([templateVersionId])
   @@index([batchId])
 }
 
