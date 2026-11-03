@@ -40,7 +40,7 @@ import { TransferModule } from './transfer/transfer.module';
     }),
     ReceptionFileModule,
     StorageModule, // Módulo global de almacenamiento
-    TasksModule, // Tareas programadas (cronjobs)
+    ...(process.env.DEMO_MODE === '1' ? [] : [TasksModule]), // Tareas programadas (cronjobs)
     PermissionModule, // Sistema de permisos (global)
     UserModule,
     AuthModule,
@@ -52,7 +52,7 @@ import { TransferModule } from './transfer/transfer.module';
     DocumentModule,
     DocumentTemplateModule,
     DocumentCompositionModule,
-    OnlyofficeModule, // Integración con OnlyOffice
+    ...(process.env.DEMO_MODE === '1' ? [] : [OnlyofficeModule]), // Integración con OnlyOffice
     SettingsModule, // Configuración del sistema
     RoleModule,
     DirectoryModule,
