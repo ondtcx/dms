@@ -1,5 +1,11 @@
 import { PrismaClient, TemplateVersionStatus } from '@prisma/client';
 import { UserRole } from '../src/auth/role.enum';
+import {
+  SAMPLE_BODY_PREFIX,
+  SAMPLE_FOOTER_HTML,
+  SAMPLE_HEADER_HTML,
+  SAMPLE_MARGINS,
+} from './authoring-page-frame';
 
 type Field = {
   key: string;
@@ -212,6 +218,92 @@ ${watermark}
   },
 ];
 
+async function applyOficioPageFrame(
+  prisma: PrismaClient,
+  adminId: string,
+): Promise<void> {
+  const oficio = await prisma.documentTemplate.findFirst({
+    where: { name: 'Oficio institucional', catalog: 'institutional' },
+    include: { versions: { orderBy: { version: 'desc' } } },
+  });
+  if (!oficio) return;
+  if (oficio.versions.some((version) => version.version > 2)) return;
+
+  const existingV2 = oficio.versions.find((version) => version.version === 2);
+  if (existingV2) {
+    await prisma.documentTemplateVersion.updateMany({
+      where: { templateId: oficio.id, status: TemplateVersionStatus.PUBLISHED },
+      data: { status: TemplateVersionStatus.RETIRED },
+    });
+    await prisma.documentTemplateVersion.update({
+      where: { id: existingV2.id },
+      data: {
+        status: TemplateVersionStatus.PUBLISHED,
+        publishedAt: existingV2.publishedAt ?? new Date(),
+      },
+    });
+    await prisma.documentTemplate.update({
+      where: { id: oficio.id },
+      data: {
+        isActive: true,
+        htmlTemplate: existingV2.bodyHtml,
+        styles: existingV2.styles,
+        fields: existingV2.fields as any,
+        pageSize: existingV2.pageSize,
+        orientation: existingV2.orientation,
+      },
+    });
+    return;
+  }
+
+  const v1 = oficio.versions.find((version) => version.version === 1);
+  if (!v1) return;
+  const bodyHtml = `${SAMPLE_BODY_PREFIX}\n${v1.bodyHtml
+    .replace(/\{\{>\s*institutionHeader\s*\}\}/g, '')
+    .trim()}`;
+
+  await prisma.documentTemplateVersion.create({
+    data: {
+      templateId: oficio.id,
+      version: 2,
+      status: TemplateVersionStatus.PUBLISHED,
+      bodyHtml,
+      styles: v1.styles,
+      headerHtml: SAMPLE_HEADER_HTML,
+      footerHtml: SAMPLE_FOOTER_HTML,
+      marginTop: SAMPLE_MARGINS.marginTop,
+      marginBottom: SAMPLE_MARGINS.marginBottom,
+      marginLeft: SAMPLE_MARGINS.marginLeft,
+      marginRight: SAMPLE_MARGINS.marginRight,
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      numberPrefix: v1.numberPrefix || 'OFI',
+      fields: v1.fields as any,
+      createdById: adminId,
+      publishedAt: new Date(),
+    },
+  });
+  await prisma.documentTemplateVersion.updateMany({
+    where: {
+      templateId: oficio.id,
+      version: 1,
+      status: TemplateVersionStatus.PUBLISHED,
+    },
+    data: { status: TemplateVersionStatus.RETIRED },
+  });
+  await prisma.documentTemplate.update({
+    where: { id: oficio.id },
+    data: {
+      isActive: true,
+      htmlTemplate: bodyHtml,
+      styles: v1.styles,
+      fields: v1.fields as any,
+      pageSize: 'Letter',
+      orientation: 'portrait',
+    },
+  });
+}
+
 export async function seedAuthoringTemplates(
   prisma: PrismaClient,
   adminId: string,
@@ -327,4 +419,6 @@ export async function seedAuthoringTemplates(
       },
     });
   }
+
+  await applyOficioPageFrame(prisma, adminId);
 }
