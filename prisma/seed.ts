@@ -6,11 +6,12 @@ const prisma = new PrismaClient();
 
 const users = [
   ['admin@colegio.edu', 'Anderson Cuarán', UserRole.ADMIN, 'Administrador del Sistema'],
-  ['rector@colegio.edu', 'María Elena Rodríguez', UserRole.RECTOR, 'Rectora General'],
-  ['vicerrector@colegio.edu', 'Lucía Fernanda Castillo', UserRole.VICERRECTOR, 'Vicerrectora'],
+  ['rector@colegio.edu', 'Erika Ramirez', UserRole.RECTOR, 'Rectora General'],
+  ['vicerrector@colegio.edu', 'Jefferson Vaca', UserRole.VICERRECTOR, 'Vicerrector'],
   ['coord.primaria@colegio.edu', 'Ana Gabriela López', UserRole.COORDINADOR, 'Coordinadora de Primaria'],
   ['coord.secundaria@colegio.edu', 'Roberto Alejandro Méndez', UserRole.COORDINADOR, 'Coordinador de Secundaria'],
-  ['secretaria@colegio.edu', 'Patricia Isabel Hernández', UserRole.SECRETARIO, 'Secretaria Académica'],
+  ['secretaria@colegio.edu', 'Fabian Díaz', UserRole.SECRETARIO, 'Secretario Académico'],
+  ['inspector@colegio.edu', 'Wilmer Regalado', UserRole.USER, 'Inspector General'],
   ['maestro.1p@colegio.edu', 'Juan Manuel Suárez', UserRole.PROFESOR, 'Maestra de 1° Grado'],
   ['maestro.2p@colegio.edu', 'Sofía Andrea Ruiz', UserRole.PROFESOR, 'Maestra de 2° Grado'],
   ['maestro.3p@colegio.edu', 'Diego Ernesto Vargas', UserRole.PROFESOR, 'Maestro de 3° Grado'],
@@ -33,21 +34,21 @@ const users = [
 const categoryData = [
   ['General', 'Categoría predeterminada para documentos subidos', '#64748b', 'Folder', false, [], 'GEN'],
   ['Planificaciones', 'Planificaciones de clase, proyectos pedagógicos y programas', '#2563eb', 'CalendarDays', true, ['profesor', 'coordinador'], 'PLN'],
-  ['Actas y Reuniones', 'Actas de reuniones, consejos de docentes y asambleas', '#7c3aed', 'Users', false, ['coordinador', 'secretario', 'rector', 'vicerrector', 'admin'], 'ACT'],
+  ['Actas y Reuniones', 'Actas de reuniones, consejos de docentes, asambleas y entregas de bienes', '#7c3aed', 'Users', false, ['coordinador', 'secretario', 'rector', 'vicerrector', 'admin'], 'ACT'],
   ['Constancias y Certificados', 'Constancias de estudio, trabajo, buena conducta y certificados', '#059669', 'Award', false, ['secretario', 'rector', 'vicerrector', 'admin'], 'CST'],
-  ['Informes Académicos', 'Boletines, informes de rendimiento y evaluaciones', '#dc2626', 'BarChart3', false, ['profesor', 'coordinador', 'rector', 'vicerrector'], 'INF'],
-  ['Administrativos', 'Memorándums, circulares, solicitudes y comunicaciones oficiales', '#d97706', 'FolderKanban', false, ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector', 'admin'], 'ADMD'],
+  ['Informes Académicos', 'Boletines, informes de rendimiento, evaluaciones y control de asistencia', '#dc2626', 'BarChart3', false, ['profesor', 'coordinador', 'rector', 'vicerrector'], 'INF'],
+  ['Administrativos', 'Memorándums, circulares, solicitudes, comunicaciones y registros administrativos', '#d97706', 'FolderKanban', false, ['profesor', 'coordinador', 'secretario', 'rector', 'vicerrector', 'admin'], 'ADMD'],
   ['Legales', 'Contratos, reglamentos internos y documentos normativos', '#0891b2', 'Scale', false, ['rector', 'admin'], 'LEG'],
-  ['Financieros', 'Presupuestos, facturas, nóminas e informes financieros', '#16a34a', 'DollarSign', false, ['secretario', 'rector', 'admin'], 'FIN'],
+  ['Financieros', 'Presupuestos, facturas, órdenes de compra, nóminas e informes financieros', '#16a34a', 'DollarSign', false, ['secretario', 'rector', 'admin'], 'FIN'],
 ] as const;
 
 const documentTypeData = [
-  ['Planificación Semanal', 'Planificaciones'], ['Proyecto Pedagógico', 'Planificaciones'], ['Plan de Evaluación', 'Planificaciones'],
-  ['Acta de Reunión', 'Actas y Reuniones'], ['Acta de Consejo', 'Actas y Reuniones'], ['Acta de Compromiso', 'Actas y Reuniones'],
+  ['Planificación Semanal', 'Planificaciones'], ['Proyecto Pedagógico', 'Planificaciones'], ['Plan de Evaluación', 'Planificaciones'], ['Plan de Mejora Institucional', 'Planificaciones'],
+  ['Acta de Reunión', 'Actas y Reuniones'], ['Acta de Consejo', 'Actas y Reuniones'], ['Acta de Compromiso', 'Actas y Reuniones'], ['Acta de Entrega de Bienes', 'Actas y Reuniones'],
   ['Constancia de Estudios', 'Constancias y Certificados'], ['Constancia de Conducta', 'Constancias y Certificados'], ['Certificado', 'Constancias y Certificados'],
-  ['Informe de Rendimiento', 'Informes Académicos'], ['Informe de Grupo', 'Informes Académicos'], ['Boletín de Calificaciones', 'Informes Académicos'],
-  ['Memorando', 'Administrativos'], ['Circular', 'Administrativos'], ['Comunicado', 'Administrativos'], ['Solicitud de Permiso', 'Administrativos'], ['Reporte de Incidencia', 'Administrativos'], ['Oficio', 'Administrativos'],
-  ['Contrato de Inscripción', 'Legales'], ['Recibo de Pago', 'Financieros'], ['Presupuesto de Actividad', 'Financieros'],
+  ['Informe de Rendimiento', 'Informes Académicos'], ['Informe de Grupo', 'Informes Académicos'], ['Boletín de Calificaciones', 'Informes Académicos'], ['Historial Académico', 'Informes Académicos'], ['Registro de Asistencia', 'Informes Académicos'],
+  ['Memorando', 'Administrativos'], ['Circular', 'Administrativos'], ['Comunicado', 'Administrativos'], ['Solicitud de Permiso', 'Administrativos'], ['Reporte de Incidencia', 'Administrativos'], ['Oficio', 'Administrativos'], ['Ficha de Datos del Estudiante', 'Administrativos'], ['Autorización de Retiro del Estudiante', 'Administrativos'], ['Inventario de Bienes Muebles', 'Administrativos'], ['Expediente Estudiantil', 'Administrativos'],
+  ['Reglamento Interno', 'Legales'], ['Orden de Compra', 'Financieros'],
 ] as const;
 
 const templateData = [
@@ -67,16 +68,28 @@ const templateData = [
   ['Comunicado a Representantes', 'Comunicado', 'Administrativos'], ['Solicitud de Permiso Laboral', 'Solicitud de Permiso', 'Administrativos'],
   ['Reporte de Incidencia Escolar', 'Reporte de Incidencia', 'Administrativos'], ['Oficio', 'Oficio', 'Administrativos'],
   ['Oficio de Designación Docente', 'Oficio', 'Administrativos'], ['Oficio de Remisión de Documentos', 'Oficio', 'Administrativos'],
-  ['Contrato de Inscripción Estudiantil', 'Contrato de Inscripción', 'Legales'],
-  ['Recibo de Pago de Aranceles', 'Recibo de Pago', 'Financieros'], ['Presupuesto de Actividad Escolar', 'Presupuesto de Actividad', 'Financieros'],
 ] as const;
 
-const catalogRoles = Object.values(UserRole).map((key) => ({
-  key,
-  label: key.charAt(0).toUpperCase() + key.slice(1),
-  legacyRole: key,
-  isSystem: true,
-}));
+// Roles legacy fuera del catálogo institucional. El enum se conserva para
+// compatibilidad con User.role, pero no se crea un rol de catálogo para ellos.
+const excludedCatalogRoles = new Set<string>([UserRole.PADRE, UserRole.ESTUDIANTE]);
+
+const catalogRoles = [
+  ...Object.values(UserRole)
+    .filter((key) => !excludedCatalogRoles.has(key))
+    .map((key) => ({
+      key,
+      label: key.charAt(0).toUpperCase() + key.slice(1),
+      legacyRole: key,
+      isSystem: true,
+    })),
+  {
+    key: 'inspector-general',
+    label: 'Inspector General',
+    legacyRole: null,
+    isSystem: false,
+  },
+];
 
 const catalogPermissions = [
   ['users.manage', 'Gestionar usuarios'],
@@ -132,10 +145,30 @@ async function main() {
   }
 
   for (const [email, , role] of users) {
+    const catalogRoleId = roles[role];
+    if (!catalogRoleId) continue;
     await prisma.userRoleAssignment.upsert({
-      where: { userId_roleId: { userId: createdUsers[email], roleId: roles[role] } },
+      where: { userId_roleId: { userId: createdUsers[email], roleId: catalogRoleId } },
       update: {},
-      create: { userId: createdUsers[email], roleId: roles[role] },
+      create: { userId: createdUsers[email], roleId: catalogRoleId },
+    });
+  }
+
+  const inspectorRoleId = roles['inspector-general'];
+  const inspectorUserId = createdUsers['inspector@colegio.edu'];
+  if (inspectorRoleId && inspectorUserId) {
+    await prisma.userRoleAssignment.upsert({
+      where: {
+        userId_roleId: {
+          userId: inspectorUserId,
+          roleId: inspectorRoleId,
+        },
+      },
+      update: {},
+      create: {
+        userId: inspectorUserId,
+        roleId: inspectorRoleId,
+      },
     });
   }
 
