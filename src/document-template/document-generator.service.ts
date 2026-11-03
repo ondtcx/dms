@@ -56,7 +56,9 @@ export class DocumentGeneratorService {
     // Helper para formatear fechas
     Handlebars.registerHelper('formatDate', function (date: string) {
       if (!date) return '';
-      const d = new Date(date);
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(String(date))
+        ? new Date(`${date}T12:00:00`)
+        : new Date(date);
       return d.toLocaleDateString('es-ES', {
         year: 'numeric',
         month: 'long',

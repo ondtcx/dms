@@ -142,6 +142,8 @@ export class AuthoringTemplateService {
           marginBottom: dto.marginBottom || null,
           marginLeft: dto.marginLeft || null,
           marginRight: dto.marginRight || null,
+          pageFrame: (dto.pageFrame ?? null) as any,
+          signatures: (dto.signatures ?? null) as any,
           fields: { fields } as any,
           pageSize: dto.pageSize || 'A4',
           orientation: dto.orientation || 'portrait',
@@ -216,6 +218,12 @@ export class AuthoringTemplateService {
           dto.marginLeft !== undefined ? dto.marginLeft : latest.marginLeft,
         marginRight:
           dto.marginRight !== undefined ? dto.marginRight : latest.marginRight,
+        pageFrame:
+          dto.pageFrame !== undefined ? (dto.pageFrame as any) : latest.pageFrame,
+        signatures:
+          dto.signatures !== undefined
+            ? (dto.signatures as any)
+            : latest.signatures,
         fields: { fields } as any,
         pageSize: dto.pageSize ?? latest.pageSize,
         orientation: dto.orientation ?? latest.orientation,

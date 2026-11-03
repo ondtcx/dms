@@ -1,6 +1,12 @@
 import { PrismaClient, TemplateVersionStatus } from '@prisma/client';
 import { UserRole } from '../src/auth/role.enum';
 import {
+  ACTA_BODY_HTML,
+  ACTA_FIELDS,
+  ACTA_PAGE_FRAME,
+  ACTA_SIGNATURES,
+  pageFrameToFooterHtml,
+  pageFrameToHeaderHtml,
   SAMPLE_BODY_PREFIX,
   SAMPLE_FOOTER_HTML,
   SAMPLE_HEADER_HTML,
@@ -38,6 +44,10 @@ th, td { border: 1px solid #9ca3af; padding: 4px 6px; vertical-align: top; }
 
 const watermark =
   '{{#if _metadata.draft}}<div class="draft-watermark">BORRADOR</div>{{/if}}';
+
+const actaStyles = `${styles}
+.doc { padding-left: 14px; }
+.doc-subtitle { text-align: center; font-size: 13pt; font-weight: 700; margin: 0 0 18px; }`;
 
 const signature = `
 <div class="signature">
@@ -217,6 +227,61 @@ ${watermark}
 </div>`,
   },
 ];
+
+async function seedActaEntrega(
+  prisma: PrismaClient,
+  adminId: string,
+  categoryId: number,
+): Promise<void> {
+  const existing = await prisma.documentTemplate.findFirst({
+    where: { name: 'Acta de entrega-recepción', catalog: 'institutional' },
+    select: { id: true },
+  });
+  if (existing) return;
+
+  const template = await prisma.documentTemplate.create({
+    data: {
+      name: 'Acta de entrega-recepción',
+      description:
+        'Acta para entrega y recepción de bienes del Consejo Ejecutivo.',
+      categoryId,
+      fields: ACTA_FIELDS as any,
+      htmlTemplate: ACTA_BODY_HTML,
+      styles: actaStyles,
+      outputFormat: 'pdf',
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      isActive: true,
+      isPredefined: true,
+      catalog: 'institutional',
+      createdById: adminId,
+    },
+  });
+
+  await prisma.documentTemplateVersion.create({
+    data: {
+      templateId: template.id,
+      version: 1,
+      status: TemplateVersionStatus.PUBLISHED,
+      bodyHtml: ACTA_BODY_HTML,
+      styles: actaStyles,
+      headerHtml: pageFrameToHeaderHtml(ACTA_PAGE_FRAME),
+      footerHtml: pageFrameToFooterHtml(ACTA_PAGE_FRAME),
+      marginTop: ACTA_PAGE_FRAME.margins.top,
+      marginBottom: ACTA_PAGE_FRAME.margins.bottom,
+      marginLeft: ACTA_PAGE_FRAME.margins.left,
+      marginRight: ACTA_PAGE_FRAME.margins.right,
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      numberPrefix: 'ACT',
+      pageFrame: ACTA_PAGE_FRAME as any,
+      signatures: ACTA_SIGNATURES as any,
+      fields: ACTA_FIELDS as any,
+      createdById: adminId,
+      publishedAt: new Date(),
+    },
+  });
+}
 
 async function applyOficioPageFrame(
   prisma: PrismaClient,
@@ -420,5 +485,6 @@ export async function seedAuthoringTemplates(
     });
   }
 
+  await seedActaEntrega(prisma, adminId, category.id);
   await applyOficioPageFrame(prisma, adminId);
 }

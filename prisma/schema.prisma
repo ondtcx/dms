@@ -1264,6 +1264,8 @@ model DocumentTemplateVersion {
   marginBottom String?
   marginLeft   String?
   marginRight  String?
+  pageFrame    Json?
+  signatures   Json?
   fields       Json
   pageSize     String                @default("A4")
   orientation  String                @default("portrait")

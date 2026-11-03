@@ -72,6 +72,16 @@ export class CreateAuthoringTemplateDto {
   @IsOptional()
   marginRight?: string;
 
+  @ApiPropertyOptional({ description: 'Diseño visual del marco de página' })
+  @IsObject()
+  @IsOptional()
+  pageFrame?: Record<string, any>;
+
+  @ApiPropertyOptional({ description: 'Bloque estructurado de firmas' })
+  @IsObject()
+  @IsOptional()
+  signatures?: Record<string, any>;
+
   @ApiProperty({ description: 'Definición de campos', example: { fields: [] } })
   @IsObject()
   fields: Record<string, any>;
@@ -137,6 +147,16 @@ export class CreateAuthoringTemplateVersionDto {
   @IsString()
   @IsOptional()
   marginRight?: string;
+
+  @ApiPropertyOptional()
+  @IsObject()
+  @IsOptional()
+  pageFrame?: Record<string, any>;
+
+  @ApiPropertyOptional()
+  @IsObject()
+  @IsOptional()
+  signatures?: Record<string, any>;
 
   @ApiPropertyOptional()
   @IsObject()

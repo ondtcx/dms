@@ -28,6 +28,8 @@ export interface AuthoringTemplateShape {
   marginBottom?: string | null;
   marginLeft?: string | null;
   marginRight?: string | null;
+  signatures?: any;
+  pageFrame?: any;
   pageSize?: string | null;
   orientation?: string | null;
 }
@@ -84,12 +86,47 @@ export class AuthoringRendererService {
   }
 
   private bodyHtmlForRender(template: AuthoringTemplateShape): string {
-    if (!template.headerHtml?.trim()) return template.bodyHtml;
-    // Un encabezado de página reemplaza el partial de cabecera del cuerpo.
-    return template.bodyHtml.replace(
-      /\{\{>\s*institutionHeader\s*\}\}/g,
-      '',
-    );
+    let body = template.pageFrame?.bodyPrefixHtml
+      ? `${template.pageFrame.bodyPrefixHtml}${template.bodyHtml}`
+      : template.bodyHtml;
+    if (template.headerHtml?.trim()) {
+      // Un encabezado de página reemplaza el partial de cabecera del cuerpo.
+      body = body.replace(/\{\{>\s*institutionHeader\s*\}\}/g, '');
+    }
+    const signatures = this.buildSignatures(template.signatures);
+    return signatures ? `${body}${signatures}` : body;
+  }
+
+  private buildSignatures(raw: any): string {
+    const items = Array.isArray(raw?.items) ? raw.items : [];
+    if (!items.length) return '';
+
+    const line =
+      '<div style="border-top:1px solid #111827;width:62%;margin:0 auto 6px;"></div>';
+    const inner = (item: any) => `
+      <div style="font-weight:700;margin-bottom:46px;">${item.title || ''}</div>
+      ${line}
+      <div>${item.name || ''}</div>
+      <div>${item.role || ''}</div>`;
+
+    const normal = items.filter((item: any) => !item.fullWidth);
+    const full = items.filter((item: any) => item.fullWidth);
+    let rows = '';
+    for (let index = 0; index < normal.length; index += 2) {
+      const left = normal[index];
+      const right = normal[index + 1];
+      rows += `<tr>
+        <td style="width:50%;text-align:center;vertical-align:top;padding:0 18px 30px;border:none;">${inner(left)}</td>
+        <td style="width:50%;text-align:center;vertical-align:top;padding:0 18px 30px;border:none;">${right ? inner(right) : ''}</td>
+      </tr>`;
+    }
+    for (const item of full) {
+      rows += `<tr>
+        <td colspan="2" style="text-align:center;vertical-align:top;padding:0 18px 24px;border:none;">${inner(item)}</td>
+      </tr>`;
+    }
+
+    return `<div style="margin-top:42px;"><table style="width:100%;border-collapse:collapse;border:none;">${rows}</table></div>`;
   }
 
   private compilePageFragment(
@@ -98,6 +135,18 @@ export class AuthoringRendererService {
   ): string | undefined {
     if (!html?.trim()) return undefined;
     return Handlebars.compile(html)(context);
+  }
+
+  private stylesForRender(template: AuthoringTemplateShape): string | undefined {
+    const base = template.styles ?? '';
+    if (template.headerHtml?.trim() || template.footerHtml?.trim()) {
+      const top = template.marginTop || '3.2cm';
+      const right = template.marginRight || '2cm';
+      const bottom = template.marginBottom || '3cm';
+      const left = template.marginLeft || '2cm';
+      return `${base}\n@page { margin: ${top} ${right} ${bottom} ${left}; }`;
+    }
+    return base || undefined;
   }
 
   async renderHtml(
@@ -110,7 +159,7 @@ export class AuthoringRendererService {
     const context = this.buildContext(template, formData, user, options, metadata);
     return this.generator.generateHTML({
       htmlTemplate: this.bodyHtmlForRender(template),
-      styles: template.styles ?? undefined,
+      styles: this.stylesForRender(template),
       data: context,
     });
   }
@@ -136,7 +185,7 @@ export class AuthoringRendererService {
 
     return this.generator.generatePDF({
       htmlTemplate: this.bodyHtmlForRender(template),
-      styles: template.styles ?? undefined,
+      styles: this.stylesForRender(template),
       data: context,
       pageSize: (template.pageSize as any) || 'A4',
       orientation: (template.orientation as any) || 'portrait',
