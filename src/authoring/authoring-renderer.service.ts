@@ -4,7 +4,8 @@ import { SettingsService } from '../settings/settings.service';
 import { DocumentGeneratorService } from '../document-template/document-generator.service';
 import type { AuthoringField } from './authoring.types';
 import { ROLE_LABELS } from './authoring-fields';
-import { fullPageFrameHtml } from './page-frame-html';
+import { fullPageFlowFrame, fullPageFrameHtml } from './page-frame-html';
+import { renderTiptapDoc } from './tiptap-renderer';
 import {
   buildInstitutionContext,
   getInstitutionMetadata,
@@ -193,10 +194,46 @@ export class AuthoringRendererService {
 
     if (template.pageFrame?.mode === 'fullPage') {
       const hasBoxes = (template.pageFrame?.body?.boxes ?? []).length > 0;
+      const frameHtml = hasBoxes
+        ? fullPageFrameHtml(template.pageFrame)
+        : template.bodyHtml;
+      const hasRichTextBody = (template.pageFrame?.body?.boxes ?? []).some(
+        (box: any) => box.type === 'richText',
+      );
+      if (hasBoxes && hasRichTextBody) {
+        const metrics = await this.generator.measureContent({
+          htmlTemplate: frameHtml,
+          data: context,
+          selector: '.richtext',
+        });
+        if (metrics && metrics.scrollHeight > metrics.clientHeight + 1) {
+          const flow = fullPageFlowFrame(template.pageFrame);
+          const headerTemplate =
+            this.compilePageFragment(flow.headerTemplate, context) ??
+            '<div></div>';
+          const footerTemplate =
+            this.compilePageFragment(flow.footerTemplate, context) ??
+            '<div></div>';
+          return this.generator.generatePDF({
+            htmlTemplate: flow.html,
+            data: context,
+            pageSize: (template.pageSize as any) || 'Letter',
+            orientation: (template.orientation as any) || 'portrait',
+            outputFormat: 'pdf',
+            displayHeaderFooter: true,
+            headerTemplate,
+            footerTemplate,
+            margin: {
+              top: '1.25in',
+              right: '0',
+              bottom: '1.25in',
+              left: '0',
+            },
+          });
+        }
+      }
       return this.generator.generatePDF({
-        htmlTemplate: hasBoxes
-          ? fullPageFrameHtml(template.pageFrame)
-          : template.bodyHtml,
+        htmlTemplate: frameHtml,
         styles: hasBoxes ? undefined : template.styles ?? undefined,
         data: context,
         pageSize: (template.pageSize as any) || 'Letter',
@@ -241,7 +278,10 @@ export class AuthoringRendererService {
       }
       const key = segments[segments.length - 1];
       if (field.defaultValue !== undefined) {
-        current[key] = field.defaultValue;
+        current[key] =
+          field.type === 'richtext' && typeof field.defaultValue === 'object'
+            ? renderTiptapDoc(field.defaultValue)
+            : field.defaultValue;
         continue;
       }
       switch (field.type) {

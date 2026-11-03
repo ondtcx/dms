@@ -363,6 +363,47 @@ export class DocumentGeneratorService {
   }
 
   /**
+   * Mide un elemento en el HTML renderizado para detectar desbordes antes de
+   * decidir si un documento de página fija necesita páginas de continuación.
+   */
+  async measureContent(
+    options: GenerateDocumentOptions & { selector: string },
+  ): Promise<{ scrollHeight: number; clientHeight: number } | null> {
+    const { htmlTemplate, styles, data, selector } = options;
+    let browser: Browser | null = null;
+    try {
+      const compiledHtml = this.compileTemplate(htmlTemplate, data);
+      const fullHtml = this.generateHtmlWithStyles(compiledHtml, styles);
+      browser = await puppeteer.launch({
+        headless: true,
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+      });
+      const page = await browser.newPage();
+      await page.setViewport({ width: 1200, height: 1600 });
+      await page.setContent(fullHtml, { waitUntil: 'networkidle0' });
+      await page.emulateMediaType('print');
+      await page.evaluate('document.fonts ? document.fonts.ready : true');
+      return await page.$eval(selector, (element) => {
+        const node = element as any;
+        return {
+          scrollHeight: Number(node.scrollHeight ?? 0),
+          clientHeight: Number(node.clientHeight ?? 0),
+        };
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo medir el contenido: ${
+          error instanceof Error ? error.message : error
+        }`,
+      );
+      return null;
+    } finally {
+      if (browser) await browser.close();
+    }
+  }
+
+  /**
    * Genera HTML (para previsualización o descarga)
    */
   async generateHTML(options: GenerateDocumentOptions): Promise<string> {

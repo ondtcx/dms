@@ -51,9 +51,19 @@ const ACTA_EXACT_PAGE_FRAME: any = JSON.parse(
     'utf8',
   ),
 );
-const ACTA_EXACT_FIELDS = [
+const ACTA_EXACT_BODY_DOC: any = JSON.parse(
+  fs.readFileSync(
+    path.join(process.cwd(), 'prisma/templates/acta-entrega-body.json'),
+    'utf8',
+  ),
+);
+const ACTA_EXACT_FIELDS: any[] = [
   field('acta.lugar', 'Lugar', 'text', true),
   field('acta.fecha', 'Fecha', 'date', true),
+  {
+    ...field('contenido', 'Cuerpo del acta', 'richtext', true),
+    defaultValue: ACTA_EXACT_BODY_DOC,
+  },
   field('recibidoPor.nombre', 'Recibido por', 'text', true),
   field('recibidoPor.cargo', 'Cargo de quien recibe', 'text', true),
   field('entregadoPor.nombre', 'Entregado por', 'text', true),

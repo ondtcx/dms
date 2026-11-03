@@ -198,7 +198,7 @@ export function validateAndPrepareForm(
   return data;
 }
 
-const FULL_PAGE_BOX_TYPES = new Set(['text', 'image', 'pageNumber']);
+const FULL_PAGE_BOX_TYPES = new Set(['text', 'richText', 'image', 'pageNumber']);
 
 function finiteNumber(value: unknown, field: string): number {
   const number = Number(value);
@@ -251,7 +251,9 @@ export function normalizeDocumentPageFrame(
       fontWeight: String(box.fontWeight ?? '400').slice(0, 20),
       fontStyle: String(box.fontStyle ?? 'normal').slice(0, 20),
       color: String(box.color ?? '#000000').slice(0, 50),
-      align: ['left', 'center', 'right'].includes(box.align) ? box.align : 'left',
+      align: ['left', 'center', 'right', 'justify'].includes(box.align)
+        ? box.align
+        : 'left',
       content,
     };
   });
