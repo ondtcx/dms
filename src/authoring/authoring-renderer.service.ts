@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import Handlebars from 'handlebars';
 import { SettingsService } from '../settings/settings.service';
 import { DocumentGeneratorService } from '../document-template/document-generator.service';
 import type { AuthoringField } from './authoring.types';
@@ -21,6 +22,12 @@ function escapeHtml(value: string): string {
 export interface AuthoringTemplateShape {
   bodyHtml: string;
   styles?: string | null;
+  headerHtml?: string | null;
+  footerHtml?: string | null;
+  marginTop?: string | null;
+  marginBottom?: string | null;
+  marginLeft?: string | null;
+  marginRight?: string | null;
   pageSize?: string | null;
   orientation?: string | null;
 }
@@ -76,6 +83,23 @@ export class AuthoringRendererService {
     };
   }
 
+  private bodyHtmlForRender(template: AuthoringTemplateShape): string {
+    if (!template.headerHtml?.trim()) return template.bodyHtml;
+    // Un encabezado de página reemplaza el partial de cabecera del cuerpo.
+    return template.bodyHtml.replace(
+      /\{\{>\s*institutionHeader\s*\}\}/g,
+      '',
+    );
+  }
+
+  private compilePageFragment(
+    html: string | null | undefined,
+    context: Record<string, any>,
+  ): string | undefined {
+    if (!html?.trim()) return undefined;
+    return Handlebars.compile(html)(context);
+  }
+
   async renderHtml(
     template: AuthoringTemplateShape,
     formData: Record<string, any>,
@@ -85,7 +109,7 @@ export class AuthoringRendererService {
     const metadata = await this.getInstitutionMetadata();
     const context = this.buildContext(template, formData, user, options, metadata);
     return this.generator.generateHTML({
-      htmlTemplate: template.bodyHtml,
+      htmlTemplate: this.bodyHtmlForRender(template),
       styles: template.styles ?? undefined,
       data: context,
     });
@@ -100,27 +124,31 @@ export class AuthoringRendererService {
     const metadata = await this.getInstitutionMetadata();
     const context = this.buildContext(template, formData, user, options, metadata);
     const institutionName = escapeHtml(metadata.institutionName ?? '');
-    const footerTemplate =
+    const defaultFooter =
       `<div style="width:100%;font-size:8px;color:#6b7280;padding:0 2cm;display:flex;justify-content:space-between;">` +
       `<span>${institutionName}</span>` +
       `<span><span class="pageNumber"></span> / <span class="totalPages"></span></span>` +
       `</div>`;
 
+    const headerTemplate = this.compilePageFragment(template.headerHtml, context);
+    const customFooter = this.compilePageFragment(template.footerHtml, context);
+    const footerTemplate = customFooter ?? defaultFooter;
+
     return this.generator.generatePDF({
-      htmlTemplate: template.bodyHtml,
+      htmlTemplate: this.bodyHtmlForRender(template),
       styles: template.styles ?? undefined,
       data: context,
       pageSize: (template.pageSize as any) || 'A4',
       orientation: (template.orientation as any) || 'portrait',
       outputFormat: 'pdf',
       displayHeaderFooter: true,
-      headerTemplate: '<div></div>',
+      headerTemplate: headerTemplate ?? '<div></div>',
       footerTemplate,
       margin: {
-        top: '2cm',
-        right: '2cm',
-        bottom: '2.2cm',
-        left: '2cm',
+        top: template.marginTop || (headerTemplate ? '3.2cm' : '2cm'),
+        right: template.marginRight || '2cm',
+        bottom: template.marginBottom || (customFooter ? '3cm' : '2.2cm'),
+        left: template.marginLeft || '2cm',
       },
     });
   }

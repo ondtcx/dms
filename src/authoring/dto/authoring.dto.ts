@@ -38,6 +38,40 @@ export class CreateAuthoringTemplateDto {
   @IsOptional()
   styles?: string;
 
+  @ApiPropertyOptional({
+    description: 'HTML del encabezado repetido en cada página',
+  })
+  @IsString()
+  @IsOptional()
+  headerHtml?: string;
+
+  @ApiPropertyOptional({
+    description: 'HTML del pie repetido en cada página',
+  })
+  @IsString()
+  @IsOptional()
+  footerHtml?: string;
+
+  @ApiPropertyOptional({ example: '3.2cm' })
+  @IsString()
+  @IsOptional()
+  marginTop?: string;
+
+  @ApiPropertyOptional({ example: '3cm' })
+  @IsString()
+  @IsOptional()
+  marginBottom?: string;
+
+  @ApiPropertyOptional({ example: '2cm' })
+  @IsString()
+  @IsOptional()
+  marginLeft?: string;
+
+  @ApiPropertyOptional({ example: '2cm' })
+  @IsString()
+  @IsOptional()
+  marginRight?: string;
+
   @ApiProperty({ description: 'Definición de campos', example: { fields: [] } })
   @IsObject()
   fields: Record<string, any>;
@@ -73,6 +107,36 @@ export class CreateAuthoringTemplateVersionDto {
   @IsString()
   @IsOptional()
   styles?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  headerHtml?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  footerHtml?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  marginTop?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  marginBottom?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  marginLeft?: string;
+
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  marginRight?: string;
 
   @ApiPropertyOptional()
   @IsObject()

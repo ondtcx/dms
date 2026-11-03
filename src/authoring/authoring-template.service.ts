@@ -136,6 +136,12 @@ export class AuthoringTemplateService {
           status: TemplateVersionStatus.DRAFT,
           bodyHtml,
           styles: dto.styles || null,
+          headerHtml: dto.headerHtml || null,
+          footerHtml: dto.footerHtml || null,
+          marginTop: dto.marginTop || null,
+          marginBottom: dto.marginBottom || null,
+          marginLeft: dto.marginLeft || null,
+          marginRight: dto.marginRight || null,
           fields: { fields } as any,
           pageSize: dto.pageSize || 'A4',
           orientation: dto.orientation || 'portrait',
@@ -196,6 +202,20 @@ export class AuthoringTemplateService {
         status: TemplateVersionStatus.DRAFT,
         bodyHtml,
         styles: dto.styles !== undefined ? dto.styles : latest.styles,
+        headerHtml:
+          dto.headerHtml !== undefined ? dto.headerHtml : latest.headerHtml,
+        footerHtml:
+          dto.footerHtml !== undefined ? dto.footerHtml : latest.footerHtml,
+        marginTop:
+          dto.marginTop !== undefined ? dto.marginTop : latest.marginTop,
+        marginBottom:
+          dto.marginBottom !== undefined
+            ? dto.marginBottom
+            : latest.marginBottom,
+        marginLeft:
+          dto.marginLeft !== undefined ? dto.marginLeft : latest.marginLeft,
+        marginRight:
+          dto.marginRight !== undefined ? dto.marginRight : latest.marginRight,
         fields: { fields } as any,
         pageSize: dto.pageSize ?? latest.pageSize,
         orientation: dto.orientation ?? latest.orientation,

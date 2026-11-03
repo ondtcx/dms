@@ -26,4 +26,52 @@ describe('authoring renderer context', () => {
     expect(context.firmante).toEqual({ nombre: 'Ana', cargo: 'Secretario/a' });
     expect(context._metadata.draft).toBe(true);
   });
+
+  it('passes custom page header/footer and removes the body header partial', async () => {
+    const generator = {
+      generatePDF: jest.fn().mockResolvedValue(Buffer.from('pdf')),
+      generateHTML: jest.fn(),
+    };
+    const settings = {
+      getSettings: jest.fn().mockResolvedValue({
+        institution: { name: 'Institución de prueba' },
+        schoolYear: {},
+      }),
+    };
+    const renderer = new AuthoringRendererService(
+      settings as any,
+      generator as any,
+    );
+
+    await renderer.generatePdf(
+      {
+        bodyHtml: '{{> institutionHeader}}<p>{{documento.asunto}}</p>',
+        headerHtml: '<div>{{institucion.nombre}}</div>',
+        footerHtml: '<div>Página <span class="pageNumber"></span></div>',
+        marginTop: '3.2cm',
+        marginBottom: '3cm',
+        marginLeft: '2cm',
+        marginRight: '2cm',
+        template: { name: 'Oficio' },
+      } as any,
+      { documento: { asunto: 'Asunto' } },
+      { name: 'Ana', role: 'secretario' },
+      { draft: true },
+    );
+
+    expect(generator.generatePDF).toHaveBeenCalledWith(
+      expect.objectContaining({
+        htmlTemplate: expect.not.stringContaining('institutionHeader'),
+        displayHeaderFooter: true,
+        headerTemplate: expect.stringContaining('Institución de prueba'),
+        footerTemplate: expect.stringContaining('pageNumber'),
+        margin: {
+          top: '3.2cm',
+          right: '2cm',
+          bottom: '3cm',
+          left: '2cm',
+        },
+      }),
+    );
+  });
 });
