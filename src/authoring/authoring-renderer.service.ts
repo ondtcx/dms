@@ -86,6 +86,7 @@ export class AuthoringRendererService {
   }
 
   private bodyHtmlForRender(template: AuthoringTemplateShape): string {
+    if (template.pageFrame?.mode === 'fullPage') return template.bodyHtml;
     let body = template.pageFrame?.bodyPrefixHtml
       ? `${template.pageFrame.bodyPrefixHtml}${template.bodyHtml}`
       : template.bodyHtml;
@@ -157,6 +158,13 @@ export class AuthoringRendererService {
   ): Promise<string> {
     const metadata = await this.getInstitutionMetadata();
     const context = this.buildContext(template, formData, user, options, metadata);
+    if (template.pageFrame?.mode === 'fullPage') {
+      return this.generator.generateHTML({
+        htmlTemplate: template.bodyHtml,
+        styles: template.styles ?? undefined,
+        data: context,
+      });
+    }
     return this.generator.generateHTML({
       htmlTemplate: this.bodyHtmlForRender(template),
       styles: this.stylesForRender(template),
@@ -178,6 +186,19 @@ export class AuthoringRendererService {
       `<span>${institutionName}</span>` +
       `<span><span class="pageNumber"></span> / <span class="totalPages"></span></span>` +
       `</div>`;
+
+    if (template.pageFrame?.mode === 'fullPage') {
+      return this.generator.generatePDF({
+        htmlTemplate: template.bodyHtml,
+        styles: template.styles ?? undefined,
+        data: context,
+        pageSize: (template.pageSize as any) || 'Letter',
+        orientation: (template.orientation as any) || 'portrait',
+        outputFormat: 'pdf',
+        displayHeaderFooter: false,
+        margin: { top: '0', right: '0', bottom: '0', left: '0' },
+      });
+    }
 
     const headerTemplate = this.compilePageFragment(template.headerHtml, context);
     const customFooter = this.compilePageFragment(template.footerHtml, context);

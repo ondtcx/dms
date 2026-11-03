@@ -1,12 +1,8 @@
 import { PrismaClient, TemplateVersionStatus } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 import { UserRole } from '../src/auth/role.enum';
 import {
-  ACTA_BODY_HTML,
-  ACTA_FIELDS,
-  ACTA_PAGE_FRAME,
-  ACTA_SIGNATURES,
-  pageFrameToFooterHtml,
-  pageFrameToHeaderHtml,
   SAMPLE_BODY_PREFIX,
   SAMPLE_FOOTER_HTML,
   SAMPLE_HEADER_HTML,
@@ -228,6 +224,59 @@ ${watermark}
   },
 ];
 
+const ACTA_EXACT_FIELDS = {
+  fields: [
+    { key: 'acta.lugar', label: 'Lugar', type: 'text', required: true },
+    { key: 'acta.fecha', label: 'Fecha', type: 'date', required: true },
+    {
+      key: 'recibidoPor.nombre',
+      label: 'Recibió: nombre',
+      type: 'text',
+      required: true,
+    },
+    {
+      key: 'recibidoPor.cargo',
+      label: 'Recibió: cargo',
+      type: 'text',
+      required: true,
+    },
+    {
+      key: 'entregadoPor.nombre',
+      label: 'Entregó: nombre',
+      type: 'text',
+      required: true,
+    },
+    {
+      key: 'entregadoPor.cargo',
+      label: 'Entregó: cargo',
+      type: 'text',
+      required: true,
+    },
+    {
+      key: 'vistoBueno.nombre',
+      label: 'Visto bueno: nombre',
+      type: 'text',
+      required: true,
+    },
+    {
+      key: 'vistoBueno.cargo',
+      label: 'Visto bueno: cargo',
+      type: 'text',
+      required: true,
+    },
+  ],
+};
+
+const ACTA_FULL_PAGE_FRAME = {
+  version: 1,
+  mode: 'fullPage',
+  pageSize: 'Letter',
+  orientation: 'portrait',
+  margins: { top: '0', bottom: '0', left: '0', right: '0' },
+  header: { boxes: [] },
+  footer: { boxes: [] },
+};
+
 async function seedActaEntrega(
   prisma: PrismaClient,
   adminId: string,
@@ -239,15 +288,20 @@ async function seedActaEntrega(
   });
   if (existing) return;
 
+  const bodyHtml = fs.readFileSync(
+    path.join(process.cwd(), 'prisma/templates/acta-entrega-recepcion.html'),
+    'utf8',
+  );
+
   const template = await prisma.documentTemplate.create({
     data: {
       name: 'Acta de entrega-recepción',
       description:
         'Acta para entrega y recepción de bienes del Consejo Ejecutivo.',
       categoryId,
-      fields: ACTA_FIELDS as any,
-      htmlTemplate: ACTA_BODY_HTML,
-      styles: actaStyles,
+      fields: ACTA_EXACT_FIELDS as any,
+      htmlTemplate: bodyHtml,
+      styles: '',
       outputFormat: 'pdf',
       pageSize: 'Letter',
       orientation: 'portrait',
@@ -263,20 +317,14 @@ async function seedActaEntrega(
       templateId: template.id,
       version: 1,
       status: TemplateVersionStatus.PUBLISHED,
-      bodyHtml: ACTA_BODY_HTML,
-      styles: actaStyles,
-      headerHtml: pageFrameToHeaderHtml(ACTA_PAGE_FRAME),
-      footerHtml: pageFrameToFooterHtml(ACTA_PAGE_FRAME),
-      marginTop: ACTA_PAGE_FRAME.margins.top,
-      marginBottom: ACTA_PAGE_FRAME.margins.bottom,
-      marginLeft: ACTA_PAGE_FRAME.margins.left,
-      marginRight: ACTA_PAGE_FRAME.margins.right,
+      bodyHtml,
+      styles: '',
       pageSize: 'Letter',
       orientation: 'portrait',
       numberPrefix: 'ACT',
-      pageFrame: ACTA_PAGE_FRAME as any,
-      signatures: ACTA_SIGNATURES as any,
-      fields: ACTA_FIELDS as any,
+      pageFrame: ACTA_FULL_PAGE_FRAME as any,
+      signatures: null,
+      fields: ACTA_EXACT_FIELDS as any,
       createdById: adminId,
       publishedAt: new Date(),
     },
