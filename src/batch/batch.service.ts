@@ -6,7 +6,7 @@ import {
   ConflictException,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AuthoringStatus, Prisma } from '@prisma/client';
 import { UserRole } from '../auth/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
 import { DirectoryService } from '../directory/directory.service';
@@ -39,6 +39,32 @@ export class BatchService {
     );
   }
 
+  private async assertNoEmittedAuthoring(
+    db: Prisma.TransactionClient,
+    documentIds: number[],
+  ) {
+    if (!documentIds.length) return;
+    const emitted = await db.documentAuthoring.findFirst({
+      where: {
+        documentId: { in: documentIds },
+        OR: [
+          {
+            status: {
+              in: [AuthoringStatus.EMITTED, AuthoringStatus.ARCHIVED],
+            },
+          },
+          { emittedAt: { not: null } },
+        ],
+      },
+      select: { documentId: true },
+    });
+    if (emitted) {
+      throw new ForbiddenException(
+        'No se puede modificar un documento emitido en una operación masiva',
+      );
+    }
+  }
+
   // Toda mutación en lote comparte comprobación y escritura en una única
   // transacción; un conflicto de serialización exige repetir la petición.
   private async bulkTransaction<T>(
@@ -64,6 +90,7 @@ export class BatchService {
 
     return this.bulkTransaction(async (db) => {
       await this.lockDocuments(db, documentIds);
+      await this.assertNoEmittedAuthoring(db, documentIds);
 
       // Verificar que todos los documentos existen y el usuario tiene permisos
       const documents = await db.document.findMany({
@@ -141,6 +168,7 @@ export class BatchService {
 
     return this.bulkTransaction(async (db) => {
       await this.lockDocuments(db, documentIds);
+      await this.assertNoEmittedAuthoring(db, documentIds);
 
       // Verificar que todos los documentos existen y el usuario tiene permisos
       const documents = await db.document.findMany({

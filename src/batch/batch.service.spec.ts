@@ -103,6 +103,9 @@ async function harness(config: HarnessConfig) {
           (where.status?.notIn ? !where.status.notIn.includes(w.status) : true) &&
           (where.status?.in ? where.status.in.includes(w.status) : true)) ?? null),
     },
+    documentAuthoring: {
+      findFirst: jest.fn(async () => null),
+    },
     directory: {
       findUnique: jest.fn(async ({ where }: any) => directories.get(where.id) ?? null),
     },

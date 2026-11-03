@@ -8,7 +8,7 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
-import { AuditAction, AuditResource, Prisma, WorkflowStatus } from '@prisma/client';
+import { AuditAction, AuditResource, AuthoringStatus, Prisma, WorkflowStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditLogPage, AuditWriter } from '../audit/audit.types';
@@ -1252,6 +1252,7 @@ export class DocumentService {
     userRole: UserRole,
   ) {
     const document = await this.findOne(id, userId, userRole);
+    await this.assertAuthoringMutable(id);
     if (await this.preflightMutation(id, userId, 'edit')) userRole = UserRole.USER;
     if (updateDocumentDto.isPublic !== undefined && updateDocumentDto.isPublic !== document.isPublic) {
       await assertSharingDocumentAvailable(this.prisma, document);
@@ -1457,6 +1458,7 @@ export class DocumentService {
 
   async remove(id: number, userId: string, userRole: UserRole) {
     await this.findOne(id, userId, userRole);
+    await this.assertAuthoringMutable(id);
     await this.preflightMutation(id, userId, 'withdraw');
     const source = await this.withDocumentMutation(id, userId, 'withdraw', async (tx, document, _reception, rollback) => {
       if (document.deletedAt || !document.versions[0]) throw new NotFoundException('Documento no disponible');
@@ -1583,10 +1585,9 @@ export class DocumentService {
     comment?: string,
   ) {
     const document = await this.findOne(id, userId, userRole);
+    await this.assertAuthoringMutable(id);
     if (await this.preflightMutation(id, userId, 'version')) userRole = UserRole.USER;
     await this.assertWorkflowEditable(id, userId, userRole);
-
-    // Verificar permiso: dueño, admin, o participante con aprobación pendiente en workflow activo
     if (!(await this.canEditDocument(document, userId, userRole))) {
       const hasPendingApproval = await this.prisma.workflowApproval.findFirst({
         where: {
@@ -1755,6 +1756,7 @@ export class DocumentService {
     userRole: UserRole,
   ) {
     const document = await this.findOne(id, userId, userRole);
+    await this.assertAuthoringMutable(id);
     if (await this.preflightMutation(id, userId, 'version')) userRole = UserRole.USER;
     await this.assertWorkflowEditable(id, userId, userRole);
 
@@ -2097,6 +2099,30 @@ export class DocumentService {
     prisma: Prisma.TransactionClient | PrismaService = this.prisma,
   ) {
     await assertWorkflowEditablePolicy(prisma, id, userId, UserRole.USER);
+  }
+
+  private async assertAuthoringMutable(
+    id: number,
+    prisma: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const model = (prisma as any).documentAuthoring;
+    // Algunos dobles de prueba históricos no exponen el modelo nuevo; el
+    // cliente Prisma real siempre lo incluye.
+    if (!model?.findUnique) return;
+    const authoring = await model.findUnique({
+      where: { documentId: id },
+      select: { status: true, emittedAt: true },
+    });
+    if (
+      authoring &&
+      (authoring.status === AuthoringStatus.EMITTED ||
+        authoring.status === AuthoringStatus.ARCHIVED ||
+        authoring.emittedAt)
+    ) {
+      throw new ForbiddenException(
+        'El documento emitido no puede modificarse',
+      );
+    }
   }
 
   /**

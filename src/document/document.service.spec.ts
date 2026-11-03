@@ -39,6 +39,7 @@ describe('reception mutation entrypoints', () => {
       directoryDelegate: { findUnique: jest.fn().mockResolvedValue({ full: true }) },
       documentWorkflow: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() },
       workflowApproval: { findFirst: jest.fn().mockResolvedValue({ id: 3 }) },
+      documentAuthoring: { findUnique: jest.fn().mockResolvedValue(null) },
       documentAccess: { create: jest.fn() },
     };
     db.$transaction = jest.fn(async cb => cb(db));
