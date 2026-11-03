@@ -22,7 +22,8 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "test:authoring:smoke": "node scripts/authoring-smoke.mjs"
+    "test:authoring:smoke": "node scripts/authoring-smoke.mjs",
+    "test:authoring:invariants": "node scripts/authoring-invariants-smoke.mjs"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
