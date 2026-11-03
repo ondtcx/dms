@@ -26,6 +26,7 @@ export class DocumentNumberingService {
   async assignNumber(
     documentId: number,
     categoryId?: number | null,
+    categoryPrefixOverride?: string,
   ): Promise<string> {
     // Verificar si ya tiene número
     const existing = await this.prisma.document.findUnique({
@@ -39,7 +40,7 @@ export class DocumentNumberingService {
 
     const year = new Date().getFullYear();
     const { sectionPrefix, categoryPrefix } =
-      await this.resolvePrefixes(categoryId);
+      await this.resolvePrefixes(categoryId, categoryPrefixOverride);
     for (let attempt = 0; attempt < 100; attempt++) {
       const number = await this.nextNumber(sectionPrefix, categoryPrefix, year);
       const documentNumber = this.formatNumber(
@@ -78,7 +79,12 @@ export class DocumentNumberingService {
    */
   async resolvePrefixes(
     categoryId?: number | null,
+    categoryPrefixOverride?: string,
   ): Promise<{ sectionPrefix: string; categoryPrefix: string }> {
+    if (categoryPrefixOverride) {
+      return { sectionPrefix: 'DOC', categoryPrefix: categoryPrefixOverride };
+    }
+
     if (!categoryId) {
       return { sectionPrefix: 'DOC', categoryPrefix: 'GEN' };
     }

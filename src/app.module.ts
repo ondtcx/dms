@@ -28,6 +28,7 @@ import { AuditModule } from './audit/audit.module';
 import { NotificationModule } from './notification/notification.module';
 import { DocumentChangeRequestModule } from './document-change-request/document-change-request.module';
 import { TransferModule } from './transfer/transfer.module';
+import { AuthoringModule } from './authoring/authoring.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { TransferModule } from './transfer/transfer.module';
     NotificationModule,
     DocumentChangeRequestModule,
     TransferModule,
+    AuthoringModule,
   ],
   controllers: [AppController],
   providers: [AppService],

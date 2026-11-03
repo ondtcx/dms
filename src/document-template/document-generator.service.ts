@@ -12,6 +12,15 @@ export interface GenerateDocumentOptions {
   pageSize?: 'A4' | 'Letter' | 'Legal';
   orientation?: 'portrait' | 'landscape';
   outputFormat?: 'pdf' | 'html';
+  displayHeaderFooter?: boolean;
+  headerTemplate?: string;
+  footerTemplate?: string;
+  margin?: {
+    top?: string;
+    right?: string;
+    bottom?: string;
+    left?: string;
+  };
 }
 
 @Injectable()
@@ -198,6 +207,10 @@ export class DocumentGeneratorService {
       data,
       pageSize = 'A4',
       orientation = 'portrait',
+      displayHeaderFooter = false,
+      headerTemplate,
+      footerTemplate,
+      margin,
     } = options;
 
     try {
@@ -215,7 +228,12 @@ export class DocumentGeneratorService {
         fullHtml.substring(0, 500),
       );
 
-      return await this.renderPdf(fullHtml, pageSize, orientation);
+      return await this.renderPdf(fullHtml, pageSize, orientation, false, {
+        displayHeaderFooter,
+        headerTemplate,
+        footerTemplate,
+        margin,
+      });
     } catch (error) {
       this.logger.error('Error generando PDF:', error);
       throw new Error(`Error al generar PDF: ${error.message}`);
@@ -252,6 +270,17 @@ export class DocumentGeneratorService {
     pageSize: 'A4' | 'Letter' | 'Legal',
     orientation: 'portrait' | 'landscape',
     untrusted = false,
+    layout: {
+      displayHeaderFooter?: boolean;
+      headerTemplate?: string;
+      footerTemplate?: string;
+      margin?: {
+        top?: string;
+        right?: string;
+        bottom?: string;
+        left?: string;
+      };
+    } = {},
   ): Promise<Buffer> {
     let browser: Browser | null = null;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -293,11 +322,18 @@ export class DocumentGeneratorService {
         landscape: orientation === 'landscape',
         printBackground: true,
         ...(untrusted ? { timeout: 15000 } : {}),
+        ...(layout.displayHeaderFooter
+          ? {
+              displayHeaderFooter: true,
+              headerTemplate: layout.headerTemplate ?? '<div></div>',
+              footerTemplate: layout.footerTemplate ?? '<div></div>',
+            }
+          : {}),
         margin: {
-          top: '2cm',
-          right: '2cm',
-          bottom: '2cm',
-          left: '2cm',
+          top: layout.margin?.top ?? '2cm',
+          right: layout.margin?.right ?? '2cm',
+          bottom: layout.margin?.bottom ?? '2cm',
+          left: layout.margin?.left ?? '2cm',
         },
       };
 

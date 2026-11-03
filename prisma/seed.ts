@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { UserRole } from '../src/auth/role.enum';
+import { seedAuthoringTemplates } from './seed-authoring-templates';
 
 const prisma = new PrismaClient();
 
@@ -244,6 +245,8 @@ async function main() {
       },
     });
   }
+
+  await seedAuthoringTemplates(prisma, adminId);
 
   console.log(`Seed complete: ${users.length} users, ${categoryData.length} categories, ${documentTypeData.length} document types, ${templateData.length} document templates.`);
 }
