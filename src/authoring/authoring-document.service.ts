@@ -122,6 +122,36 @@ export class AuthoringDocumentService {
     });
   }
 
+  private async defaultDirectoryId(userId: string): Promise<number | null> {
+    const name = 'Documentos Institucionales';
+    let directory = await this.prisma.directory.findFirst({
+      where: { name, parentId: null },
+      select: { id: true },
+    });
+    if (!directory) {
+      directory = await this.prisma.directory.create({
+        data: {
+          name,
+          nameNormalized: name.toLocaleLowerCase(),
+          createdById: userId,
+          isPublic: true,
+        },
+        select: { id: true },
+      });
+    }
+    await this.prisma.directoryAncestor.upsert({
+      where: {
+        ancestorId_descendantId: {
+          ancestorId: directory.id,
+          descendantId: directory.id,
+        },
+      },
+      update: { depth: 0 },
+      create: { ancestorId: directory.id, descendantId: directory.id, depth: 0 },
+    });
+    return directory.id;
+  }
+
   private slug(value: string): string {
     return value
       .toLowerCase()
@@ -294,6 +324,7 @@ export class AuthoringDocumentService {
     const { storedName, filePath } = await this.saveBuffer(buffer);
     const checksum = createHash('sha256').update(buffer).digest('hex');
     const filename = `${this.slug(version.template.name)}-borrador.pdf`;
+    const directoryId = await this.defaultDirectoryId(user.id);
 
     try {
       const document = await this.prisma.document.create({
@@ -303,6 +334,7 @@ export class AuthoringDocumentService {
           uploadedById: user.id,
           categoryId: version.template.categoryId,
           documentTypeId: version.template.documentTypeId,
+          directoryId,
           isPublic: false,
           checksumSHA256: checksum,
           versions: {

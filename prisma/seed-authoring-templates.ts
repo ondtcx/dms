@@ -239,6 +239,33 @@ export async function seedAuthoringTemplates(
     },
   });
 
+  const directoryName = 'Documentos Institucionales';
+  let directory = await prisma.directory.findFirst({
+    where: { name: directoryName, parentId: null },
+    select: { id: true },
+  });
+  if (!directory) {
+    directory = await prisma.directory.create({
+      data: {
+        name: directoryName,
+        nameNormalized: directoryName.toLocaleLowerCase(),
+        createdById: adminId,
+        isPublic: true,
+      },
+      select: { id: true },
+    });
+  }
+  await prisma.directoryAncestor.upsert({
+    where: {
+      ancestorId_descendantId: {
+        ancestorId: directory.id,
+        descendantId: directory.id,
+      },
+    },
+    update: { depth: 0 },
+    create: { ancestorId: directory.id, descendantId: directory.id, depth: 0 },
+  });
+
   for (const definition of templates) {
     const fields = { fields: definition.fields };
     const template = await prisma.documentTemplate.upsert({
