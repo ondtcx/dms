@@ -197,3 +197,63 @@ export function validateAndPrepareForm(
 
   return data;
 }
+
+const FULL_PAGE_BOX_TYPES = new Set(['text', 'image', 'pageNumber']);
+
+function finiteNumber(value: unknown, field: string): number {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number < 0 || number > 100_000) {
+    throw new BadRequestException(`El marco de página tiene un valor inválido en ${field}`);
+  }
+  return number;
+}
+
+export function normalizeDocumentPageFrame(
+  raw: any,
+  baseFrame: any,
+): Record<string, any> | null {
+  if (!raw || raw.mode !== 'fullPage' || baseFrame?.mode !== 'fullPage') {
+    return null;
+  }
+  const rawBoxes = raw?.body?.boxes;
+  const baseBoxes = baseFrame?.body?.boxes;
+  if (!Array.isArray(rawBoxes)) return null;
+  if (rawBoxes.length > 300) {
+    throw new BadRequestException('El marco de página tiene demasiadas cajas');
+  }
+
+  const boxes = rawBoxes.map((box: any, index: number) => {
+    if (!box || !FULL_PAGE_BOX_TYPES.has(box.type)) {
+      throw new BadRequestException(`Caja de página inválida en la posición ${index + 1}`);
+    }
+    const content = String(box.content ?? '');
+    if (content.length > 20_000) {
+      throw new BadRequestException('Una caja de página supera el tamaño permitido');
+    }
+    return {
+      id: String(box.id ?? `box-${index + 1}`).slice(0, 120),
+      type: box.type,
+      x: finiteNumber(box.x, 'X'),
+      y: finiteNumber(box.y, 'Y'),
+      width: finiteNumber(box.width ?? 0, 'ancho'),
+      height: box.height === undefined ? undefined : finiteNumber(box.height, 'alto'),
+      fontSize: finiteNumber(box.fontSize ?? 11, 'tamaño de fuente'),
+      fontFamily: String(box.fontFamily ?? 'Arial, sans-serif').slice(0, 200),
+      fontWeight: String(box.fontWeight ?? '400').slice(0, 20),
+      fontStyle: String(box.fontStyle ?? 'normal').slice(0, 20),
+      color: String(box.color ?? '#000000').slice(0, 50),
+      align: ['left', 'center', 'right'].includes(box.align) ? box.align : 'left',
+      content,
+    };
+  });
+
+  return {
+    ...baseFrame,
+    version: 1,
+    mode: 'fullPage',
+    body: {
+      ...(baseFrame.body ?? {}),
+      boxes: boxes.length ? boxes : baseBoxes ?? [],
+    },
+  };
+}

@@ -11,10 +11,17 @@ const FIT_SCRIPT = [
   'document.fonts?.ready.then(fitLines);',
 ].join('\n');
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function boxToHtml(box: any): string {
   const target =
     Number(box.width) > 0 ? ` data-target-width="${box.width}"` : '';
-  return `<span class="txt" style="left:${box.x}pt;top:${box.y}pt;font-size:${box.fontSize}pt;font-family:${box.fontFamily ?? 'Arial, sans-serif'};font-weight:${box.fontWeight ?? '400'};font-style:${box.fontStyle ?? 'normal'};color:${box.color ?? '#000000'};"${target}>${box.content}</span>`;
+  return `<span class="txt" style="left:${box.x}pt;top:${box.y}pt;font-size:${box.fontSize}pt;font-family:${box.fontFamily ?? 'Arial, sans-serif'};font-weight:${box.fontWeight ?? '400'};font-style:${box.fontStyle ?? 'normal'};color:${box.color ?? '#000000'};"${target}>${box.type === 'pageNumber' ? box.content : escapeHtml(box.content)}</span>`;
 }
 
 export function fullPageFrameHtml(frame: any): string {

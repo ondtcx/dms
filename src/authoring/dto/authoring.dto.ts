@@ -201,6 +201,11 @@ export class SaveAuthoringDraftDto {
   @IsBoolean()
   @IsOptional()
   createVersion?: boolean;
+
+  @ApiPropertyOptional({ description: 'Marco de página editable del documento' })
+  @IsObject()
+  @IsOptional()
+  pageFrame?: Record<string, any>;
 }
 
 export class SubmitAuthoringDocumentDto {

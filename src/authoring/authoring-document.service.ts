@@ -21,6 +21,7 @@ import { AuthoringTemplateService } from './authoring-template.service';
 import {
   applyDefaults,
   cloneJson,
+  normalizeDocumentPageFrame,
   normalizeFields,
   validateAndPrepareForm,
 } from './authoring-fields';
@@ -40,6 +41,15 @@ interface AuthoringUser {
   role?: string | null;
 }
 
+const CONTENT_VERSION_SELECT = {
+  id: true,
+  version: true,
+  reason: true,
+  createdById: true,
+  createdByName: true,
+  createdAt: true,
+};
+
 const DOCUMENT_INCLUDE = {
   authoring: {
     include: { events: { orderBy: { createdAt: 'desc' as const } } },
@@ -54,7 +64,33 @@ const DOCUMENT_INCLUDE = {
   category: { select: { id: true, name: true } },
   documentType: { select: { id: true, name: true } },
   versions: { orderBy: { version: 'desc' as const } },
-  contentVersions: { orderBy: { version: 'desc' as const } },
+  contentVersions: {
+    orderBy: { version: 'desc' as const },
+    select: CONTENT_VERSION_SELECT,
+  },
+};
+
+const DOCUMENT_LIST_INCLUDE = {
+  ...DOCUMENT_INCLUDE,
+  authoring: {
+    select: {
+      id: true,
+      status: true,
+      templateVersionId: true,
+      reviewerId: true,
+      reviewerName: true,
+      submittedAt: true,
+      reviewedAt: true,
+      reviewedById: true,
+      reviewedByName: true,
+      reviewObservation: true,
+      emittedAt: true,
+      emittedById: true,
+      emittedByName: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  },
 };
 
 @Injectable()
@@ -173,6 +209,19 @@ export class AuthoringDocumentService {
     return { storedName, filePath };
   }
 
+  private renderVersion(
+    document: any,
+    version: any,
+    pageFrame?: any,
+  ) {
+    return {
+      ...version,
+      template: version.template,
+      pageFrame:
+        pageFrame ?? document.authoring?.pageFrame ?? version.pageFrame ?? null,
+    };
+  }
+
   private async buildRendered(
     version: any,
     prepared: Record<string, any>,
@@ -261,6 +310,7 @@ export class AuthoringDocumentService {
     htmlSnapshot: string,
     reason: ContentVersionReason,
     user: AuthoringUser,
+    pageFrame?: any,
     tx?: any,
   ) {
     const db = tx ?? this.prisma;
@@ -275,6 +325,7 @@ export class AuthoringDocumentService {
         version,
         formData,
         htmlSnapshot,
+        pageFrame: (pageFrame ?? null) as any,
         reason,
         createdById: user.id,
         createdByName: user.name ?? null,
@@ -362,6 +413,7 @@ export class AuthoringDocumentService {
             create: {
               templateVersionId: version.id,
               status: AuthoringStatus.DRAFT,
+              pageFrame: (cloneJson(version.pageFrame) ?? null) as any,
               events: {
                 create: {
                   action: AuthoringAction.CREATED,
@@ -382,6 +434,7 @@ export class AuthoringDocumentService {
         htmlSnapshot,
         ContentVersionReason.DRAFT_SAVE,
         user,
+        version.pageFrame ?? null,
       );
       return this.findDocument(document.id);
     } catch (error) {
@@ -405,16 +458,26 @@ export class AuthoringDocumentService {
     const activeYear = await this.activeAcademicYear();
     const raw = applyDefaults(fields, dto.formData, user, activeYear);
     const prepared = validateAndPrepareForm(fields, raw, false);
+    const version = this.versionFor(document);
+    const pageFrame =
+      dto.pageFrame !== undefined
+        ? normalizeDocumentPageFrame(dto.pageFrame, version.pageFrame)
+        : document.authoring.pageFrame ?? null;
 
     await this.prisma.documentTemplateData.update({
       where: { documentId: id },
       data: { formData: raw },
     });
+    if (dto.pageFrame !== undefined) {
+      await this.prisma.documentAuthoring.update({
+        where: { documentId: id },
+        data: { pageFrame: (pageFrame ?? null) as any },
+      });
+    }
 
     if (dto.createVersion) {
-      const version = this.versionFor(document);
       const htmlSnapshot = await this.renderer.renderHtml(
-        { ...version, template: version.template },
+        this.renderVersion(document, version, pageFrame),
         prepared,
         document.uploadedBy,
         { draft: true, documentNumber: document.documentNumber },
@@ -425,6 +488,7 @@ export class AuthoringDocumentService {
         htmlSnapshot,
         ContentVersionReason.DRAFT_SAVE,
         user,
+        pageFrame,
       );
     }
 
@@ -463,8 +527,10 @@ export class AuthoringDocumentService {
     );
     const prepared = validateAndPrepareForm(fields, raw, true);
     const version = this.versionFor(document);
+    const pageFrame = document.authoring.pageFrame ?? version.pageFrame ?? null;
+    const renderVersion = this.renderVersion(document, version, pageFrame);
     const { buffer, htmlSnapshot } = await this.buildRendered(
-      version,
+      renderVersion,
       prepared,
       document.uploadedBy,
       { draft: true, documentNumber: document.documentNumber },
@@ -480,7 +546,7 @@ export class AuthoringDocumentService {
       reviewerName = reviewer.name;
     }
 
-    await this.savePdfVersion(document, version, buffer, user, 'Enviado a revisión');
+    await this.savePdfVersion(document, renderVersion, buffer, user, 'Enviado a revisión');
 
     const updated = await this.prisma.$transaction(async (tx) => {
       await tx.documentTemplateData.update({
@@ -506,6 +572,7 @@ export class AuthoringDocumentService {
         htmlSnapshot,
         ContentVersionReason.SENT_TO_REVIEW,
         user,
+        pageFrame,
         tx,
       );
       await this.createEvent(
@@ -543,8 +610,10 @@ export class AuthoringDocumentService {
     );
     const prepared = validateAndPrepareForm(fields, raw, false);
     const version = this.versionFor(document);
+    const pageFrame = document.authoring.pageFrame ?? version.pageFrame ?? null;
+    const renderVersion = this.renderVersion(document, version, pageFrame);
     const htmlSnapshot = await this.renderer.renderHtml(
-      { ...version, template: version.template },
+      renderVersion,
       prepared,
       document.uploadedBy,
       { draft: true, documentNumber: document.documentNumber },
@@ -567,6 +636,7 @@ export class AuthoringDocumentService {
         htmlSnapshot,
         ContentVersionReason.APPROVED,
         user,
+        pageFrame,
         tx,
       );
       await this.createEvent(
@@ -606,8 +676,10 @@ export class AuthoringDocumentService {
     );
     const prepared = validateAndPrepareForm(fields, raw, false);
     const version = this.versionFor(document);
+    const pageFrame = document.authoring.pageFrame ?? version.pageFrame ?? null;
+    const renderVersion = this.renderVersion(document, version, pageFrame);
     const htmlSnapshot = await this.renderer.renderHtml(
-      { ...version, template: version.template },
+      renderVersion,
       prepared,
       document.uploadedBy,
       { draft: true, documentNumber: document.documentNumber },
@@ -630,6 +702,7 @@ export class AuthoringDocumentService {
         htmlSnapshot,
         ContentVersionReason.RETURNED,
         user,
+        pageFrame,
         tx,
       );
       await this.createEvent(
@@ -670,19 +743,21 @@ export class AuthoringDocumentService {
     );
     const prepared = validateAndPrepareForm(fields, raw, true);
     const version = this.versionFor(document);
+    const pageFrame = document.authoring.pageFrame ?? version.pageFrame ?? null;
+    const renderVersion = this.renderVersion(document, version, pageFrame);
     const number = await this.numbering.assignNumber(
       document.id,
       document.categoryId,
       version.numberPrefix,
     );
     const { buffer, htmlSnapshot } = await this.buildRendered(
-      version,
+      renderVersion,
       prepared,
       document.uploadedBy,
       { draft: false, documentNumber: number },
     );
 
-    await this.savePdfVersion(document, version, buffer, user, 'Emisión final');
+    await this.savePdfVersion(document, renderVersion, buffer, user, 'Emisión final');
 
     await this.prisma.$transaction(async (tx) => {
       await tx.documentTemplateData.update({
@@ -704,6 +779,7 @@ export class AuthoringDocumentService {
         htmlSnapshot,
         ContentVersionReason.EMITTED,
         user,
+        pageFrame,
         tx,
       );
       await this.createEvent(
@@ -777,7 +853,7 @@ export class AuthoringDocumentService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.document.findMany({
         where,
-        include: DOCUMENT_INCLUDE,
+        include: DOCUMENT_LIST_INCLUDE,
         orderBy: { updatedAt: 'desc' },
         skip: (page - 1) * limit,
         take: limit,
@@ -794,7 +870,7 @@ export class AuthoringDocumentService {
         deletedAt: null,
         authoring: { is: { status: AuthoringStatus.IN_REVIEW } },
       },
-      include: DOCUMENT_INCLUDE,
+      include: DOCUMENT_LIST_INCLUDE,
       orderBy: { updatedAt: 'desc' },
     });
   }
@@ -817,7 +893,7 @@ export class AuthoringDocumentService {
     const version = this.versionFor(document);
     const draft = document.authoring.status !== AuthoringStatus.EMITTED;
     const buffer = await this.renderer.generatePdf(
-      { ...version, template: version.template },
+      this.renderVersion(document, version),
       prepared,
       document.uploadedBy,
       { draft, documentNumber: document.documentNumber },

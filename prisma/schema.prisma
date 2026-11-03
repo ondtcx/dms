@@ -1291,6 +1291,7 @@ model DocumentAuthoring {
   status            AuthoringStatus          @default(DRAFT)
   reviewerId        String?
   reviewerName      String?
+  pageFrame         Json?
   submittedAt       DateTime?
   reviewedAt        DateTime?
   reviewedById      String?
@@ -1333,6 +1334,7 @@ model DocumentContentVersion {
   version       Int
   formData      Json
   htmlSnapshot  String               @db.Text
+  pageFrame     Json?
   reason        ContentVersionReason
   createdById   String
   createdByName String?
