@@ -41,7 +41,9 @@ interface AuthoringUser {
 }
 
 const DOCUMENT_INCLUDE = {
-  authoring: true,
+  authoring: {
+    include: { events: { orderBy: { createdAt: 'desc' as const } } },
+  },
   templateData: {
     include: {
       template: { include: { category: true } },
