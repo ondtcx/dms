@@ -1161,6 +1161,7 @@ model TransferHistory {
   toUser         User?          @relation("TransferToUser", fields: [toUserId], references: [id], onDelete: Cascade)
   initiatedById  String? // Propietario o administrador que solicitó la transferencia
   initiatedBy    User?          @relation("TransferInitiatedBy", fields: [initiatedById], references: [id], onDelete: SetNull)
+  batchId        String? // Identificador común de una transferencia masiva
   status         TransferStatus @default(PENDING)
   completedAt    DateTime? // Fecha de completado
   canceledAt     DateTime? // Fecha de cancelación
@@ -1173,6 +1174,7 @@ model TransferHistory {
   @@index([fromUserId])
   @@index([toUserId])
   @@index([initiatedById])
+  @@index([batchId])
   @@index([status])
 }
 
