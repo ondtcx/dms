@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { RequirePermission } from '../auth/decorators/permission.decorator';
 import { AuthoringDocumentService } from './authoring-document.service';
 import { AuthoringTemplateService } from './authoring-template.service';
 import {
@@ -68,6 +69,7 @@ export class AuthoringController {
   }
 
   @Post('templates')
+  @RequirePermission('authoring.templates.manage')
   @ApiOperation({ summary: 'Crear una plantilla de elaboración' })
   createTemplate(
     @Body() dto: CreateAuthoringTemplateDto,
@@ -77,6 +79,7 @@ export class AuthoringController {
   }
 
   @Patch('templates/:id')
+  @RequirePermission('authoring.templates.manage')
   @ApiOperation({ summary: 'Actualizar metadatos de una plantilla' })
   updateTemplate(
     @Param('id', ParseIntPipe) id: number,
@@ -86,6 +89,7 @@ export class AuthoringController {
   }
 
   @Post('templates/:id/versions')
+  @RequirePermission('authoring.templates.design')
   @ApiOperation({ summary: 'Crear una versión borrador de la plantilla' })
   createVersion(
     @Param('id', ParseIntPipe) id: number,
@@ -96,6 +100,7 @@ export class AuthoringController {
   }
 
   @Post('templates/:id/versions/:versionId/publish')
+  @RequirePermission('authoring.templates.publish')
   @ApiOperation({ summary: 'Publicar una versión de plantilla' })
   publishVersion(
     @Param('id', ParseIntPipe) id: number,
@@ -105,6 +110,7 @@ export class AuthoringController {
   }
 
   @Post('templates/:id/deactivate')
+  @RequirePermission('authoring.templates.manage')
   @ApiOperation({ summary: 'Desactivar una plantilla' })
   deactivateTemplate(@Param('id', ParseIntPipe) id: number) {
     return this.templates.deactivate(id);
