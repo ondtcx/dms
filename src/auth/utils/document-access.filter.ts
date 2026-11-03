@@ -52,6 +52,7 @@ export function buildDocumentAccessFilter(
   });
   return {
     OR: [
+      { review: { reviewerId: user.id } },
       { AND: [
         { receptionOriginDirectory: null, OR: [{ directory: null }, { directory: { receptionEnabled: false } }] },
         buildOrdinaryDocumentAccessFilter(user),
