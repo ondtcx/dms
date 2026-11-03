@@ -11,6 +11,7 @@ import {
   AuthoringAction,
   AuthoringStatus,
   ContentVersionReason,
+  NotificationType,
   TemplateVersionStatus,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -356,6 +357,28 @@ export class AuthoringDocumentService {
     });
   }
 
+  private async notify(
+    recipientId: string | null | undefined,
+    type: NotificationType,
+    title: string,
+    message: string,
+    actionUrl: string,
+  ) {
+    if (!recipientId) return;
+    try {
+      const preference = await this.prisma.notificationPreference.findUnique({
+        where: { userId: recipientId },
+        select: { inAppEnabled: true },
+      });
+      if (preference && !preference.inAppEnabled) return;
+      await this.prisma.notification.create({
+        data: { userId: recipientId, type, title, message, actionUrl },
+      });
+    } catch {
+      // La notificación no debe bloquear la transición del documento.
+    }
+  }
+
   async createDraft(dto: CreateAuthoringDocumentDto, user: AuthoringUser) {
     const version = await this.templates.getVersion(dto.templateVersionId);
     if (version.status !== TemplateVersionStatus.PUBLISHED) {
@@ -587,7 +610,17 @@ export class AuthoringDocumentService {
       return authoring;
     });
 
-    return this.findDocument(updated.documentId);
+    const saved = await this.findDocument(updated.documentId);
+    if (dto.reviewerId) {
+      await this.notify(
+        dto.reviewerId,
+        NotificationType.APPROVAL_REQUESTED,
+        'Documento pendiente de revisión',
+        `${document.name} está listo para revisar.`,
+        `/dashboard/elaboracion/${id}`,
+      );
+    }
+    return saved;
   }
 
   async approve(
@@ -650,6 +683,13 @@ export class AuthoringDocumentService {
       );
     });
 
+    await this.notify(
+      document.uploadedById,
+      NotificationType.APPROVAL_APPROVED,
+      'Documento aprobado',
+      `${document.name} fue aprobado${dto.observation ? `: ${dto.observation}` : '.'}`,
+      `/dashboard/elaboracion/${id}`,
+    );
     return this.findDocument(id);
   }
 
@@ -716,6 +756,13 @@ export class AuthoringDocumentService {
       );
     });
 
+    await this.notify(
+      document.uploadedById,
+      NotificationType.CHANGES_REQUESTED,
+      'Documento devuelto para corrección',
+      `${document.name}: ${dto.observation.trim()}`,
+      `/dashboard/elaboracion/${id}`,
+    );
     return this.findDocument(id);
   }
 
@@ -724,12 +771,9 @@ export class AuthoringDocumentService {
     if (document.authoring.status === AuthoringStatus.EMITTED) {
       return document;
     }
-    if (
-      document.authoring.status !== AuthoringStatus.DRAFT &&
-      document.authoring.status !== AuthoringStatus.APPROVED
-    ) {
+    if (document.authoring.status !== AuthoringStatus.APPROVED) {
       throw new BadRequestException(
-        'El documento debe estar en borrador o aprobado para emitirse',
+        'El documento debe estar aprobado para emitirse',
       );
     }
 
@@ -797,6 +841,13 @@ export class AuthoringDocumentService {
       });
     });
 
+    await this.notify(
+      document.uploadedById,
+      NotificationType.DOCUMENT_EMITTED,
+      'Documento emitido',
+      `${document.name} fue emitido con el número ${number}.`,
+      `/dashboard/elaboracion/${id}`,
+    );
     return this.findDocument(id);
   }
 

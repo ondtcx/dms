@@ -151,6 +151,7 @@ enum NotificationType {
   DOCUMENT_DELETED // Documento eliminado
   DOCUMENT_TRANSFERRED // Documento transferido
   TEMPLATE_VERSION_READY // Versión de plantilla lista para publicar
+  DOCUMENT_EMITTED // Documento de elaboración emitido
 }
 
 enum NotificationStatus {

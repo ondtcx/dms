@@ -9,6 +9,13 @@ export class NotificationService {
     if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
       throw new BadRequestException('Paginación inválida');
     }
+    const preference = await this.prisma.notificationPreference.findUnique({
+      where: { userId: actorId },
+      select: { inAppEnabled: true },
+    });
+    if (preference && !preference.inAppEnabled) {
+      return { data: [], unreadCount: 0, page, limit };
+    }
     const [data, unreadCount] = await Promise.all([
       this.prisma.notification.findMany({
         where: { userId: actorId, status: { not: 'ARCHIVED' } },
