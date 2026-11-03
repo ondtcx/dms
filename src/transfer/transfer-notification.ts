@@ -77,3 +77,70 @@ export async function notifyTransferCanceled(
     });
   }
 }
+
+export async function notifyTransferBatchRequested(
+  db: NotificationWriter,
+  input: {
+    fromName: string;
+    toUserId: string;
+    documentCount: number;
+    comment: string | null;
+  },
+): Promise<void> {
+  await db.notification.create({
+    data: {
+      userId: input.toUserId,
+      type: 'DOCUMENT_TRANSFERRED',
+      title: 'Solicitud de transferencia masiva',
+      message: `${input.fromName} te propone recibir ${input.documentCount} documento(s)${input.comment ? `\n${input.comment}` : ''}`,
+      documentId: null,
+      actionUrl: '/dashboard/transfers/received',
+    },
+  });
+}
+
+export async function notifyTransferBatchCompleted(
+  db: NotificationWriter,
+  input: {
+    fromUserId: string;
+    documentCount: number;
+    acceptedCount: number;
+    failedCount: number;
+  },
+): Promise<void> {
+  await db.notification.create({
+    data: {
+      userId: input.fromUserId,
+      type: 'DOCUMENT_TRANSFERRED',
+      title: 'Transferencia masiva procesada',
+      message: `${input.acceptedCount} de ${input.documentCount} documento(s) fueron transferidos${input.failedCount ? `; ${input.failedCount} quedaron pendientes` : ''}`,
+      documentId: null,
+      actionUrl: '/dashboard/transfers/sent',
+    },
+  });
+}
+
+export async function notifyTransferBatchCanceled(
+  db: NotificationWriter,
+  input: {
+    documentCount: number;
+    userIds: string[];
+    canceledByRecipient: boolean;
+  },
+): Promise<void> {
+  const message = input.canceledByRecipient
+    ? `El destinatario rechazó una transferencia masiva de ${input.documentCount} documento(s)`
+    : `Se canceló una transferencia masiva de ${input.documentCount} documento(s)`;
+  for (const userId of [...new Set(input.userIds)].filter(Boolean)) {
+    await db.notification.create({
+      data: {
+        userId,
+        type: 'DOCUMENT_TRANSFERRED',
+        title: 'Transferencia masiva cancelada',
+        message,
+        documentId: null,
+        actionUrl: '/dashboard/transfers/sent',
+      },
+    });
+  }
+}
