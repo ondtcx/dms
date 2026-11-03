@@ -292,6 +292,15 @@ async function seedActaEntrega(
     path.join(process.cwd(), 'prisma/templates/acta-entrega-recepcion.html'),
     'utf8',
   );
+  const pageFrame = JSON.parse(
+    fs.readFileSync(
+      path.join(
+        process.cwd(),
+        'prisma/templates/acta-entrega-page-frame.json',
+      ),
+      'utf8',
+    ),
+  );
 
   const template = await prisma.documentTemplate.create({
     data: {
@@ -322,7 +331,7 @@ async function seedActaEntrega(
       pageSize: 'Letter',
       orientation: 'portrait',
       numberPrefix: 'ACT',
-      pageFrame: ACTA_FULL_PAGE_FRAME as any,
+      pageFrame: pageFrame as any,
       signatures: null,
       fields: ACTA_EXACT_FIELDS as any,
       createdById: adminId,

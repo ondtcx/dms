@@ -4,6 +4,7 @@ import { SettingsService } from '../settings/settings.service';
 import { DocumentGeneratorService } from '../document-template/document-generator.service';
 import type { AuthoringField } from './authoring.types';
 import { ROLE_LABELS } from './authoring-fields';
+import { fullPageFrameHtml } from './page-frame-html';
 import {
   buildInstitutionContext,
   getInstitutionMetadata,
@@ -159,9 +160,12 @@ export class AuthoringRendererService {
     const metadata = await this.getInstitutionMetadata();
     const context = this.buildContext(template, formData, user, options, metadata);
     if (template.pageFrame?.mode === 'fullPage') {
+      const hasBoxes = (template.pageFrame?.body?.boxes ?? []).length > 0;
       return this.generator.generateHTML({
-        htmlTemplate: template.bodyHtml,
-        styles: template.styles ?? undefined,
+        htmlTemplate: hasBoxes
+          ? fullPageFrameHtml(template.pageFrame)
+          : template.bodyHtml,
+        styles: hasBoxes ? undefined : template.styles ?? undefined,
         data: context,
       });
     }
@@ -188,9 +192,12 @@ export class AuthoringRendererService {
       `</div>`;
 
     if (template.pageFrame?.mode === 'fullPage') {
+      const hasBoxes = (template.pageFrame?.body?.boxes ?? []).length > 0;
       return this.generator.generatePDF({
-        htmlTemplate: template.bodyHtml,
-        styles: template.styles ?? undefined,
+        htmlTemplate: hasBoxes
+          ? fullPageFrameHtml(template.pageFrame)
+          : template.bodyHtml,
+        styles: hasBoxes ? undefined : template.styles ?? undefined,
         data: context,
         pageSize: (template.pageSize as any) || 'Letter',
         orientation: (template.orientation as any) || 'portrait',
