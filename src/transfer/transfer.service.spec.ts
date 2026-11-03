@@ -276,6 +276,14 @@ describe('TransferService', () => {
     );
   });
 
+  it('rejects viewing a transfer for an unrelated user', async () => {
+    const { service } = fixture();
+
+    await expect(service.findOne(7, 'intruder')).rejects.toThrow(
+      'No tienes permiso para ver esta transferencia',
+    );
+  });
+
   it('reports sent, received, and pending counts', async () => {
     const { tx, service } = fixture();
     tx.transferHistory.count
