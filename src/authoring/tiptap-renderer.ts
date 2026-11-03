@@ -74,7 +74,11 @@ function validateNode(
 
   if (node.type === 'paragraph' || node.type === 'heading') {
     const align = node.attrs?.textAlign;
-    if (align !== undefined && !ALLOWED_ALIGNMENTS.has(String(align))) {
+    if (
+      align !== undefined &&
+      align !== null &&
+      !ALLOWED_ALIGNMENTS.has(String(align))
+    ) {
       invalid(`alineación no permitida: ${String(align)}`);
     }
   }

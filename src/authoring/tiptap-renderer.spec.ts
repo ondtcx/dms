@@ -55,6 +55,19 @@ describe('tiptap renderer', () => {
     expect(html).toContain('<table><tr><th><p>A</p></th><td><p>B</p></td></tr></table>');
   });
 
+  it('accepts null text alignment emitted by Tiptap', () => {
+    const html = renderTiptapDoc(
+      doc([
+        {
+          type: 'paragraph',
+          attrs: { textAlign: null },
+          content: [{ type: 'text', text: 'Sin alineación' }],
+        },
+      ]),
+    );
+    expect(html).toBe('<p>Sin alineación</p>');
+  });
+
   it('rejects unknown nodes, marks and alignments', () => {
     expect(() => validateTiptapDoc(doc([{ type: 'script' }]))).toThrow(BadRequestException);
     expect(() =>

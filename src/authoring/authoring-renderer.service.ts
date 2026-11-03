@@ -56,6 +56,7 @@ export class AuthoringRendererService {
       firmante,
       institucion: institution,
       documento: {
+        ...(formData.documento ?? {}),
         fecha: date.toLocaleDateString('es-ES', {
           day: '2-digit',
           month: 'long',
