@@ -24,6 +24,8 @@ import { UpdateMyProfileDto } from './dto/update-my-profile.dto';
 import { DeactivateUserDto } from './dto/deactivate-user.dto';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequireAnyPermission, RequirePermission } from '../auth/decorators/permission.decorator';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { UserRole } from '../auth/role.enum';
 
 @ApiTags('users')
 @Controller('users')
@@ -258,5 +260,32 @@ export class UserController {
   })
   async reactivate(@Param('id') id: string, @CurrentUser() actor: any) {
     return this.userService.reactivate(id, actor?.sub);
+  }
+
+  @Post(':id/anonymize')
+  @Roles(UserRole.ADMIN)
+  @RequirePermission('users.manage')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Anonimizar usuario (Solo ADMIN)',
+    description:
+      'Purga los datos personales y credenciales de un usuario desactivado, conservando documentos e historial bajo una identidad genérica. Es irreversible.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'ID del usuario a anonimizar',
+    example: 1,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Usuario anonimizado exitosamente',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'El usuario conserva documentos, transferencias o trabajo activo',
+  })
+  async anonymize(@Param('id') id: string, @CurrentUser() actor: any) {
+    return this.userService.anonymize(id, actor?.sub);
   }
 }

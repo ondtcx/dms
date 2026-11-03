@@ -167,6 +167,7 @@ enum AuditAction {
   ARCHIVE
   LOGIN
   LOGOUT
+  ANONYMIZE
 }
 
 enum AuditResource {
@@ -688,6 +689,12 @@ model User {
   deactivatedUsers   User[]    @relation("UserDeactivations")
   deactivationReason String?
 
+  // Anonimización legal: la fila permanece como tombstone histórico.
+  anonymizedAt   DateTime?
+  anonymizedById String?
+  anonymizedBy   User?     @relation("UserAnonymizations", fields: [anonymizedById], references: [id], onDelete: SetNull)
+  anonymizedUsers User[]  @relation("UserAnonymizations")
+
   // Campos organizacionales
   phoneNumber  String?
   position     String?
@@ -762,6 +769,7 @@ model User {
 
   @@index([isActive])
   @@index([deactivatedById])
+  @@index([anonymizedById])
 }
 
 model PasswordResetToken {

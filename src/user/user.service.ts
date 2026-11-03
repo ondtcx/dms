@@ -6,9 +6,10 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { Prisma, User, UserRole } from '@prisma/client';
+import { AuditAction, AuditResource, Prisma, User, UserRole } from '@prisma/client';
 import { CreateUserDto } from './dto/create-user.dto';
 import bcrypt from 'bcrypt';
+import * as crypto from 'crypto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { AuthorizationService } from '../auth/compatibility/authorization.service';
 
@@ -25,6 +26,8 @@ const userProjection = {
   deactivatedAt: true,
   deactivatedById: true,
   deactivationReason: true,
+  anonymizedAt: true,
+  anonymizedById: true,
   authRevision: true,
   phoneNumber: true,
   position: true,
@@ -216,6 +219,9 @@ export class UserService {
       throw new BadRequestException('La selección de catálogo solo se admite al crear un usuario');
     }
     const existingUser = await this.findById(id); // Check if user exists
+    if (existingUser.anonymizedAt) {
+      throw new ForbiddenException('El usuario está anonimizado y no puede modificarse');
+    }
     const roleChanged = user.role !== undefined && user.role !== existingUser.role;
     if (roleChanged) {
       await this.assertCanChangeLegacyRole(actorId);
@@ -235,6 +241,8 @@ export class UserService {
         deactivatedAt: true,
         deactivatedById: true,
         deactivationReason: true,
+        anonymizedAt: true,
+        anonymizedById: true,
         authRevision: true,
         phoneNumber: true,
         position: true,
@@ -264,6 +272,9 @@ export class UserService {
         const user = toUserProjection(userFound) as PublicUser;
         if (user.isActive === false) {
           throw new ConflictException('El usuario ya está desactivado');
+        }
+        if (user.anonymizedAt) {
+          throw new ConflictException('El usuario está anonimizado');
         }
 
         const [workflowAssignments, authoredChangeRequests, receivedChangeRequests] = await Promise.all([
@@ -337,6 +348,9 @@ export class UserService {
     if (user.isActive !== false) {
       throw new ConflictException('El usuario ya está activo');
     }
+    if (user.anonymizedAt) {
+      throw new ConflictException('El usuario está anonimizado y no puede reactivarse');
+    }
 
     await this.prisma.user.update({
       where: { id },
@@ -350,5 +364,207 @@ export class UserService {
     });
 
     return { message: 'Usuario reactivado exitosamente' };
+  }
+
+  async anonymize(
+    id: string,
+    actorId: string,
+  ): Promise<{ message: string; anonymizedAt: Date }> {
+    if (id === actorId) {
+      throw new ConflictException('No puedes anonimizar tu propia cuenta');
+    }
+
+    const unusablePassword = await bcrypt.hash(
+      crypto.randomBytes(32).toString('hex'),
+      10,
+    );
+
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        const user = await tx.user.findUnique({
+          where: { id },
+          select: {
+            id: true,
+            isActive: true,
+            deactivatedAt: true,
+            anonymizedAt: true,
+          },
+        });
+        if (!user) throw new NotFoundException('User not found');
+        if (user.anonymizedAt) {
+          throw new ConflictException('El usuario ya está anonimizado');
+        }
+        if (user.isActive) {
+          throw new ConflictException(
+            'Desactiva al usuario antes de anonimizarlo',
+          );
+        }
+
+        const [
+          ownedDocuments,
+          pendingTransfers,
+          activeWorkflows,
+          activeChangeRequests,
+        ] = await Promise.all([
+          tx.document.count({ where: { uploadedById: id } }),
+          tx.transferHistory.count({
+            where: { toUserId: id, status: 'PENDING' },
+          }),
+          tx.documentWorkflow.count({
+            where: { initiatedById: id, active: true },
+          }),
+          tx.documentChangeRequest.count({
+            where: {
+              OR: [{ requestedById: id }, { recipientId: id }],
+              status: {
+                in: ['PENDING', 'IN_PROGRESS', 'CORRECTION_SUBMITTED'],
+              },
+            },
+          }),
+        ]);
+
+        if (
+          ownedDocuments > 0 ||
+          pendingTransfers > 0 ||
+          activeWorkflows > 0 ||
+          activeChangeRequests > 0
+        ) {
+          throw new ConflictException({
+            message:
+              'El usuario todavía tiene documentos, transferencias o trabajo activo. Resuélvelo antes de anonimizarlo.',
+            pending: {
+              documents: ownedDocuments,
+              transfers: pendingTransfers,
+              workflows: activeWorkflows,
+              changeRequests: activeChangeRequests,
+            },
+          });
+        }
+
+        const purged = {
+          passwordResetTokens: (
+            await tx.passwordResetToken.deleteMany({ where: { userId: id } })
+          ).count,
+          notifications: (
+            await tx.notification.deleteMany({ where: { userId: id } })
+          ).count,
+          notificationPreferences: (
+            await tx.notificationPreference.deleteMany({ where: { userId: id } })
+          ).count,
+          searchHistory: (
+            await tx.searchHistory.deleteMany({ where: { userId: id } })
+          ).count,
+          documentAccesses: (
+            await tx.documentAccess.deleteMany({ where: { userId: id } })
+          ).count,
+          shareAccesses: (
+            await tx.shareAccess.deleteMany({ where: { userId: id } })
+          ).count,
+          directoryUsages: (
+            await tx.userDirectoryUsage.deleteMany({ where: { userId: id } })
+          ).count,
+          navigationEvents: (
+            await tx.directoryNavigationEvent.deleteMany({
+              where: { userId: id },
+            })
+          ).count,
+          commentReactions: (
+            await tx.commentReaction.deleteMany({ where: { userId: id } })
+          ).count,
+          courseAssignments: (
+            await tx.userCourse.deleteMany({ where: { userId: id } })
+          ).count,
+          subjectAssignments: (
+            await tx.userSubject.deleteMany({ where: { userId: id } })
+          ).count,
+          directoryParticipants: (
+            await tx.directoryUserParticipant.deleteMany({
+              where: { userId: id },
+            })
+          ).count,
+          directoryDelegates: (
+            await tx.directoryDelegate.deleteMany({ where: { userId: id } })
+          ).count,
+          receivedPermissions: (
+            await tx.documentPermission.deleteMany({ where: { userId: id } })
+          ).count,
+          receivedShares: (
+            await tx.documentShare.deleteMany({ where: { userId: id } })
+          ).count,
+          receivedGrants: (
+            await tx.accessGrant.deleteMany({
+              where: { userId: id, delegatedGrants: { none: {} } },
+            })
+          ).count,
+          reportExecutions: (
+            await tx.reportExecution.deleteMany({
+              where: { executedById: id },
+            })
+          ).count,
+          auditRedactions: (
+            await tx.auditLog.updateMany({
+              where: { actorId: id },
+              data: {
+                actorEmail: null,
+                actorName: null,
+                ipAddress: null,
+                userAgent: null,
+              },
+            })
+          ).count,
+        };
+
+        const anonymizedAt = new Date();
+        await tx.user.update({
+          where: { id },
+          data: {
+            email: `anon-${id}@anon.invalid`,
+            name: 'Usuario anonimizado',
+            phoneNumber: null,
+            position: null,
+            password: unusablePassword,
+            isActive: false,
+            deactivatedAt: user.deactivatedAt ?? new Date(),
+            deactivationReason: null,
+            anonymizedAt,
+            anonymizedById: actorId,
+            authRevision: { increment: 1 },
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+            lastActivityAt: new Date(0),
+            totpEnabled: false,
+            totpSecret: null,
+            totpPendingSecret: null,
+            totpRecoveryCodeHashes: [],
+          },
+        });
+
+        const actor = await tx.user.findUnique({
+          where: { id: actorId },
+          select: { email: true, name: true, role: true },
+        });
+        await tx.auditLog.create({
+          data: {
+            action: AuditAction.ANONYMIZE,
+            resource: AuditResource.USER,
+            resourceId: id,
+            documentId: null,
+            actorId,
+            actorEmail: actor?.email ?? null,
+            actorName: actor?.name ?? null,
+            actorRole: actor?.role ?? null,
+            metadata: { anonymizedUserId: id, purged },
+          },
+        });
+
+        return { anonymizedAt };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+
+    return {
+      message: 'Usuario anonimizado exitosamente',
+      anonymizedAt: result.anonymizedAt,
+    };
   }
 }

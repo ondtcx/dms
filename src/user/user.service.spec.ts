@@ -474,4 +474,197 @@ describe('UserService', () => {
     });
   });
 
+  describe('legal anonymization', () => {
+    const actorId = 'admin-1';
+    const deactivatedAt = new Date('2026-10-01T12:00:00.000Z');
+    let prisma: any;
+    let target: any;
+    let deleteMany: () => jest.Mock;
+
+    beforeEach(() => {
+      deleteMany = () => jest.fn().mockResolvedValue({ count: 1 });
+      target = {
+        id: 'u1',
+        email: 'u1@example.com',
+        name: 'User One',
+        role: 'user',
+        isActive: false,
+        deactivatedAt,
+        anonymizedAt: null,
+        roleAssignments: [],
+      };
+      prisma = {
+        user: {
+          findUnique: jest.fn().mockImplementation(({ where }: any) =>
+            Promise.resolve(
+              where.id === actorId
+                ? { email: 'admin@example.com', name: 'Admin', role: 'admin' }
+                : target,
+            ),
+          ),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        document: { count: jest.fn().mockResolvedValue(0) },
+        transferHistory: { count: jest.fn().mockResolvedValue(0) },
+        documentWorkflow: { count: jest.fn().mockResolvedValue(0) },
+        documentChangeRequest: { count: jest.fn().mockResolvedValue(0) },
+        passwordResetToken: { deleteMany: deleteMany() },
+        notification: { deleteMany: deleteMany() },
+        notificationPreference: { deleteMany: deleteMany() },
+        searchHistory: { deleteMany: deleteMany() },
+        documentAccess: { deleteMany: deleteMany() },
+        shareAccess: { deleteMany: deleteMany() },
+        userDirectoryUsage: { deleteMany: deleteMany() },
+        directoryNavigationEvent: { deleteMany: deleteMany() },
+        commentReaction: { deleteMany: deleteMany() },
+        userCourse: { deleteMany: deleteMany() },
+        userSubject: { deleteMany: deleteMany() },
+        directoryUserParticipant: { deleteMany: deleteMany() },
+        directoryDelegate: { deleteMany: deleteMany() },
+        documentPermission: { deleteMany: deleteMany() },
+        documentShare: { deleteMany: deleteMany() },
+        accessGrant: { deleteMany: deleteMany() },
+        reportExecution: { deleteMany: deleteMany() },
+        auditLog: {
+          updateMany: jest.fn().mockResolvedValue({ count: 3 }),
+          create: jest.fn().mockResolvedValue({}),
+        },
+        $transaction: jest.fn((callback: any) => callback(prisma)),
+      };
+      service = new UserService(prisma as any);
+    });
+
+    it('anonymizes a deactivated user and purges personal activity', async () => {
+      await expect(service.anonymize('u1', actorId)).resolves.toEqual({
+        message: 'Usuario anonimizado exitosamente',
+        anonymizedAt: expect.any(Date),
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'u1' },
+        data: expect.objectContaining({
+          email: 'anon-u1@anon.invalid',
+          name: 'Usuario anonimizado',
+          phoneNumber: null,
+          position: null,
+          password: 'hashed',
+          isActive: false,
+          deactivatedAt,
+          deactivationReason: null,
+          anonymizedAt: expect.any(Date),
+          anonymizedById: actorId,
+          authRevision: { increment: 1 },
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastActivityAt: new Date(0),
+          totpEnabled: false,
+          totpSecret: null,
+          totpPendingSecret: null,
+          totpRecoveryCodeHashes: [],
+        }),
+      });
+      expect(prisma.notification.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+      expect(prisma.documentPermission.deleteMany).toHaveBeenCalledWith({ where: { userId: 'u1' } });
+      expect(prisma.accessGrant.deleteMany).toHaveBeenCalledWith({
+        where: { userId: 'u1', delegatedGrants: { none: {} } },
+      });
+      expect(prisma.auditLog.updateMany).toHaveBeenCalledWith({
+        where: { actorId: 'u1' },
+        data: { actorEmail: null, actorName: null, ipAddress: null, userAgent: null },
+      });
+      expect(prisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          action: 'ANONYMIZE',
+          resource: 'USER',
+          resourceId: 'u1',
+          actorId,
+          metadata: expect.objectContaining({
+            anonymizedUserId: 'u1',
+            purged: expect.objectContaining({ notifications: 1, auditRedactions: 3 }),
+          }),
+        }),
+      });
+    });
+
+    it('rejects an active user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...target, isActive: true });
+      await expect(service.anonymize('u1', actorId)).rejects.toThrow('Desactiva al usuario');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an already anonymized user', async () => {
+      prisma.user.findUnique.mockResolvedValue({ ...target, anonymizedAt: new Date() });
+      await expect(service.anonymize('u1', actorId)).rejects.toThrow('ya está anonimizado');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a user that still owns documents', async () => {
+      prisma.document.count.mockResolvedValue(2);
+      await expect(service.anonymize('u1', actorId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          pending: expect.objectContaining({ documents: 2 }),
+        }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a user with pending transfers as recipient', async () => {
+      prisma.transferHistory.count.mockResolvedValue(1);
+      await expect(service.anonymize('u1', actorId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          pending: expect.objectContaining({ transfers: 1 }),
+        }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a user with an active initiated workflow', async () => {
+      prisma.documentWorkflow.count.mockResolvedValue(1);
+      await expect(service.anonymize('u1', actorId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          pending: expect.objectContaining({ workflows: 1 }),
+        }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects a user with an open change request', async () => {
+      prisma.documentChangeRequest.count.mockResolvedValue(1);
+      await expect(service.anonymize('u1', actorId)).rejects.toMatchObject({
+        status: 409,
+        response: expect.objectContaining({
+          pending: expect.objectContaining({ changeRequests: 1 }),
+        }),
+      });
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks self-anonymization before opening a transaction', async () => {
+      await expect(service.anonymize('u1', 'u1')).rejects.toThrow('No puedes anonimizar tu propia cuenta');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('blocks reactivation after anonymization', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...target,
+        anonymizedAt: new Date(),
+      });
+      await expect(service.reactivate('u1', actorId)).rejects.toThrow('no puede reactivarse');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it('blocks profile edits after anonymization', async () => {
+      prisma.user.findUnique.mockResolvedValue({
+        ...target,
+        anonymizedAt: new Date(),
+      });
+      await expect(service.update('u1', { name: 'Changed' } as any, actorId)).rejects.toThrow('no puede modificarse');
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+  });
+
+
 });

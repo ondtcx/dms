@@ -12,6 +12,8 @@ describe('AuthorizationService', () => {
         deactivatedAt: null,
         deactivatedById: null,
         deactivationReason: null,
+        anonymizedAt: null,
+        anonymizedById: null,
         authRevision: 1,
         lastActivityAt: new Date(),
         failedLoginAttempts: 0,
