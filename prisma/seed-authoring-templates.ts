@@ -1,12 +1,8 @@
 import { PrismaClient, TemplateVersionStatus } from '@prisma/client';
+import * as fs from 'fs';
+import * as path from 'path';
 import { UserRole } from '../src/auth/role.enum';
 import {
-  ACTA_BODY_HTML,
-  ACTA_FIELDS,
-  ACTA_PAGE_FRAME,
-  ACTA_SIGNATURES,
-  pageFrameToFooterHtml,
-  pageFrameToHeaderHtml,
   SAMPLE_BODY_PREFIX,
   SAMPLE_FOOTER_HTML,
   SAMPLE_HEADER_HTML,
@@ -45,9 +41,26 @@ th, td { border: 1px solid #9ca3af; padding: 4px 6px; vertical-align: top; }
 const watermark =
   '{{#if _metadata.draft}}<div class="draft-watermark">BORRADOR</div>{{/if}}';
 
-const actaStyles = `${styles}
-.doc { padding-left: 14px; }
-.doc-subtitle { text-align: center; font-size: 13pt; font-weight: 700; margin: 0 0 18px; }`;
+const ACTA_EXACT_BODY_HTML = fs.readFileSync(
+  path.join(process.cwd(), 'prisma/templates/acta-entrega-recepcion.html'),
+  'utf8',
+);
+const ACTA_EXACT_PAGE_FRAME: any = JSON.parse(
+  fs.readFileSync(
+    path.join(process.cwd(), 'prisma/templates/acta-entrega-page-frame.json'),
+    'utf8',
+  ),
+);
+const ACTA_EXACT_FIELDS = [
+  field('acta.lugar', 'Lugar', 'text', true),
+  field('acta.fecha', 'Fecha', 'date', true),
+  field('recibidoPor.nombre', 'Recibido por', 'text', true),
+  field('recibidoPor.cargo', 'Cargo de quien recibe', 'text', true),
+  field('entregadoPor.nombre', 'Entregado por', 'text', true),
+  field('entregadoPor.cargo', 'Cargo de quien entrega', 'text', true),
+  field('vistoBueno.nombre', 'Visto bueno', 'text', true),
+  field('vistoBueno.cargo', 'Cargo del visto bueno', 'text', true),
+];
 
 const signature = `
 <div class="signature">
@@ -245,9 +258,9 @@ async function seedActaEntrega(
       description:
         'Acta para entrega y recepción de bienes del Consejo Ejecutivo.',
       categoryId,
-      fields: ACTA_FIELDS as any,
-      htmlTemplate: ACTA_BODY_HTML,
-      styles: actaStyles,
+      fields: ACTA_EXACT_FIELDS as any,
+      htmlTemplate: ACTA_EXACT_BODY_HTML,
+      styles: '',
       outputFormat: 'pdf',
       pageSize: 'Letter',
       orientation: 'portrait',
@@ -263,20 +276,18 @@ async function seedActaEntrega(
       templateId: template.id,
       version: 1,
       status: TemplateVersionStatus.PUBLISHED,
-      bodyHtml: ACTA_BODY_HTML,
-      styles: actaStyles,
-      headerHtml: pageFrameToHeaderHtml(ACTA_PAGE_FRAME),
-      footerHtml: pageFrameToFooterHtml(ACTA_PAGE_FRAME),
-      marginTop: ACTA_PAGE_FRAME.margins.top,
-      marginBottom: ACTA_PAGE_FRAME.margins.bottom,
-      marginLeft: ACTA_PAGE_FRAME.margins.left,
-      marginRight: ACTA_PAGE_FRAME.margins.right,
+      bodyHtml: ACTA_EXACT_BODY_HTML,
+      styles: '',
+      marginTop: '0',
+      marginBottom: '0',
+      marginLeft: '0',
+      marginRight: '0',
       pageSize: 'Letter',
       orientation: 'portrait',
       numberPrefix: 'ACT',
-      pageFrame: ACTA_PAGE_FRAME as any,
-      signatures: ACTA_SIGNATURES as any,
-      fields: ACTA_FIELDS as any,
+      pageFrame: ACTA_EXACT_PAGE_FRAME as any,
+      signatures: null,
+      fields: ACTA_EXACT_FIELDS as any,
       createdById: adminId,
       publishedAt: new Date(),
     },

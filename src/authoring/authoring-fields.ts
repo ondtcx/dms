@@ -230,11 +230,20 @@ export function normalizeDocumentPageFrame(
     if (content.length > 20_000) {
       throw new BadRequestException('Una caja de página supera el tamaño permitido');
     }
+    const y = finiteNumber(box.y, 'Y');
+    const role =
+      box.role === 'frame'
+        ? 'frame'
+        : box.role === 'content' ||
+            (y >= 90 && y < 700 && !/^_+$/.test(content.trim()))
+          ? 'content'
+          : 'frame';
     return {
       id: String(box.id ?? `box-${index + 1}`).slice(0, 120),
       type: box.type,
+      role,
       x: finiteNumber(box.x, 'X'),
-      y: finiteNumber(box.y, 'Y'),
+      y,
       width: finiteNumber(box.width ?? 0, 'ancho'),
       height: box.height === undefined ? undefined : finiteNumber(box.height, 'alto'),
       fontSize: finiteNumber(box.fontSize ?? 11, 'tamaño de fuente'),

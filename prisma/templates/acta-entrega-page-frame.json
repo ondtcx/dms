@@ -25,7 +25,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "UNIDAD EDUCATIVA VICENTE FIERRO "
+        "content": "UNIDAD EDUCATIVA VICENTE FIERRO ",
+        "role": "frame"
       },
       {
         "id": "acta-2",
@@ -39,7 +40,8 @@
         "fontStyle": "italic",
         "color": "#000000",
         "align": "left",
-        "content": "“Pioneros en ciencia y tecnología al servicio del pueblo” "
+        "content": "“Pioneros en ciencia y tecnología al servicio del pueblo” ",
+        "role": "frame"
       },
       {
         "id": "acta-3",
@@ -53,7 +55,8 @@
         "fontStyle": "italic",
         "color": "#000000",
         "align": "left",
-        "content": "Fundado el 16 de "
+        "content": "Fundado el 16 de ",
+        "role": "frame"
       },
       {
         "id": "acta-4",
@@ -67,7 +70,8 @@
         "fontStyle": "italic",
         "color": "#000000",
         "align": "left",
-        "content": "Diciembre de 1913"
+        "content": "Diciembre de 1913",
+        "role": "frame"
       },
       {
         "id": "acta-5",
@@ -81,7 +85,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "ACTA ENTREGA - RECEPCIÓN "
+        "content": "ACTA ENTREGA - RECEPCIÓN ",
+        "role": "content"
       },
       {
         "id": "acta-6",
@@ -95,7 +100,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "CONSEJO EJECUTIVO "
+        "content": "CONSEJO EJECUTIVO ",
+        "role": "content"
       },
       {
         "id": "acta-7",
@@ -109,7 +115,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "En {{acta.lugar}}, {{formatDate acta.fecha}}. "
+        "content": "En {{acta.lugar}}, {{formatDate acta.fecha}}. ",
+        "role": "content"
       },
       {
         "id": "acta-8",
@@ -123,7 +130,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "A través del presente, se entrega los bienes que reposan en la sala de vicerrectorado, a la Sra. MSc. "
+        "content": "A través del presente, se entrega los bienes que reposan en la sala de vicerrectorado, a la Sra. MSc. ",
+        "role": "content"
       },
       {
         "id": "acta-9",
@@ -137,7 +145,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Soraya Villarreal en calidad de vicerrectora, los mismos que serán utilizados como material de "
+        "content": "Soraya Villarreal en calidad de vicerrectora, los mismos que serán utilizados como material de ",
+        "role": "content"
       },
       {
         "id": "acta-10",
@@ -151,7 +160,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "apoyo en el desarrollo de sus funciones como vicerrectora de la Unidad Educativa “Vicente Fierro”.  "
+        "content": "apoyo en el desarrollo de sus funciones como vicerrectora de la Unidad Educativa “Vicente Fierro”.  ",
+        "role": "content"
       },
       {
         "id": "acta-11",
@@ -165,7 +175,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "El material entregado está sujeto a control y auditoría, quedando bajo su estricta responsabilidad "
+        "content": "El material entregado está sujeto a control y auditoría, quedando bajo su estricta responsabilidad ",
+        "role": "content"
       },
       {
         "id": "acta-12",
@@ -179,7 +190,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "el cuidado de los mismos. "
+        "content": "el cuidado de los mismos. ",
+        "role": "content"
       },
       {
         "id": "acta-13",
@@ -193,7 +205,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Como constancia de la presente acta, actúa la MSc. Soraya Villarreal identificado con el número de "
+        "content": "Como constancia de la presente acta, actúa la MSc. Soraya Villarreal identificado con el número de ",
+        "role": "content"
       },
       {
         "id": "acta-14",
@@ -207,7 +220,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "cédula    0400881454 y el. MSc. Byron Narváez, identificada con el número de cédula 0400881207 "
+        "content": "cédula    0400881454 y el. MSc. Byron Narváez, identificada con el número de cédula 0400881207 ",
+        "role": "content"
       },
       {
         "id": "acta-15",
@@ -221,7 +235,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "como representante del Honorable Consejo Ejecutivo de la Unidad Educativa “Vicente Fierro”, "
+        "content": "como representante del Honorable Consejo Ejecutivo de la Unidad Educativa “Vicente Fierro”, ",
+        "role": "content"
       },
       {
         "id": "acta-16",
@@ -235,7 +250,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "comisión de control interno. "
+        "content": "comisión de control interno. ",
+        "role": "content"
       },
       {
         "id": "acta-17",
@@ -249,7 +265,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Se adjunta analítica de existencias. "
+        "content": "Se adjunta analítica de existencias. ",
+        "role": "content"
       },
       {
         "id": "acta-18",
@@ -263,7 +280,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Se firman en original y copia con el mismo tenor. "
+        "content": "Se firman en original y copia con el mismo tenor. ",
+        "role": "content"
       },
       {
         "id": "acta-19",
@@ -277,7 +295,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "RECIBÍ CONFORME "
+        "content": "RECIBÍ CONFORME ",
+        "role": "content"
       },
       {
         "id": "acta-20",
@@ -291,7 +310,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "ENTREGUÉ CONFORME "
+        "content": "ENTREGUÉ CONFORME ",
+        "role": "content"
       },
       {
         "id": "acta-21",
@@ -305,7 +325,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "_____________________ "
+        "content": "_____________________ ",
+        "role": "frame"
       },
       {
         "id": "acta-22",
@@ -319,7 +340,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "______________________ "
+        "content": "______________________ ",
+        "role": "frame"
       },
       {
         "id": "acta-23",
@@ -333,7 +355,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "{{recibidoPor.nombre}}  "
+        "content": "{{recibidoPor.nombre}}  ",
+        "role": "content"
       },
       {
         "id": "acta-24",
@@ -347,7 +370,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "{{entregadoPor.nombre}}"
+        "content": "{{entregadoPor.nombre}}",
+        "role": "content"
       },
       {
         "id": "acta-25",
@@ -361,7 +385,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "{{recibidoPor.cargo}} "
+        "content": "{{recibidoPor.cargo}} ",
+        "role": "content"
       },
       {
         "id": "acta-26",
@@ -375,7 +400,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "{{entregadoPor.cargo}}"
+        "content": "{{entregadoPor.cargo}}",
+        "role": "content"
       },
       {
         "id": "acta-27",
@@ -389,7 +415,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "VISTO BUENO "
+        "content": "VISTO BUENO ",
+        "role": "content"
       },
       {
         "id": "acta-28",
@@ -403,7 +430,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "_______________________ "
+        "content": "_______________________ ",
+        "role": "frame"
       },
       {
         "id": "acta-29",
@@ -417,7 +445,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "{{vistoBueno.nombre}}  "
+        "content": "{{vistoBueno.nombre}}  ",
+        "role": "content"
       },
       {
         "id": "acta-30",
@@ -431,7 +460,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "{{vistoBueno.cargo}}  "
+        "content": "{{vistoBueno.cargo}}  ",
+        "role": "content"
       },
       {
         "id": "acta-31",
@@ -445,7 +475,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Dirección: "
+        "content": "Dirección: ",
+        "role": "frame"
       },
       {
         "id": "acta-32",
@@ -459,7 +490,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Ciudadela Sociedad Obrera Calle Juan XXIII y Caciques Tulcanaza "
+        "content": "Ciudadela Sociedad Obrera Calle Juan XXIII y Caciques Tulcanaza ",
+        "role": "frame"
       },
       {
         "id": "acta-33",
@@ -473,7 +505,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Teléfono:"
+        "content": "Teléfono:",
+        "role": "frame"
       },
       {
         "id": "acta-34",
@@ -487,7 +520,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": " 2980-466 "
+        "content": " 2980-466 ",
+        "role": "frame"
       },
       {
         "id": "acta-35",
@@ -501,7 +535,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": "Correo:"
+        "content": "Correo:",
+        "role": "frame"
       },
       {
         "id": "acta-36",
@@ -515,7 +550,8 @@
         "fontStyle": "normal",
         "color": "#000000",
         "align": "left",
-        "content": " uevicentefierro@gmail.com "
+        "content": " uevicentefierro@gmail.com ",
+        "role": "frame"
       }
     ]
   },
