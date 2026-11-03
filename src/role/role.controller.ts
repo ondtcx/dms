@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Patch } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Patch } from '@nestjs/common';
 import { RequirePermission } from '../auth/decorators/permission.decorator';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
@@ -20,6 +20,9 @@ export class RoleController {
 
   @Post(':id/deactivate')
   deactivate(@Param('id', ParseIntPipe) id: number) { return this.roles.deactivate(id); }
+
+  @Delete(':id')
+  remove(@Param('id', ParseIntPipe) id: number) { return this.roles.remove(id); }
 
   @Post(':id/assign/:userId')
   assign(@Param('id', ParseIntPipe) id: number, @Param('userId') userId: string) { return this.roles.assign(id, userId); }

@@ -148,6 +148,80 @@ describe('RoleService', () => {
     expect(tx.userRoleAssignment.create).not.toHaveBeenCalled();
   });
 
+  it('deletes an unused role after confirming no assignments or references', async () => {
+    const tx = {
+      role: {
+        findUnique: jest.fn().mockResolvedValue({ id: 1, key: 'padre', _count: { assignments: 0 } }),
+        delete: jest.fn(),
+      },
+      documentPermission: { count: jest.fn().mockResolvedValue(0) },
+      documentShare: { count: jest.fn().mockResolvedValue(0) },
+      directoryRoleParticipant: { count: jest.fn().mockResolvedValue(0) },
+      user: { count: jest.fn().mockResolvedValue(1) },
+    };
+    const service = new RoleService({ $transaction: jest.fn(async (callback: any) => callback(tx)) } as any);
+
+    await expect(service.remove(1)).resolves.toEqual({ success: true });
+    expect(tx.role.delete).toHaveBeenCalledWith({ where: { id: 1 } });
+    expect(tx.user.count).toHaveBeenCalled();
+  });
+
+  it('rejects deleting a role with users assigned', async () => {
+    const tx = {
+      role: {
+        findUnique: jest.fn().mockResolvedValue({ id: 1, _count: { assignments: 2 } }),
+        delete: jest.fn(),
+      },
+    };
+    const service = new RoleService({ $transaction: jest.fn(async (callback: any) => callback(tx)) } as any);
+
+    await expect(service.remove(1)).rejects.toThrow(ConflictException);
+    expect(tx.role.delete).not.toHaveBeenCalled();
+  });
+
+  it('rejects deleting a role referenced by documents or directories', async () => {
+    const tx = {
+      role: {
+        findUnique: jest.fn().mockResolvedValue({ id: 1, _count: { assignments: 0 } }),
+        delete: jest.fn(),
+      },
+      documentPermission: { count: jest.fn().mockResolvedValue(1) },
+      documentShare: { count: jest.fn().mockResolvedValue(0) },
+      directoryRoleParticipant: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const service = new RoleService({ $transaction: jest.fn(async (callback: any) => callback(tx)) } as any);
+
+    await expect(service.remove(1)).rejects.toThrow(ConflictException);
+    expect(tx.role.delete).not.toHaveBeenCalled();
+  });
+
+  it('protects the final authority after deleting a role', async () => {
+    const tx = {
+      role: {
+        findUnique: jest.fn().mockResolvedValue({ id: 1, _count: { assignments: 0 } }),
+        delete: jest.fn(),
+      },
+      documentPermission: { count: jest.fn().mockResolvedValue(0) },
+      documentShare: { count: jest.fn().mockResolvedValue(0) },
+      directoryRoleParticipant: { count: jest.fn().mockResolvedValue(0) },
+      user: { count: jest.fn().mockResolvedValue(0) },
+    };
+    const service = new RoleService({ $transaction: jest.fn(async (callback: any) => callback(tx)) } as any);
+
+    await expect(service.remove(1)).rejects.toThrow(ForbiddenException);
+    expect(tx.role.delete).toHaveBeenCalled();
+  });
+
+  it('rejects deleting a missing role', async () => {
+    const tx = {
+      role: { findUnique: jest.fn().mockResolvedValue(null), delete: jest.fn() },
+    };
+    const service = new RoleService({ $transaction: jest.fn(async (callback: any) => callback(tx)) } as any);
+
+    await expect(service.remove(99)).rejects.toThrow(NotFoundException);
+    expect(tx.role.delete).not.toHaveBeenCalled();
+  });
+
   it('checks authority when removing an assignment and bumps its revision', async () => {
     const tx = {
       userRoleAssignment: { delete: jest.fn() },

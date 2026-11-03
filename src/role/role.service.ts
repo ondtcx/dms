@@ -61,6 +61,36 @@ export class RoleService {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
+  async remove(id: number) {
+    return this.prisma.$transaction(async (tx) => {
+      const role = await tx.role.findUnique({
+        where: { id },
+        include: { _count: { select: { assignments: true } } },
+      });
+      if (!role) throw new NotFoundException('Role not found');
+      if (role._count.assignments > 0) {
+        throw new ConflictException(
+          'No se puede eliminar un rol con usuarios asignados. Reasigna o desactiva primero',
+        );
+      }
+
+      const [documentPermissions, documentShares, directoryParticipants] = await Promise.all([
+        tx.documentPermission.count({ where: { roleId: id } }),
+        tx.documentShare.count({ where: { roleId: id } }),
+        tx.directoryRoleParticipant.count({ where: { roleId: id } }),
+      ]);
+      if (documentPermissions > 0 || documentShares > 0 || directoryParticipants > 0) {
+        throw new ConflictException(
+          'No se puede eliminar un rol referenciado por permisos, comparticiones o carpetas',
+        );
+      }
+
+      await tx.role.delete({ where: { id } });
+      await this.assertAuthorityRemains(tx);
+      return { success: true };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
+
   async assign(id: number, userId: string) {
     return this.prisma.$transaction(async (tx) => {
       const role = await tx.role.findUnique({ where: { id } });
