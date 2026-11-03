@@ -184,6 +184,26 @@ async function main() {
     });
   }
 
+  const authoringRoleDefaults: Array<[string, string[]]> = [
+    ['secretario', ['authoring.templates.design']],
+    ['rector', ['authoring.templates.publish']],
+  ];
+  for (const [roleKey, permissionKeys] of authoringRoleDefaults) {
+    const roleId = roles[roleKey];
+    if (!roleId) continue;
+    for (const permissionKey of permissionKeys) {
+      const permissionId = permissions[permissionKey];
+      if (!permissionId) continue;
+      await prisma.rolePermission.upsert({
+        where: {
+          roleId_permissionId: { roleId, permissionId },
+        },
+        update: {},
+        create: { roleId, permissionId },
+      });
+    }
+  }
+
   const workflowApproverPermissions = [
     'workflow.view',
     'workflow.approve',

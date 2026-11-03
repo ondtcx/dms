@@ -1273,6 +1273,8 @@ model DocumentTemplateVersion {
   createdById  String
   createdAt    DateTime              @default(now())
   publishedAt  DateTime?
+  publishedById String?
+  publishedByName String?
 
   templateData       DocumentTemplateData[]
   authoringDocuments DocumentAuthoring[]

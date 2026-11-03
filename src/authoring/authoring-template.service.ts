@@ -233,7 +233,11 @@ export class AuthoringTemplateService {
     });
   }
 
-  async publish(templateId: number, versionId: number) {
+  async publish(
+    templateId: number,
+    versionId: number,
+    user: { id?: string; name?: string },
+  ) {
     const version = await this.getVersion(versionId);
     if (version.templateId !== templateId) {
       throw new BadRequestException('La versión no pertenece a la plantilla');
@@ -246,7 +250,12 @@ export class AuthoringTemplateService {
       });
       const published = await tx.documentTemplateVersion.update({
         where: { id: versionId },
-        data: { status: TemplateVersionStatus.PUBLISHED, publishedAt: new Date() },
+        data: {
+          status: TemplateVersionStatus.PUBLISHED,
+          publishedAt: new Date(),
+          publishedById: user?.id ?? null,
+          publishedByName: user?.name ?? null,
+        },
       });
       await tx.documentTemplate.update({
         where: { id: templateId },

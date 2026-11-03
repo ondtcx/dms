@@ -105,8 +105,9 @@ export class AuthoringController {
   publishVersion(
     @Param('id', ParseIntPipe) id: number,
     @Param('versionId', ParseIntPipe) versionId: number,
+    @CurrentUser() user: any,
   ) {
-    return this.templates.publish(id, versionId);
+    return this.templates.publish(id, versionId, user);
   }
 
   @Post('templates/:id/deactivate')
