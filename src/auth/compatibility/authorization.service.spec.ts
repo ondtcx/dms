@@ -8,6 +8,12 @@ describe('AuthorizationService', () => {
         email: 'u1@example.com',
         name: 'User One',
         role: 'user',
+        isActive: true,
+        deactivatedAt: null,
+        deactivatedById: null,
+        deactivationReason: null,
+        anonymizedAt: null,
+        anonymizedById: null,
         authRevision: 1,
         lastActivityAt: new Date(),
         failedLoginAttempts: 0,
@@ -57,6 +63,24 @@ describe('AuthorizationService', () => {
       roles: ['admin', 'reviewer'],
       permissions: ['documents.read', 'roles.manage'],
       authRevision: 7,
+    });
+  });
+
+  it('fails closed for a deactivated user', async () => {
+    const prisma: any = {
+      user: { findUnique: jest.fn().mockResolvedValue({
+        role: 'admin',
+        isActive: false,
+        authRevision: 9,
+        roleAssignments: [{ role: { key: 'admin', isActive: true, permissions: [] } }],
+      }) },
+    };
+    const service = new AuthorizationService(prisma);
+
+    await expect(service.getAuthorization('u-disabled')).resolves.toEqual({
+      roles: [],
+      permissions: [],
+      authRevision: 0,
     });
   });
 

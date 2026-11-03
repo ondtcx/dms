@@ -1,6 +1,7 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -8,6 +9,7 @@ import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { ALLOW_PENDING_2FA_KEY } from '../decorators/allow-pending-2fa.decorator';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SettingsService } from '../../settings/settings.service';
@@ -52,21 +54,42 @@ export class AuthGuard implements CanActivate {
         select: {
           authRevision: true,
           role: true,
+          isActive: true,
           email: true,
           name: true,
           lastActivityAt: true,
+          totpEnabled: true,
         },
       });
       if (!currentUser) throw new UnauthorizedException('User no longer exists');
-      if (payload.authRevision !== undefined && payload.authRevision !== currentUser.authRevision) {
+      if (currentUser.isActive === false) throw new UnauthorizedException('User is deactivated');
+      if (payload.authRevision === undefined) {
+        // Legacy tokens predate authRevision. They remain valid only while the
+        // account is still at the initial revision; any logout or password
+        // change increments it and irrevocably invalidates them.
+        if (currentUser.authRevision !== 0) {
+          throw new UnauthorizedException('Authorization state is outdated');
+        }
+      } else if (payload.authRevision !== currentUser.authRevision) {
         throw new UnauthorizedException('Authorization state is outdated');
       }
 
-      const timeoutMinutes = await this.settings.getSessionTimeoutMinutes();
+      const { sessionTimeoutMinutes, require2FA } = await this.settings.getAuthPolicy();
       const now = new Date();
-      const expiresAt = new Date(now.getTime() - timeoutMinutes * 60_000);
+      const expiresAt = new Date(now.getTime() - sessionTimeoutMinutes * 60_000);
       if (currentUser.lastActivityAt < expiresAt) {
         throw new UnauthorizedException('Session expired due to inactivity');
+      }
+
+      const allowPending2FA = this.reflector.getAllAndOverride<boolean>(
+        ALLOW_PENDING_2FA_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (require2FA && currentUser.totpEnabled !== true && !allowPending2FA) {
+        throw new ForbiddenException({
+          code: 'TWO_FACTOR_SETUP_REQUIRED',
+          message: 'Debes configurar la autenticación de dos factores',
+        });
       }
 
       // Use the request start time as the update value so concurrent requests cannot move activity backwards.
@@ -83,7 +106,8 @@ export class AuthGuard implements CanActivate {
         role: currentUser.role,
         authRevision: currentUser.authRevision,
       };
-    } catch {
+    } catch (error) {
+      if (error instanceof ForbiddenException) throw error;
       throw new UnauthorizedException(
         'Invalid token provided (unauthorized) sign in again',
       );

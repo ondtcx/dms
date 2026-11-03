@@ -36,6 +36,42 @@ describe('TOTP flows', () => {
     });
   });
 
+  it('does not generate reset tokens for a deactivated user', async () => {
+    const prisma = {
+      user: { findUnique: jest.fn().mockResolvedValue({ id: 'u1', isActive: false }) },
+    };
+    const service = new AuthService({} as any, {} as any, prisma as any, {} as any, {} as any);
+
+    await expect(service.generateResetToken('u1')).rejects.toMatchObject({ status: 400 });
+    expect(prisma.user.findUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an inactive user even with the correct password', async () => {
+    const user = {
+      id: 'u1',
+      email: 'inactive@example.com',
+      password: 'hash',
+      role: 'user',
+      isActive: false,
+      lockedUntil: null,
+      totpEnabled: false,
+      totpRecoveryCodeHashes: [],
+    };
+    const service = new AuthService(
+      { findByEmail: jest.fn().mockResolvedValue(user) } as any,
+      {} as any,
+      { user: { update: jest.fn() } } as any,
+      {} as any,
+      {} as any,
+    );
+    jest.spyOn(require('bcrypt'), 'compare').mockResolvedValue(true);
+
+    await expect(service.login({ email: user.email, password: 'correct' })).rejects.toMatchObject({
+      status: 401,
+      response: { message: 'Credenciales inválidas' },
+    });
+  });
+
   it('uses the generic invalid-credentials response for an unknown email', async () => {
     const userService = { findByEmail: jest.fn().mockRejectedValue(new NotFoundException('User not found')) };
     const service = new AuthService(userService as any, {} as any, {} as any, {} as any, {} as any);
@@ -230,7 +266,13 @@ describe('AuthService', () => {
     const prisma = { user: { update: jest.fn().mockResolvedValue({}), } };
     const userService = { findByEmail: jest.fn().mockResolvedValue(user) };
     const authorization = { getAuthorization: jest.fn().mockResolvedValue({ roles: [], permissions: [], authRevision: 0 }) };
-    service = new AuthService(userService as any, { signAsync: jest.fn().mockResolvedValue('token') } as any, prisma as any, authorization as any, { getMaxLoginAttempts: jest.fn() } as any);
+    service = new AuthService(
+      userService as any,
+      { signAsync: jest.fn().mockResolvedValue('token') } as any,
+      prisma as any,
+      authorization as any,
+      { getRequire2FA: jest.fn().mockResolvedValue(false) } as any,
+    );
     jest.spyOn(require('bcrypt'), 'compare').mockResolvedValue(true);
 
     const response = await service.login({ email: user.email, password: 'correct' });
@@ -238,6 +280,51 @@ describe('AuthService', () => {
     expect(response.user).not.toHaveProperty('lastActivityAt');
     expect(response.user).not.toHaveProperty('failedLoginAttempts');
     expect(response.user).not.toHaveProperty('lockedUntil');
+    expect(response.twoFactorSetupRequired).toBe(false);
+  });
+
+  it('flags enrollment when the global policy requires 2FA and the user has not enabled it', async () => {
+    const user = {
+      id: 'u1',
+      email: 'u1@example.com',
+      password: 'hash',
+      role: 'user',
+      isActive: true,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      totpEnabled: false,
+      totpSecret: null,
+      totpPendingSecret: null,
+      totpRecoveryCodeHashes: [],
+      lastActivityAt: new Date(),
+    };
+    const prisma = { user: { update: jest.fn().mockResolvedValue({}) } };
+    const userService = { findByEmail: jest.fn().mockResolvedValue(user) };
+    const authorization = { getAuthorization: jest.fn().mockResolvedValue({ roles: [], permissions: [], authRevision: 1 }) };
+    service = new AuthService(
+      userService as any,
+      { signAsync: jest.fn().mockResolvedValue('token') } as any,
+      prisma as any,
+      authorization as any,
+      { getRequire2FA: jest.fn().mockResolvedValue(true) } as any,
+    );
+    jest.spyOn(require('bcrypt'), 'compare').mockResolvedValue(true);
+
+    const response = await service.login({ email: user.email, password: 'correct' });
+
+    expect(response.twoFactorSetupRequired).toBe(true);
+    expect(response.access_token).toBe('token');
+  });
+
+  it('invalidates every outstanding token on logout', async () => {
+    const prisma = { user: { update: jest.fn().mockResolvedValue({}) } };
+    service = new AuthService({} as any, {} as any, prisma as any, {} as any, {} as any);
+
+    await expect(service.logout('u1')).resolves.toEqual({ message: 'Sesión cerrada' });
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: 'u1' },
+      data: { authRevision: { increment: 1 } },
+    });
   });
 
   it('returns profile authorization in the same shape used by login', async () => {
@@ -249,7 +336,9 @@ describe('AuthService', () => {
         roles: ['user'], permissions: ['documents.read'], authRevision: 4,
       }),
     };
-    service = new AuthService(userService as any, {} as any, {} as any, authorization as any, {} as any);
+    const prisma = { user: { findUnique: jest.fn().mockResolvedValue({ totpEnabled: false }) } };
+    const settings = { getRequire2FA: jest.fn().mockResolvedValue(false) };
+    service = new AuthService(userService as any, {} as any, prisma as any, authorization as any, settings as any);
 
     const profile: AuthenticatedProfile = await service.getProfile('u1');
 
@@ -258,6 +347,7 @@ describe('AuthService', () => {
       roles: ['user'],
       permissions: ['documents.read'],
       authRevision: 4,
+      twoFactorSetupRequired: false,
     });
     expect(profile.user.id).toBe('u1');
   });

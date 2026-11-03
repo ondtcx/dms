@@ -27,6 +27,7 @@ import { WorkflowModule } from './workflow/workflow.module';
 import { AuditModule } from './audit/audit.module';
 import { NotificationModule } from './notification/notification.module';
 import { DocumentChangeRequestModule } from './document-change-request/document-change-request.module';
+import { TransferModule } from './transfer/transfer.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { DocumentChangeRequestModule } from './document-change-request/document-
     AuditModule, // Bitácora de auditoría (contexto de solicitud + servicio append-only)
     NotificationModule,
     DocumentChangeRequestModule,
+    TransferModule,
   ],
   controllers: [AppController],
   providers: [AppService],

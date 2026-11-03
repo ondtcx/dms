@@ -24,7 +24,12 @@ class GlobalAuthDependenciesModule {}
 
 describe('NotificationModule authentication scope', () => {
   it('resolves the real controller guard and uses imported session settings', async () => {
-    const settings = { getSessionTimeoutMinutes: jest.fn().mockResolvedValue(30) };
+    const settings = {
+      getAuthPolicy: jest.fn().mockResolvedValue({
+        sessionTimeoutMinutes: 30,
+        require2FA: false,
+      }),
+    };
     const prisma = {
       user: {
         findUnique: jest.fn().mockResolvedValue({ role: 'user', authRevision: 0, lastActivityAt: new Date() }),
@@ -49,7 +54,7 @@ describe('NotificationModule authentication scope', () => {
       } as unknown as ExecutionContext;
 
       await expect(guard.canActivate(context)).resolves.toBe(true);
-      expect(settings.getSessionTimeoutMinutes).toHaveBeenCalledTimes(1);
+      expect(settings.getAuthPolicy).toHaveBeenCalledTimes(1);
       expect(request.user.id).toBe('actor');
       expect(module.get(NotificationController)).toBeInstanceOf(NotificationController);
     } finally {

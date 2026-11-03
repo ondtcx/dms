@@ -14,7 +14,7 @@ describe('WorkflowService', () => {
       workflowTemplate: { findMany: jest.fn(), findUnique: jest.fn(), update: jest.fn() },
       workflowTemplateVersion: { findFirst: jest.fn() },
       documentWorkflow: { findUnique: jest.fn() },
-      user: { findUnique: jest.fn() },
+      user: { findUnique: jest.fn(), findMany: jest.fn() },
     };
     authorization = { hasPermission: jest.fn().mockResolvedValue(true) };
     service = new WorkflowService(prisma, authorization);
@@ -328,6 +328,21 @@ describe('WorkflowService', () => {
     }));
   });
 
+  it('does not resolve inactive users for workflow assignments', async () => {
+    prisma.user.findMany.mockResolvedValue([]);
+    await expect(
+      (service as any).resolveAssignments(
+        [{ id: 40, order: 1, roleKey: 'coordinador' }],
+        null,
+      ),
+    ).rejects.toThrow('asignables');
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isActive: true }),
+      }),
+    );
+  });
+
   it('translates a concurrent active-execution conflict', async () => {
     prisma.document.findUnique.mockResolvedValue({ id: 10, uploadedById: 'owner', versions: [{ id: 20 }], workflow: [] });
     (service as any).resolveVersion = jest.fn().mockResolvedValue({
@@ -377,6 +392,20 @@ describe('WorkflowService', () => {
     const result = await service.reassign(1, 2, { userId: 'new-user', reason: 'Ausencia' }, 'admin', 'admin');
     expect(result.userId).toBe('new-user');
     expect(tx.workflowEvent.create).toHaveBeenCalled();
+  });
+
+  it('rejects reassignment to an inactive target', async () => {
+    const workflow = {
+      id: 1,
+      active: true,
+      assignments: [{ id: 2, workflowId: 1, status: WorkflowAssignmentStatus.PENDING }],
+    };
+    prisma.documentWorkflow.findUnique.mockResolvedValue(workflow);
+    prisma.user.findUnique.mockResolvedValue({ id: 'inactive', name: 'Inactive', isActive: false });
+
+    await expect(service.reassign(1, 2, { userId: 'inactive', reason: 'Ausencia' }, 'admin', 'admin'))
+      .rejects.toThrow('desactivado');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejects request changes whose supplied version does not match the stored reviewed version', async () => {

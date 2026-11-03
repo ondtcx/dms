@@ -167,6 +167,7 @@ enum AuditAction {
   ARCHIVE
   LOGIN
   LOGOUT
+  ANONYMIZE
 }
 
 enum AuditResource {
@@ -680,6 +681,20 @@ model User {
   totpEnabled         Boolean  @default(false)
   totpRecoveryCodeHashes Json   @default("[]")
 
+  // Baja lógica: el usuario y su historial permanecen; el acceso se bloquea.
+  isActive           Boolean   @default(true)
+  deactivatedAt      DateTime?
+  deactivatedById    String?
+  deactivatedBy      User?     @relation("UserDeactivations", fields: [deactivatedById], references: [id], onDelete: SetNull)
+  deactivatedUsers   User[]    @relation("UserDeactivations")
+  deactivationReason String?
+
+  // Anonimización legal: la fila permanece como tombstone histórico.
+  anonymizedAt   DateTime?
+  anonymizedById String?
+  anonymizedBy   User?     @relation("UserAnonymizations", fields: [anonymizedById], references: [id], onDelete: SetNull)
+  anonymizedUsers User[]  @relation("UserAnonymizations")
+
   // Campos organizacionales
   phoneNumber  String?
   position     String?
@@ -731,8 +746,9 @@ model User {
   roleAssignments UserRoleAssignment[]
 
   // Relaciones de transferencias
-  transfersFrom TransferHistory[] @relation("TransferFromUser") // Transferencias iniciadas por el usuario
-  transfersTo   TransferHistory[] @relation("TransferToUser") // Transferencias recibidas por el usuario
+  transfersFrom      TransferHistory[] @relation("TransferFromUser") // Transferencias cuyo propietario es el usuario
+  transfersTo        TransferHistory[] @relation("TransferToUser") // Transferencias recibidas por el usuario
+  transfersInitiated TransferHistory[] @relation("TransferInitiatedBy") // Transferencias solicitadas por el usuario
 
   // Relaciones de lotes de documentos
   createdBatches DocumentBatch[] @relation("CreatedBatches")
@@ -750,6 +766,10 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@index([deactivatedById])
+  @@index([anonymizedById])
 }
 
 model PasswordResetToken {
@@ -1139,6 +1159,8 @@ model TransferHistory {
   fromUser       User           @relation("TransferFromUser", fields: [fromUserId], references: [id], onDelete: Cascade)
   toUserId       String? // Usuario que recibió
   toUser         User?          @relation("TransferToUser", fields: [toUserId], references: [id], onDelete: Cascade)
+  initiatedById  String? // Propietario o administrador que solicitó la transferencia
+  initiatedBy    User?          @relation("TransferInitiatedBy", fields: [initiatedById], references: [id], onDelete: SetNull)
   status         TransferStatus @default(PENDING)
   completedAt    DateTime? // Fecha de completado
   canceledAt     DateTime? // Fecha de cancelación
@@ -1147,8 +1169,10 @@ model TransferHistory {
   comment        String?        @db.Text // Razón de la transferencia
 
   @@index([documentId])
+  @@index([documentId, status])
   @@index([fromUserId])
   @@index([toUserId])
+  @@index([initiatedById])
   @@index([status])
 }
 

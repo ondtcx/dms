@@ -7,7 +7,7 @@ describe('standalone change requests', () => {
     const db: any = {
       $queryRaw: jest.fn(),
       document: { findUnique: jest.fn(async () => document), findFirst: jest.fn().mockResolvedValue({ id: 1 }) },
-      user: { findUnique: jest.fn(async ({ where }) => ({ id: where.id, role: where.id === 'admin' ? 'admin' : 'user', roleAssignments: [] })), findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn(async ({ where }) => ({ id: where.id, role: where.id === 'admin' ? 'admin' : 'user', isActive: true, roleAssignments: [] })), findMany: jest.fn().mockResolvedValue([]) },
       effectiveAccessGrant: { findMany: jest.fn().mockResolvedValue([]) },
       documentWorkflow: { findFirst: jest.fn().mockResolvedValue(null) },
       accessGrant: { create: jest.fn(async ({ data }) => ({ id: 3, ...data })) },
@@ -32,6 +32,25 @@ describe('standalone change requests', () => {
     await expect(service.create(1, 'delegate', input)).rejects.toThrow('propietario');
     expect(db.documentChangeRequest.create).not.toHaveBeenCalled();
     expect(storage.writePrivateCorrection).not.toHaveBeenCalled();
+  });
+
+  it('excludes inactive users from recipient search and rejects them as targets', async () => {
+    const { service, db } = fixture();
+    await service.recipients(1, 'owner', 'ana');
+    expect(db.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isActive: true }),
+      }),
+    );
+
+    db.user.findUnique.mockImplementation(({ where }: any) =>
+      Promise.resolve(where.id === 'owner'
+        ? { id: 'owner', role: 'admin', isActive: true, lockedUntil: null, roleAssignments: [] }
+        : { id: 'inactive', role: 'user', isActive: false, lockedUntil: null, roleAssignments: [] }),
+    );
+    await expect(service.create(1, 'owner', { recipientId: 'inactive', message: 'Corregir' }))
+      .rejects.toThrow('Destinatario no disponible');
+    expect(db.documentChangeRequest.create).not.toHaveBeenCalled();
   });
 
   it('requires explicit sharing confirmation and atomically grants only read access', async () => {

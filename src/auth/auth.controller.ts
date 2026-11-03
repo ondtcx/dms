@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { Public } from './decorators/public.decorator';
+import { AllowPending2FA } from './decorators/allow-pending-2fa.decorator';
 import { Roles } from './decorators/roles.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -63,15 +64,31 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  @Post('logout')
+  @AllowPending2FA()
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({
+    summary: 'Cerrar sesión',
+    description:
+      'Invalida todos los tokens emitidos para el usuario autenticado.',
+  })
+  logout(@CurrentUser() user: any) {
+    return this.authService.logout(user.id);
+  }
+
   @Get('2fa/status')
+  @AllowPending2FA()
   @ApiBearerAuth('JWT-auth')
   getTotpStatus(@CurrentUser() user: any) { return this.authService.getTotpStatus(user.id); }
 
   @Post('2fa/setup')
+  @AllowPending2FA()
   @ApiBearerAuth('JWT-auth')
   setupTotp(@CurrentUser() user: any) { return this.authService.setupTotp(user.id); }
 
   @Post('2fa/enable')
+  @AllowPending2FA()
   @ApiBearerAuth('JWT-auth')
   enableTotp(@CurrentUser() user: any, @Body('code') code: string) { return this.authService.enableTotp(user.id, code); }
 
@@ -120,6 +137,7 @@ export class AuthController {
 
   //@UseGuards(AuthGuard)
   @Get('profile')
+  @AllowPending2FA()
   @ApiBearerAuth('JWT-auth')
   @ApiOperation({
     summary: 'Obtener perfil del usuario autenticado',

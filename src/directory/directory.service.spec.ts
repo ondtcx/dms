@@ -178,6 +178,8 @@ describe('DirectoryService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    prisma.user.findUnique.mockReset().mockResolvedValue({ id: 'target', isActive: true });
+    prisma.user.findMany.mockReset().mockResolvedValue([]);
     service = new DirectoryService(prisma);
     prisma.$transaction.mockReset().mockImplementation(async (callback: any) => callback(prisma));
     prisma.directoryUserParticipant.findUnique.mockResolvedValue(null);
@@ -310,6 +312,32 @@ describe('DirectoryService', () => {
     prisma.document.findMany.mockResolvedValue([{ directoryId: 8 }]);
     prisma.directory.findMany.mockResolvedValue([{ id: 8, createdById: 'other', receptionEnabled: true, parentId: null }]);
     await expect(service.getAccessibleDirectories(1, 20, user)).resolves.toMatchObject({ meta: { total: 0 } });
+  });
+
+  it('rejects inactive users as participants and delegates', async () => {
+    prisma.directory.findUnique.mockResolvedValue({ id: 1, createdById: 'owner', receptionEnabled: true });
+    prisma.directoryDelegate.findUnique.mockResolvedValue({ full: true });
+    prisma.user.findUnique.mockResolvedValue({ id: 'inactive', isActive: false });
+
+    await expect(service.setParticipant(1, { userId: 'inactive', peerRead: false }, { id: 'admin', role: UserRole.ADMIN }))
+      .rejects.toThrow('Usuario no válido');
+    await expect(service.setDelegate(1, 'inactive', { full: true }, { id: 'admin', role: UserRole.ADMIN }))
+      .rejects.toThrow('Usuario no válido');
+    expect(prisma.directoryUserParticipant.upsert).not.toHaveBeenCalled();
+    expect(prisma.directoryDelegate.upsert).not.toHaveBeenCalled();
+  });
+
+  it('excludes inactive users from directory recipient searches', async () => {
+    prisma.directory.findUnique.mockResolvedValue({ id: 1, createdById: 'owner', receptionEnabled: true });
+    prisma.directoryDelegate.findUnique.mockResolvedValue({ manageParticipants: true });
+    prisma.user.findMany.mockResolvedValue([]);
+
+    await service.searchRecipients(1, 'users', { q: 'ab' }, user);
+    expect(prisma.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isActive: true }),
+      }),
+    );
   });
 
   it('allows the owner to join as a participant without changing ownership', async () => {

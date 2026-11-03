@@ -1,4 +1,4 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
@@ -65,8 +65,9 @@ export class RoleService {
     return this.prisma.$transaction(async (tx) => {
       const role = await tx.role.findUnique({ where: { id } });
       if (!role || !role.isActive) throw new ForbiddenException('Inactive role cannot be assigned');
-      const user = await tx.user.findUnique({ where: { id: userId } });
+      const user = await tx.user.findUnique({ where: { id: userId }, select: { id: true, isActive: true } });
       if (!user) throw new NotFoundException('User not found');
+      if (user.isActive === false) throw new BadRequestException('No se puede asignar un rol a un usuario desactivado');
       const existing = await tx.userRoleAssignment.findUnique({ where: { userId_roleId: { userId, roleId: id } } });
       if (existing) throw new ConflictException('Role is already assigned');
       const assignment = await tx.userRoleAssignment.create({ data: { roleId: id, userId } });

@@ -107,6 +107,34 @@ describe('SettingsService authorization policy', () => {
 
     await expect(service.getSessionTimeoutMinutes()).resolves.toBe(480);
     await expect(service.getMaxLoginAttempts()).resolves.toBe(5);
+    await expect(service.getAuthPolicy()).resolves.toEqual({
+      sessionTimeoutMinutes: 480,
+      require2FA: false,
+    });
+  });
+
+  it('reads the global 2FA requirement from security settings', async () => {
+    const service = new SettingsService(prisma);
+
+    await expect(service.getAuthPolicy()).resolves.toEqual({
+      sessionTimeoutMinutes: 480,
+      require2FA: true,
+    });
+    await expect(service.getRequire2FA()).resolves.toBe(true);
+  });
+
+  it('fails closed when legacy JSON stores the 2FA flag as a string', async () => {
+    const service = new SettingsService({
+      academicYear: prisma.academicYear,
+      systemSettings: {
+        findUnique: jest.fn().mockResolvedValue({
+          ...storedSettings,
+          security: { ...storedSettings.security, require2FA: 'true' },
+        }),
+      },
+    } as any);
+
+    await expect(service.getRequire2FA()).resolves.toBe(true);
   });
 
   it('returns only public settings to a non-admin user', async () => {

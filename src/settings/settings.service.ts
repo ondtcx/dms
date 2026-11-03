@@ -311,10 +311,25 @@ export class SettingsService {
     return (s.documents as DocumentSettings).maxVersionsPerDocument ?? 10;
   }
 
-  async getSessionTimeoutMinutes(): Promise<number> {
+  async getAuthPolicy(): Promise<{ sessionTimeoutMinutes: number; require2FA: boolean }> {
     const settings = await this.getSettings();
-    const value = (settings.security as Partial<SecuritySettings> | undefined)?.sessionTimeoutMinutes;
-    return this.validPositiveInteger(value) ? value : DEFAULT_SECURITY.sessionTimeoutMinutes;
+    const security = (settings.security as Partial<SecuritySettings> | undefined) ?? {};
+    const require2FA = (security as Record<string, unknown>).require2FA;
+    return {
+      sessionTimeoutMinutes: this.validPositiveInteger(security.sessionTimeoutMinutes)
+        ? security.sessionTimeoutMinutes
+        : DEFAULT_SECURITY.sessionTimeoutMinutes,
+      // Fail closed for legacy JSON that stored the boolean as a string.
+      require2FA: require2FA === true || require2FA === 'true',
+    };
+  }
+
+  async getRequire2FA(): Promise<boolean> {
+    return (await this.getAuthPolicy()).require2FA;
+  }
+
+  async getSessionTimeoutMinutes(): Promise<number> {
+    return (await this.getAuthPolicy()).sessionTimeoutMinutes;
   }
 
   async getMaxLoginAttempts(): Promise<number> {

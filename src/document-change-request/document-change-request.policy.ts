@@ -3,7 +3,7 @@ import { resolveEffectiveRoleKeys } from '../role/compatibility-resolver';
 import { UserRole } from '../auth/role.enum';
 
 export const changeRequestActorSelect = {
-  id: true, role: true, lockedUntil: true,
+  id: true, role: true, isActive: true, lockedUntil: true,
   roleAssignments: { where: { role: { isActive: true } }, select: { role: { select: { key: true, isActive: true } } } },
 } as const;
 

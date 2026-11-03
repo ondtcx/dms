@@ -27,6 +27,7 @@ export class AuthorizationService {
       where: { id: userId },
       select: {
         role: true,
+        isActive: true,
         authRevision: true,
         roleAssignments: {
           where: { role: { isActive: true } },
@@ -46,7 +47,7 @@ export class AuthorizationService {
       },
     });
 
-    if (!user) return { roles: [], permissions: [], authRevision: 0 };
+    if (!user || user.isActive === false) return { roles: [], permissions: [], authRevision: 0 };
     const roles = resolveEffectiveRoleKeys(user.role, user.roleAssignments.map((a) => a.role));
     const permissions = new Set<string>();
     for (const assignment of user.roleAssignments) {

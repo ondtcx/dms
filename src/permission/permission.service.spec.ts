@@ -128,7 +128,7 @@ describe('sharing management', () => {
     const document = { id: 2, uploadedById: 'owner', isPublic: false };
     const db: any = {
       document: { findUnique: jest.fn().mockResolvedValue(document), update: jest.fn() },
-      user: { findUnique: jest.fn().mockImplementation(({ where }) => Promise.resolve(where.id === actor ? { id: actor, role } : { id: where.id, name: 'Recipient', email: 'r@example.test' })), findMany: jest.fn().mockResolvedValue([]) },
+      user: { findUnique: jest.fn().mockImplementation(({ where }) => Promise.resolve(where.id === actor ? { id: actor, role } : { id: where.id, name: 'Recipient', email: 'r@example.test', isActive: true })), findMany: jest.fn().mockResolvedValue([]) },
       documentPermission: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue({ id: 8, documentId: 2 }), findMany: jest.fn().mockResolvedValue([]), create: jest.fn(), updateMany: jest.fn(), delete: jest.fn() },
       documentShare: { findMany: jest.fn().mockResolvedValue([]), updateMany: jest.fn(), create: jest.fn() },
       accessGrant: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), create: jest.fn(async ({ data }) => ({ id: 3, ...data })), update: jest.fn(async ({ data }) => ({ id: 3, ...data })), updateMany: jest.fn() },
@@ -140,6 +140,25 @@ describe('sharing management', () => {
     db.$transaction = jest.fn((callback) => callback(db));
     return { db, service: new PermissionService(db) };
   }
+  it('excludes inactive users from sharing recipient search and grants', async () => {
+    const { service, db } = fixture();
+    await service.searchRecipients(2, 'owner', { query: 'ab' });
+    expect(db.user.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ isActive: true }),
+      }),
+    );
+
+    db.user.findUnique.mockImplementation(({ where }) =>
+      Promise.resolve(where.id === 'owner'
+        ? { id: 'owner', role: 'user' }
+        : { id: where.id, isActive: false, lockedUntil: null }),
+    );
+    await expect(service.grantRead(2, 'owner', { userId: 'inactive' }))
+      .rejects.toThrow('Destinatario no disponible');
+    expect(db.accessGrant.create).not.toHaveBeenCalled();
+  });
+
   it.each(['user', 'rector', 'coordinador', 'vicerrector'])('denies every manager operation for non-owner %s', async (role) => {
     const { service, db } = fixture(role, 'other');
     const calls = [

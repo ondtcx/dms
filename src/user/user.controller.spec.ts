@@ -8,14 +8,28 @@ import { validate } from 'class-validator';
 
 describe('UserController', () => {
   let controller: UserController;
+  let userService: {
+    create: jest.Mock;
+    update: jest.Mock;
+    findAll: jest.Mock;
+    deactivate: jest.Mock;
+    reactivate: jest.Mock;
+  };
 
   beforeEach(async () => {
+    userService = {
+      create: jest.fn(),
+      update: jest.fn(),
+      findAll: jest.fn(),
+      deactivate: jest.fn(),
+      reactivate: jest.fn(),
+    };
     const module: TestingModule = await Test.createTestingModule({
       controllers: [UserController],
       providers: [
         {
           provide: UserService,
-          useValue: {},
+          useValue: userService,
         },
       ],
     }).compile();
@@ -25,6 +39,26 @@ describe('UserController', () => {
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+  });
+
+  it('passes the authenticated actor to create and update', async () => {
+    const actor = { sub: 'actor-1' };
+    await controller.create(actor as any, { name: 'New' } as any);
+    await controller.update('target-1', actor as any, { name: 'Updated' } as any);
+
+    expect(userService.create).toHaveBeenCalledWith({ name: 'New' }, 'actor-1');
+    expect(userService.update).toHaveBeenCalledWith('target-1', { name: 'Updated' }, 'actor-1');
+  });
+
+  it('passes the actor and reason when deactivating and lists by status', async () => {
+    const actor = { sub: 'actor-1' };
+    await controller.remove('target-1', actor as any, { reason: 'Renuncia' });
+    await controller.reactivate('target-1', actor as any);
+    await controller.findAll('all');
+
+    expect(userService.deactivate).toHaveBeenCalledWith('target-1', 'actor-1', 'Renuncia');
+    expect(userService.reactivate).toHaveBeenCalledWith('target-1', 'actor-1');
+    expect(userService.findAll).toHaveBeenCalledWith('all');
   });
 
   it('rejects role changes in the self-profile DTO', async () => {
