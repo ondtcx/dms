@@ -30,7 +30,7 @@ const styles = `
 .recipient { margin: 14px 0; line-height: 1.35; }
 .subject { margin: 16px 0; }
 .content { text-align: justify; line-height: 1.55; }
-.signature { margin-top: 54px; text-align: center; line-height: 1.4; }
+.signature { margin-top: 54px; text-align: center; line-height: 1.4; break-inside: avoid; page-break-inside: avoid; }
 .muted { color: #6b7280; font-size: 9pt; }
 ul { margin: 4px 0 8px 18px; }
 .draft-watermark { position: fixed; top: 42%; left: 8%; transform: rotate(-28deg); font-size: 86px; font-weight: 700; color: rgba(15, 23, 42, 0.08); z-index: -1; letter-spacing: 8px; }
@@ -77,6 +77,145 @@ const signature = `
   <div>{{firmante.nombre}}</div>
   <div>{{firmante.cargo}}</div>
 </div>`;
+
+const CONSTANCIA_BODY_DOC: any = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [{ type: 'text', text: 'Por el siguiente motivo: ' }],
+    },
+  ],
+};
+
+const CONSTANCIA_COMMON_BODY = `
+${watermark}
+<div class="doc">
+  <div class="doc-title">CONSTANCIA</div>
+  <div class="content">
+    <p>Se certifica que <strong>{{estudiante.nombre}}</strong>, estudiante del curso
+    <strong>{{estudiante.curso}}</strong>, paralelo <strong>{{estudiante.paralelo}}</strong>,
+    del período académico <strong>{{periodo.nombre}}</strong>, ha solicitado la presente
+    constancia.</p>
+    <div class="content">{{{contenido}}}</div>
+    <p>Se expide la presente constancia para los fines que el interesado estime convenientes.</p>
+  </div>
+  ${signature}
+</div>`;
+
+const COMMON_TEMPLATE_NAMES = [
+  'Oficio institucional',
+  'Memorando institucional',
+  'Circular institucional',
+  'Acta institucional',
+  'Constancia institucional',
+  'Informe institucional',
+];
+
+function commonBody(bodyHtml: string): string {
+  let body = bodyHtml.replace(/\{\{>\s*institutionHeader\s*\}\}/g, '').trim();
+  if (!body.includes('data-authoring-left-bar')) {
+    body = `${SAMPLE_BODY_PREFIX}\n${body}`;
+  }
+  return body;
+}
+
+function signatureSafeStyles(stylesHtml: string | null): string {
+  const base = stylesHtml ?? '';
+  if (base.includes('break-inside: avoid')) return base;
+  return `${base}\n.signature { break-inside: avoid; page-break-inside: avoid; }`;
+}
+
+async function applyCommonInstitutionalFrames(
+  prisma: PrismaClient,
+  adminId: string,
+): Promise<void> {
+  for (const name of COMMON_TEMPLATE_NAMES) {
+    const template = await prisma.documentTemplate.findFirst({
+      where: { name, catalog: 'institutional' },
+      include: { versions: { orderBy: { version: 'desc' } } },
+    });
+    if (!template) continue;
+    const latest = template.versions[0];
+    if (!latest) continue;
+
+    const latestFields = ((latest.fields as any)?.fields ?? []) as any[];
+    const already =
+      latest.headerHtml === SAMPLE_HEADER_HTML &&
+      latest.footerHtml === SAMPLE_FOOTER_HTML &&
+      latest.pageSize === 'Letter' &&
+      latest.bodyHtml.includes('data-authoring-left-bar') &&
+      !latest.bodyHtml.includes('institutionHeader') &&
+      (latest.styles ?? '').includes('break-inside: avoid') &&
+      (name !== 'Constancia institucional' ||
+        latestFields.some((field) => field.key === 'contenido'));
+    if (already) continue;
+
+    let bodyHtml = latest.bodyHtml;
+    let fields = latestFields;
+    if (name === 'Constancia institucional') {
+      bodyHtml = CONSTANCIA_COMMON_BODY;
+      fields = [
+        ...latestFields.filter(
+          (field) =>
+            field.key !== 'constancia.motivo' && field.key !== 'contenido',
+        ),
+        {
+          key: 'contenido',
+          label: 'Cuerpo de la constancia',
+          type: 'richtext',
+          required: true,
+          defaultValue: CONSTANCIA_BODY_DOC,
+        },
+      ];
+    }
+    const nextBody = commonBody(bodyHtml);
+    const nextStyles = signatureSafeStyles(latest.styles);
+
+    await prisma.documentTemplateVersion.create({
+      data: {
+        templateId: template.id,
+        version: latest.version + 1,
+        status: TemplateVersionStatus.PUBLISHED,
+        bodyHtml: nextBody,
+        styles: nextStyles,
+        headerHtml: SAMPLE_HEADER_HTML,
+        footerHtml: SAMPLE_FOOTER_HTML,
+        marginTop: SAMPLE_MARGINS.marginTop,
+        marginBottom: SAMPLE_MARGINS.marginBottom,
+        marginLeft: SAMPLE_MARGINS.marginLeft,
+        marginRight: SAMPLE_MARGINS.marginRight,
+        pageSize: 'Letter',
+        orientation: 'portrait',
+        numberPrefix: latest.numberPrefix,
+        pageFrame: latest.pageFrame,
+        signatures: latest.signatures,
+        fields: { fields } as any,
+        createdById: adminId,
+        publishedAt: new Date(),
+      },
+    });
+    await prisma.documentTemplateVersion.updateMany({
+      where: {
+        templateId: template.id,
+        status: TemplateVersionStatus.PUBLISHED,
+        NOT: { version: latest.version + 1 },
+      },
+      data: { status: TemplateVersionStatus.RETIRED },
+    });
+    await prisma.documentTemplate.update({
+      where: { id: template.id },
+      data: {
+        isActive: true,
+        htmlTemplate: nextBody,
+        styles: nextStyles,
+        fields: { fields } as any,
+        pageSize: 'Letter',
+        orientation: 'portrait',
+      },
+    });
+  }
+}
 
 const templates = [
   {
@@ -304,92 +443,6 @@ async function seedActaEntrega(
   });
 }
 
-async function applyOficioPageFrame(
-  prisma: PrismaClient,
-  adminId: string,
-): Promise<void> {
-  const oficio = await prisma.documentTemplate.findFirst({
-    where: { name: 'Oficio institucional', catalog: 'institutional' },
-    include: { versions: { orderBy: { version: 'desc' } } },
-  });
-  if (!oficio) return;
-  if (oficio.versions.some((version) => version.version > 2)) return;
-
-  const existingV2 = oficio.versions.find((version) => version.version === 2);
-  if (existingV2) {
-    await prisma.documentTemplateVersion.updateMany({
-      where: { templateId: oficio.id, status: TemplateVersionStatus.PUBLISHED },
-      data: { status: TemplateVersionStatus.RETIRED },
-    });
-    await prisma.documentTemplateVersion.update({
-      where: { id: existingV2.id },
-      data: {
-        status: TemplateVersionStatus.PUBLISHED,
-        publishedAt: existingV2.publishedAt ?? new Date(),
-      },
-    });
-    await prisma.documentTemplate.update({
-      where: { id: oficio.id },
-      data: {
-        isActive: true,
-        htmlTemplate: existingV2.bodyHtml,
-        styles: existingV2.styles,
-        fields: existingV2.fields as any,
-        pageSize: existingV2.pageSize,
-        orientation: existingV2.orientation,
-      },
-    });
-    return;
-  }
-
-  const v1 = oficio.versions.find((version) => version.version === 1);
-  if (!v1) return;
-  const bodyHtml = `${SAMPLE_BODY_PREFIX}\n${v1.bodyHtml
-    .replace(/\{\{>\s*institutionHeader\s*\}\}/g, '')
-    .trim()}`;
-
-  await prisma.documentTemplateVersion.create({
-    data: {
-      templateId: oficio.id,
-      version: 2,
-      status: TemplateVersionStatus.PUBLISHED,
-      bodyHtml,
-      styles: v1.styles,
-      headerHtml: SAMPLE_HEADER_HTML,
-      footerHtml: SAMPLE_FOOTER_HTML,
-      marginTop: SAMPLE_MARGINS.marginTop,
-      marginBottom: SAMPLE_MARGINS.marginBottom,
-      marginLeft: SAMPLE_MARGINS.marginLeft,
-      marginRight: SAMPLE_MARGINS.marginRight,
-      pageSize: 'Letter',
-      orientation: 'portrait',
-      numberPrefix: v1.numberPrefix || 'OFI',
-      fields: v1.fields as any,
-      createdById: adminId,
-      publishedAt: new Date(),
-    },
-  });
-  await prisma.documentTemplateVersion.updateMany({
-    where: {
-      templateId: oficio.id,
-      version: 1,
-      status: TemplateVersionStatus.PUBLISHED,
-    },
-    data: { status: TemplateVersionStatus.RETIRED },
-  });
-  await prisma.documentTemplate.update({
-    where: { id: oficio.id },
-    data: {
-      isActive: true,
-      htmlTemplate: bodyHtml,
-      styles: v1.styles,
-      fields: v1.fields as any,
-      pageSize: 'Letter',
-      orientation: 'portrait',
-    },
-  });
-}
-
 export async function seedAuthoringTemplates(
   prisma: PrismaClient,
   adminId: string,
@@ -507,5 +560,5 @@ export async function seedAuthoringTemplates(
   }
 
   await seedActaEntrega(prisma, adminId, category.id);
-  await applyOficioPageFrame(prisma, adminId);
+  await applyCommonInstitutionalFrames(prisma, adminId);
 }
