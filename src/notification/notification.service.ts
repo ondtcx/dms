@@ -5,6 +5,24 @@ import { PrismaService } from '../prisma/prisma.service';
 export class NotificationService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async getPreferences(actorId: string) {
+    const preference = await this.prisma.notificationPreference.findUnique({
+      where: { userId: actorId },
+      select: { inAppEnabled: true },
+    });
+    return { inAppEnabled: preference?.inAppEnabled ?? true };
+  }
+
+  async updatePreferences(actorId: string, inAppEnabled: boolean) {
+    const preference = await this.prisma.notificationPreference.upsert({
+      where: { userId: actorId },
+      create: { userId: actorId, inAppEnabled },
+      update: { inAppEnabled },
+      select: { inAppEnabled: true },
+    });
+    return { inAppEnabled: preference.inAppEnabled };
+  }
+
   async list(actorId: string, page = 1, limit = 20) {
     if (!Number.isSafeInteger(page) || page < 1 || page > 10000 || !Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
       throw new BadRequestException('Paginación inválida');

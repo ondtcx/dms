@@ -2,7 +2,10 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { NotificationService } from './notification.service';
 
 describe('NotificationService', () => {
-  const db = { notification: { findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() }, notificationPreference: { findUnique: jest.fn() } };
+  const db = {
+    notification: { findMany: jest.fn(), count: jest.fn(), updateMany: jest.fn() },
+    notificationPreference: { findUnique: jest.fn(), upsert: jest.fn() },
+  };
   const service = new NotificationService(db as any);
   beforeEach(() => jest.clearAllMocks());
 
@@ -31,5 +34,23 @@ describe('NotificationService', () => {
   it('marks an owned notification read idempotently', async () => {
     db.notification.updateMany.mockResolvedValue({ count: 1 });
     expect(await service.read('actor', 1)).toEqual({ read: true });
+  });
+
+  it('returns the default in-app preference when none exists', async () => {
+    db.notificationPreference.findUnique.mockResolvedValue(null);
+    expect(await service.getPreferences('actor')).toEqual({ inAppEnabled: true });
+  });
+
+  it('upserts the preference for the current user', async () => {
+    db.notificationPreference.upsert.mockResolvedValue({ inAppEnabled: false });
+    expect(await service.updatePreferences('actor', false)).toEqual({
+      inAppEnabled: false,
+    });
+    expect(db.notificationPreference.upsert).toHaveBeenCalledWith({
+      where: { userId: 'actor' },
+      create: { userId: 'actor', inAppEnabled: false },
+      update: { inAppEnabled: false },
+      select: { inAppEnabled: true },
+    });
   });
 });
