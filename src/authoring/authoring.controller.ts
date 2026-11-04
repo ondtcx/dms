@@ -31,6 +31,7 @@ import { AuthoringTemplateService } from './authoring-template.service';
 import {
   CreateAuthoringBatchDto,
   CreateAuthoringDocumentDto,
+  CropAuthoringAssetDto,
   CreateAuthoringTemplateDto,
   CreateAuthoringTemplateVersionDto,
   ReturnAuthoringDocumentDto,
@@ -103,6 +104,20 @@ export class AuthoringController {
   )
   uploadAsset(@UploadedFile() file: Express.Multer.File) {
     return this.assets.store(file);
+  }
+
+  @Post('assets/crop')
+  @RequirePermission('authoring.templates.design')
+  @ApiOperation({ summary: 'Recortar una imagen de plantilla' })
+  cropAsset(@Body() dto: CropAuthoringAssetDto) {
+    return this.assets.crop(dto);
+  }
+
+  @Post('assets/cleanup')
+  @RequirePermission('authoring.templates.manage')
+  @ApiOperation({ summary: 'Eliminar imágenes de plantilla no referenciadas' })
+  cleanupAssets() {
+    return this.assets.cleanupOrphans();
   }
 
   @Post('templates')

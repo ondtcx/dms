@@ -117,3 +117,29 @@ export function resolveFrameAssets(frame: any): any {
   }
   return clone;
 }
+
+const ASSET_FILE_PATTERN =
+  /\/files\/active\/authoring\/assets\/([A-Za-z0-9._-]+)/g;
+
+export function collectAssetFilenames(
+  value: unknown,
+  into: Set<string> = new Set<string>(),
+): Set<string> {
+  if (value === null || value === undefined) return into;
+  if (typeof value === 'string') {
+    for (const match of value.matchAll(ASSET_FILE_PATTERN)) {
+      into.add(match[1]);
+    }
+    return into;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectAssetFilenames(item, into);
+    return into;
+  }
+  if (typeof value === 'object') {
+    for (const item of Object.values(value as Record<string, unknown>)) {
+      collectAssetFilenames(item, into);
+    }
+  }
+  return into;
+}

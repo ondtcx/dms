@@ -19,6 +19,10 @@ import { AuthoringTemplateService } from './authoring-template.service';
     AuthoringRendererService,
     PrismaService,
   ],
-  exports: [AuthoringTemplateService, AuthoringDocumentService],
+  exports: [
+    AuthoringAssetService,
+    AuthoringTemplateService,
+    AuthoringDocumentService,
+  ],
 })
 export class AuthoringModule {}

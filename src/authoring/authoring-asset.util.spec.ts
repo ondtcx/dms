@@ -1,6 +1,7 @@
 import { mkdirSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
+  collectAssetFilenames,
   dataUriForLocalFile,
   extensionForMime,
   isSafeSvg,
@@ -117,6 +118,21 @@ describe('authoring asset utilities', () => {
     expect(resolved.header.backgroundSvg).toContain('data:image/png;base64,');
     expect(resolved.header.boxes[0].content).toContain('data:image/png;base64,');
     expect(frame.header.boxes[0].content).toBe(FIXTURE_URL);
+  });
+
+  it('collects referenced asset filenames from nested data', () => {
+    const referenced = collectAssetFilenames({
+      bodyHtml:
+        '<img src="/files/active/authoring/assets/a.png" /><img src="/files/active/authoring/assets/b.svg" />',
+      pageFrame: {
+        boxes: [
+          { type: 'image', content: '/files/active/authoring/assets/c.png' },
+        ],
+      },
+      unrelated: 'https://example.com/logo.png',
+    });
+
+    expect([...referenced].sort()).toEqual(['a.png', 'b.svg', 'c.png']);
   });
 
   it('leaves HTML without local files unchanged', () => {

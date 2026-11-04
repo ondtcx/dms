@@ -1,12 +1,23 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import sharp from 'sharp';
 import { randomBytes } from 'crypto';
-import { existsSync, mkdirSync, writeFileSync } from 'fs';
-import { join } from 'path';
 import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
+import { dirname, join } from 'path';
+import {
+  collectAssetFilenames,
   extensionForMime,
   isSafeSvg,
+  localFilePath,
 } from './authoring-asset.util';
+import type { CropAuthoringAssetDto } from './dto/authoring.dto';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface StoredAuthoringAsset {
   url: string;
@@ -24,6 +35,8 @@ export class AuthoringAssetService {
     'authoring',
     'assets',
   );
+
+  constructor(private readonly prisma: PrismaService) {}
 
   async store(file?: Express.Multer.File): Promise<StoredAuthoringAsset> {
     if (!file?.buffer?.length) {
@@ -68,6 +81,112 @@ export class AuthoringAssetService {
       mimeType = 'image/png';
     }
 
+    if (!existsSync(this.assetDir)) {
+      mkdirSync(this.assetDir, { recursive: true });
+    }
+
+    return this.saveBuffer(buffer, mimeType, extension);
+  }
+
+  async crop(payload: CropAuthoringAssetDto): Promise<StoredAuthoringAsset> {
+    const filePath = localFilePath(payload.url);
+    if (!filePath || dirname(filePath) !== this.assetDir) {
+      throw new BadRequestException(
+        'Solo se pueden recortar imágenes de plantilla',
+      );
+    }
+
+    const metadata = await sharp(filePath)
+      .metadata()
+      .catch(() => null);
+    const sourceWidth = metadata?.width ?? 0;
+    const sourceHeight = metadata?.height ?? 0;
+    if (!sourceWidth || !sourceHeight) {
+      throw new BadRequestException('No se pudo leer la imagen');
+    }
+
+    if (payload.x >= sourceWidth || payload.y >= sourceHeight) {
+      throw new BadRequestException('El recorte está fuera de la imagen');
+    }
+
+    const x = payload.x;
+    const y = payload.y;
+    const width = Math.min(payload.width, sourceWidth - x);
+    const height = Math.min(payload.height, sourceHeight - y);
+    if (width < 1 || height < 1) {
+      throw new BadRequestException('El recorte no es válido');
+    }
+
+    const buffer = await sharp(filePath)
+      .extract({ left: x, top: y, width, height })
+      .png()
+      .toBuffer()
+      .catch(() => null);
+    if (!buffer) {
+      throw new BadRequestException('No se pudo recortar la imagen');
+    }
+
+    return this.saveBuffer(buffer, 'image/png', '.png');
+  }
+
+  async cleanupOrphans(
+    graceMs = 24 * 60 * 60 * 1000,
+  ): Promise<{ scanned: number; deleted: number; kept: number }> {
+    const [versions, authoringDocuments, contentVersions] = await Promise.all([
+      this.prisma.documentTemplateVersion.findMany({
+        select: {
+          bodyHtml: true,
+          styles: true,
+          headerHtml: true,
+          footerHtml: true,
+          pageFrame: true,
+          signatures: true,
+          fields: true,
+        },
+      }),
+      this.prisma.documentAuthoring.findMany({
+        select: { pageFrame: true },
+      }),
+      this.prisma.documentContentVersion.findMany({
+        select: { htmlSnapshot: true, pageFrame: true },
+      }),
+    ]);
+
+    const referenced = collectAssetFilenames([
+      ...versions,
+      ...authoringDocuments,
+      ...contentVersions,
+    ]);
+
+    if (!existsSync(this.assetDir)) {
+      return { scanned: 0, deleted: 0, kept: 0 };
+    }
+
+    const cutoff = Date.now() - graceMs;
+    let scanned = 0;
+    let deleted = 0;
+    let kept = 0;
+
+    for (const file of readdirSync(this.assetDir)) {
+      scanned += 1;
+      const filePath = join(this.assetDir, file);
+      const stats = statSync(filePath);
+      if (referenced.has(file) || stats.mtimeMs > cutoff) {
+        kept += 1;
+        continue;
+      }
+      unlinkSync(filePath);
+      deleted += 1;
+    }
+
+    return { scanned, deleted, kept };
+  }
+
+  private saveBuffer(
+    buffer: Buffer,
+    mimeType: string,
+    extension: string,
+  ): StoredAuthoringAsset {
     if (!existsSync(this.assetDir)) {
       mkdirSync(this.assetDir, { recursive: true });
     }

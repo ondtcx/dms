@@ -13,6 +13,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  Min,
   ValidateNested,
 } from 'class-validator';
 
@@ -262,4 +263,31 @@ export class CreateAuthoringBatchDto {
   @ValidateNested({ each: true })
   @Type(() => BatchRecipientDto)
   recipients: BatchRecipientDto[];
+}
+
+export class CropAuthoringAssetDto {
+  @ApiProperty({ description: 'URL relativa del asset de plantilla' })
+  @IsString()
+  @IsNotEmpty()
+  url: string;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(0)
+  x: number;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(0)
+  y: number;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  width: number;
+
+  @ApiProperty()
+  @IsInt()
+  @Min(1)
+  height: number;
 }
