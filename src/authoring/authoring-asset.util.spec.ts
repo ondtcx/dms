@@ -105,4 +105,10 @@ describe('authoring asset utilities', () => {
       resolveLocalAssets('http://localhost:3001/files/active/authoring/assets/x.png'),
     ).toBe('http://localhost:3001/files/active/authoring/assets/x.png');
   });
+
+  it('does not rewrite file-like text inside data URIs', () => {
+    const dataUri = 'data:image/png;base64,AAAA/files/AAAA';
+    const html = `<img src="${dataUri}" />`;
+    expect(resolveLocalAssets(html)).toBe(html);
+  });
 });

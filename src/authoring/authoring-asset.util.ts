@@ -50,7 +50,7 @@ export function dataUriForLocalFile(url: string): string | null {
   return `data:${mime};base64,${readFileSync(filePath).toString('base64')}`;
 }
 
-const FILE_URL_PATTERN = /(?<![\w:./-])\/files\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+/g;
+const FILE_URL_PATTERN = /(?<=^|["'(=\s])\/files\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+/g;
 
 export function resolveLocalAssets(html: string): string {
   if (!html) return html;
