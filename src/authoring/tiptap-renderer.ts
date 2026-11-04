@@ -14,6 +14,8 @@ const ALLOWED_NODES = new Set([
   'tableHeader',
   'tableCell',
   'hardBreak',
+  'image',
+  'templateImage',
 ]);
 
 const ALLOWED_MARKS = new Set(['bold', 'italic', 'underline']);
@@ -95,6 +97,16 @@ function validateNode(
     if (state.cells > MAX_TABLE_CELLS) invalid('demasiadas celdas de tabla');
   }
 
+  if (node.type === 'image' || node.type === 'templateImage') {
+    const src = String(node.attrs?.src ?? '');
+    if (
+      !/^(?:\/files\/|data:image\/(?:png|jpeg|gif|webp);base64,)/.test(src)
+    ) {
+      invalid('imagen no permitida');
+    }
+    if (src.length > 2_000_000) invalid('imagen demasiado grande');
+  }
+
   if (node.content !== undefined) {
     if (!Array.isArray(node.content)) invalid('contenido debe ser una lista');
     for (const child of node.content) {
@@ -163,6 +175,13 @@ function renderNode(node: TiptapNode): string {
       return `<td>${children || '&nbsp;'}</td>`;
     case 'hardBreak':
       return '<br/>';
+    case 'image':
+    case 'templateImage': {
+      const src = String(node.attrs?.src ?? '');
+      if (!src) return '';
+      const alt = escapeHtml(String(node.attrs?.alt ?? ''));
+      return `<img src="${escapeHtml(src)}" alt="${alt}" style="max-width:100%;height:auto;" />`;
+    }
     default:
       return children;
   }

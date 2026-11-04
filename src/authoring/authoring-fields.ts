@@ -262,6 +262,12 @@ export function normalizeDocumentPageFrame(
       )
         ? box.objectPosition
         : 'center',
+      rotation: Number.isFinite(Number(box.rotation))
+        ? Math.min(180, Math.max(-180, Number(box.rotation)))
+        : 0,
+      opacity: Number.isFinite(Number(box.opacity))
+        ? Math.min(1, Math.max(0, Number(box.opacity)))
+        : 1,
       content,
     };
   });

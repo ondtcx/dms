@@ -55,6 +55,34 @@ describe('tiptap renderer', () => {
     expect(html).toContain('<table><tr><th><p>A</p></th><td><p>B</p></td></tr></table>');
   });
 
+  it('renders template images and rejects external sources', () => {
+    const html = renderTiptapDoc(
+      doc([
+        {
+          type: 'templateImage',
+          attrs: {
+            src: '/files/active/authoring/assets/a.png',
+            alt: 'A',
+          },
+        },
+      ]),
+    );
+
+    expect(html).toContain(
+      '<img src="/files/active/authoring/assets/a.png" alt="A"',
+    );
+    expect(() =>
+      validateTiptapDoc(
+        doc([
+          {
+            type: 'templateImage',
+            attrs: { src: 'https://evil.example/a.png' },
+          },
+        ]),
+      ),
+    ).toThrow(BadRequestException);
+  });
+
   it('accepts null text alignment emitted by Tiptap', () => {
     const html = renderTiptapDoc(
       doc([

@@ -113,10 +113,20 @@ function textBox(box: any, position: 'absolute' | 'fixed' = 'absolute'): string 
   return `<span class="${className}" style="${boxStyle(box, position)};"${target}>${content}</span>`;
 }
 
+function imageVisualStyle(box: any): string {
+  const opacity = Number.isFinite(Number(box.opacity))
+    ? Math.min(1, Math.max(0, Number(box.opacity)))
+    : 1;
+  const rotation = Number.isFinite(Number(box.rotation))
+    ? Math.min(180, Math.max(-180, Number(box.rotation)))
+    : 0;
+  return `${rotation ? `transform:rotate(${rotation}deg);` : ''}opacity:${opacity};`;
+}
+
 function imageBox(box: any, position: 'absolute' | 'fixed' = 'absolute'): string {
   const fit = box.fit === 'cover' ? 'cover' : 'contain';
   const objectPosition = box.objectPosition ?? 'center';
-  return `<img class="flow-fixed" src="${box.content}" style="position:${position};left:${box.x}pt;top:${box.y}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};" />`;
+  return `<img class="flow-fixed" src="${box.content}" style="position:${position};left:${box.x}pt;top:${box.y}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};${imageVisualStyle(box)}" />`;
 }
 
 function richTextBox(box: any): string {
@@ -175,7 +185,20 @@ function flowBoxAt(box: any, top: number, position: 'absolute' | 'fixed' = 'abso
   if (box.type === 'image') {
     const fit = box.fit === 'cover' ? 'cover' : 'contain';
     const objectPosition = box.objectPosition ?? 'center';
-    return `<img src="${box.content}" style="position:${position};left:${box.x}pt;top:${top}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};" />`;
+    const opacity = Number.isFinite(Number(box.opacity))
+      ? Math.min(1, Math.max(0, Number(box.opacity)))
+      : 1;
+    const rotation = Number.isFinite(Number(box.rotation))
+      ? Math.min(180, Math.max(-180, Number(box.rotation)))
+      : 0;
+    const transform = [
+      box.center ? 'translateX(-50%)' : '',
+      rotation ? `rotate(${rotation}deg)` : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    const imageLeft = box.center ? 'left:50%' : `left:${box.x}pt`;
+    return `<img src="${box.content}" style="position:${position};${imageLeft};top:${top}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};${transform ? `transform:${transform};` : ''}opacity:${opacity};" />`;
   }
   const target = Number(box.width) > 0 && !box.center ? ` data-target-width="${box.width}"` : '';
   const content =
