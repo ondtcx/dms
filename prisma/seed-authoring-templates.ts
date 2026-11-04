@@ -9,6 +9,19 @@ import {
   SAMPLE_HEADER_HTML,
   SAMPLE_MARGINS,
 } from './authoring-page-frame';
+import {
+  BLANK_TEMPLATE_BODY_HTML,
+  BLANK_TEMPLATE_DESCRIPTION,
+  BLANK_TEMPLATE_FIELDS,
+  BLANK_TEMPLATE_FOOTER_HTML,
+  BLANK_TEMPLATE_HEADER_HTML,
+  BLANK_TEMPLATE_INSTITUTIONAL_DESCRIPTION,
+  BLANK_TEMPLATE_INSTITUTIONAL_NAME,
+  BLANK_TEMPLATE_MARGINS,
+  BLANK_TEMPLATE_NAME,
+  BLANK_TEMPLATE_NUMBER_PREFIX,
+  BLANK_TEMPLATE_STYLES,
+} from '../src/authoring/blank-template';
 
 type Field = {
   key: string;
@@ -200,6 +213,7 @@ async function applyActaFrames(
 const templates = [
   {
     name: 'Oficio institucional',
+    documentTypeName: 'Oficio',
     description: 'Comunicación oficial para destinatarios internos o externos.',
     numberPrefix: 'OFI',
     fields: [
@@ -227,6 +241,7 @@ ${watermark}
   },
   {
     name: 'Memorando institucional',
+    documentTypeName: 'Memorando',
     description: 'Comunicación interna entre dependencias de la institución.',
     numberPrefix: 'MEM',
     fields: [
@@ -256,6 +271,7 @@ ${watermark}
   },
   {
     name: 'Circular institucional',
+    documentTypeName: 'Circular',
     description: 'Comunicación dirigida a varios destinatarios.',
     numberPrefix: 'CIR',
     fields: [
@@ -282,6 +298,7 @@ ${watermark}
   },
   {
     name: 'Acta institucional',
+    documentTypeName: 'Acta de Consejo',
     description: 'Registro de reuniones, consejos y acuerdos institucionales.',
     numberPrefix: 'ACT',
     fields: [
@@ -314,6 +331,7 @@ ${watermark}
   },
   {
     name: 'Constancia institucional',
+    documentTypeName: 'Constancia de Estudios',
     description: 'Constancia de estudios, conducta o participación.',
     numberPrefix: 'CON',
     fields: [
@@ -343,6 +361,7 @@ ${watermark}
   },
   {
     name: 'Informe institucional',
+    documentTypeName: 'Informe de Rendimiento',
     description: 'Informe de actividades, resultados o situaciones institucionales.',
     numberPrefix: 'INF',
     fields: [
@@ -381,12 +400,18 @@ async function seedActaEntrega(
   });
   if (existing) return;
 
+  const documentType = await prisma.documentType.findFirst({
+    where: { name: 'Acta de Entrega de Bienes', isActive: true },
+    select: { id: true },
+  });
+
   const template = await prisma.documentTemplate.create({
     data: {
       name: 'Acta de entrega-recepción',
       description:
         'Acta para entrega y recepción de bienes del Consejo Ejecutivo.',
       categoryId,
+      documentTypeId: documentType?.id ?? null,
       fields: ACTA_EXACT_FIELDS as any,
       htmlTemplate: ACTA_EXACT_BODY_HTML,
       styles: '',
@@ -477,6 +502,20 @@ export async function seedAuthoringTemplates(
     create: { ancestorId: directory.id, descendantId: directory.id, depth: 0 },
   });
 
+  const documentTypes = await prisma.documentType.findMany({
+    select: { id: true, name: true, isDefault: true, isActive: true },
+  });
+  const typeByName = new Map(
+    documentTypes
+      .filter((type) => type.isActive)
+      .map((type) => [type.name, type.id] as const),
+  );
+  const defaultType = documentTypes.find(
+    (type) => type.isDefault && type.isActive,
+  );
+  const resolveTypeId = (name?: string) =>
+    (name ? typeByName.get(name) : undefined) ?? defaultType?.id ?? null;
+
   for (const definition of templates) {
     const fields = { fields: definition.fields };
     const template = await prisma.documentTemplate.upsert({
@@ -484,6 +523,7 @@ export async function seedAuthoringTemplates(
       update: {
         description: definition.description,
         categoryId: category.id,
+        documentTypeId: resolveTypeId(definition.documentTypeName),
         fields: fields as any,
         htmlTemplate: definition.bodyHtml,
         styles,
@@ -498,6 +538,7 @@ export async function seedAuthoringTemplates(
         name: definition.name,
         description: definition.description,
         categoryId: category.id,
+        documentTypeId: resolveTypeId(definition.documentTypeName),
         fields: fields as any,
         htmlTemplate: definition.bodyHtml,
         styles,
@@ -541,4 +582,169 @@ export async function seedAuthoringTemplates(
 
   await seedActaEntrega(prisma, adminId, category.id);
   await applyActaFrames(prisma, adminId);
+
+  const blankTemplate = await prisma.documentTemplate.upsert({
+    where: { name: BLANK_TEMPLATE_NAME },
+    update: {
+      description: BLANK_TEMPLATE_DESCRIPTION,
+      categoryId: category.id,
+      documentTypeId: resolveTypeId(),
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      htmlTemplate: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      outputFormat: 'pdf',
+      pageSize: 'A4',
+      orientation: 'portrait',
+      isActive: true,
+      isPredefined: true,
+      isBlank: true,
+      catalog: 'institutional',
+    },
+    create: {
+      name: BLANK_TEMPLATE_NAME,
+      description: BLANK_TEMPLATE_DESCRIPTION,
+      categoryId: category.id,
+      documentTypeId: resolveTypeId(),
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      htmlTemplate: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      outputFormat: 'pdf',
+      pageSize: 'A4',
+      orientation: 'portrait',
+      isActive: true,
+      isPredefined: true,
+      isBlank: true,
+      catalog: 'institutional',
+      createdById: adminId,
+    },
+  });
+
+  await prisma.documentTemplateVersion.upsert({
+    where: {
+      templateId_version: { templateId: blankTemplate.id, version: 1 },
+    },
+    update: {
+      status: TemplateVersionStatus.PUBLISHED,
+      bodyHtml: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      headerHtml: BLANK_TEMPLATE_HEADER_HTML,
+      footerHtml: BLANK_TEMPLATE_FOOTER_HTML,
+      marginTop: BLANK_TEMPLATE_MARGINS.marginTop,
+      marginBottom: BLANK_TEMPLATE_MARGINS.marginBottom,
+      marginLeft: BLANK_TEMPLATE_MARGINS.marginLeft,
+      marginRight: BLANK_TEMPLATE_MARGINS.marginRight,
+      pageFrame: null,
+      signatures: null,
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      pageSize: 'A4',
+      orientation: 'portrait',
+      numberPrefix: BLANK_TEMPLATE_NUMBER_PREFIX,
+      publishedAt: new Date(),
+    },
+    create: {
+      templateId: blankTemplate.id,
+      version: 1,
+      status: TemplateVersionStatus.PUBLISHED,
+      bodyHtml: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      headerHtml: BLANK_TEMPLATE_HEADER_HTML,
+      footerHtml: BLANK_TEMPLATE_FOOTER_HTML,
+      marginTop: BLANK_TEMPLATE_MARGINS.marginTop,
+      marginBottom: BLANK_TEMPLATE_MARGINS.marginBottom,
+      marginLeft: BLANK_TEMPLATE_MARGINS.marginLeft,
+      marginRight: BLANK_TEMPLATE_MARGINS.marginRight,
+      pageFrame: null,
+      signatures: null,
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      pageSize: 'A4',
+      orientation: 'portrait',
+      numberPrefix: BLANK_TEMPLATE_NUMBER_PREFIX,
+      createdById: adminId,
+      publishedAt: new Date(),
+    },
+  });
+
+  const institutionalBlankTemplate = await prisma.documentTemplate.upsert({
+    where: { name: BLANK_TEMPLATE_INSTITUTIONAL_NAME },
+    update: {
+      description: BLANK_TEMPLATE_INSTITUTIONAL_DESCRIPTION,
+      categoryId: category.id,
+      documentTypeId: resolveTypeId(),
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      htmlTemplate: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      outputFormat: 'pdf',
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      isActive: true,
+      isPredefined: true,
+      isBlank: true,
+      catalog: 'institutional',
+    },
+    create: {
+      name: BLANK_TEMPLATE_INSTITUTIONAL_NAME,
+      description: BLANK_TEMPLATE_INSTITUTIONAL_DESCRIPTION,
+      categoryId: category.id,
+      documentTypeId: resolveTypeId(),
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      htmlTemplate: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      outputFormat: 'pdf',
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      isActive: true,
+      isPredefined: true,
+      isBlank: true,
+      catalog: 'institutional',
+      createdById: adminId,
+    },
+  });
+
+  await prisma.documentTemplateVersion.upsert({
+    where: {
+      templateId_version: {
+        templateId: institutionalBlankTemplate.id,
+        version: 1,
+      },
+    },
+    update: {
+      status: TemplateVersionStatus.PUBLISHED,
+      bodyHtml: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      headerHtml: null,
+      footerHtml: null,
+      marginTop: '0',
+      marginBottom: '0',
+      marginLeft: '0',
+      marginRight: '0',
+      pageFrame: ACTA_EXACT_PAGE_FRAME as any,
+      signatures: null,
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      numberPrefix: BLANK_TEMPLATE_NUMBER_PREFIX,
+      publishedAt: new Date(),
+    },
+    create: {
+      templateId: institutionalBlankTemplate.id,
+      version: 1,
+      status: TemplateVersionStatus.PUBLISHED,
+      bodyHtml: BLANK_TEMPLATE_BODY_HTML,
+      styles: BLANK_TEMPLATE_STYLES,
+      headerHtml: null,
+      footerHtml: null,
+      marginTop: '0',
+      marginBottom: '0',
+      marginLeft: '0',
+      marginRight: '0',
+      pageFrame: ACTA_EXACT_PAGE_FRAME as any,
+      signatures: null,
+      fields: BLANK_TEMPLATE_FIELDS as any,
+      pageSize: 'Letter',
+      orientation: 'portrait',
+      numberPrefix: BLANK_TEMPLATE_NUMBER_PREFIX,
+      createdById: adminId,
+      publishedAt: new Date(),
+    },
+  });
 }

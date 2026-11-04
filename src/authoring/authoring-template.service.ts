@@ -46,6 +46,22 @@ export class AuthoringTemplateService {
     return normalizeFields(value).fields;
   }
 
+  private async resolveDocumentTypeId(
+    documentTypeId?: number | null,
+  ): Promise<number | null> {
+    if (documentTypeId == null) return null;
+    const type = await this.prisma.documentType.findUnique({
+      where: { id: documentTypeId },
+      select: { id: true, isActive: true },
+    });
+    if (!type || !type.isActive) {
+      throw new BadRequestException(
+        'El tipo de documento no existe o está inactivo',
+      );
+    }
+    return type.id;
+  }
+
   private async recordActivity(
     tx: any,
     templateId: number,
@@ -113,6 +129,9 @@ export class AuthoringTemplateService {
           title: 'Versión de plantilla lista para publicar',
           message: `${templateName} · versión ${version.version} está lista para publicar.`,
           actionUrl: `/dashboard/elaboracion/plantillas/${templateId}`,
+          actorId: actor?.id ?? null,
+          actorName: actor?.name ?? null,
+          actorRole: null,
         })),
       });
     } catch {
@@ -123,6 +142,7 @@ export class AuthoringTemplateService {
   async list(includeDrafts = false) {
     const where: Prisma.DocumentTemplateWhereInput = {
       catalog: 'institutional',
+      isBlank: false,
     };
     if (!includeDrafts) {
       where.isActive = true;
@@ -147,7 +167,7 @@ export class AuthoringTemplateService {
 
   async get(id: number) {
     const template = await this.prisma.documentTemplate.findFirst({
-      where: { id, catalog: 'institutional' },
+      where: { id, catalog: 'institutional', isBlank: false },
       include: TEMPLATE_INCLUDE,
     });
     if (!template) throw new NotFoundException('Plantilla no encontrada');
@@ -190,12 +210,14 @@ export class AuthoringTemplateService {
     const numberPrefix = this.normalizePrefix(dto.numberPrefix);
     const bodyHtml = dto.bodyHtml?.trim();
     if (!bodyHtml) throw new BadRequestException('El cuerpo de la plantilla es obligatorio');
+    const documentTypeId = await this.resolveDocumentTypeId(dto.documentTypeId);
 
     const transaction = this.prisma.$transaction(async (tx) => {
       const template = await tx.documentTemplate.create({
         data: {
           name: dto.name.trim(),
           description: dto.description?.trim() || null,
+          documentTypeId,
           fields: { fields } as any,
           htmlTemplate: bodyHtml,
           styles: dto.styles || null,
@@ -292,6 +314,11 @@ export class AuthoringTemplateService {
       );
     }
 
+    const documentTypeId =
+      dto.documentTypeId === undefined
+        ? undefined
+        : await this.resolveDocumentTypeId(dto.documentTypeId);
+
     return this.prisma.$transaction(async (tx) => {
       const updated = await tx.documentTemplate.update({
         where: { id },
@@ -300,6 +327,7 @@ export class AuthoringTemplateService {
           ...(dto.description !== undefined
             ? { description: dto.description?.trim() || null }
             : {}),
+          ...(documentTypeId !== undefined ? { documentTypeId } : {}),
         },
         include: TEMPLATE_INCLUDE,
       });

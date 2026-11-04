@@ -244,10 +244,32 @@ async function main() {
     documentTypes[documentType.name] = documentType.id;
   }
 
-  await prisma.academicYear.upsert({
-    where: { name: '2025-2026' },
-    update: { isCurrent: true, isActive: true },
-    create: { name: '2025-2026', startDate: new Date('2025-03-01'), endDate: new Date('2026-02-28'), isCurrent: true, isActive: true },
+  const academicYears = [
+    { name: '2024-2025', startDate: '2024-09-01', endDate: '2025-06-30' },
+    { name: '2025-2026', startDate: '2025-09-01', endDate: '2026-06-30' },
+    { name: '2026-2027', startDate: '2026-09-01', endDate: '2027-06-30' },
+  ];
+  for (const year of academicYears) {
+    await prisma.academicYear.upsert({
+      where: { name: year.name },
+      update: {
+        startDate: new Date(`${year.startDate}T00:00:00.000Z`),
+        endDate: new Date(`${year.endDate}T00:00:00.000Z`),
+        isActive: true,
+      },
+      create: {
+        name: year.name,
+        startDate: new Date(`${year.startDate}T00:00:00.000Z`),
+        endDate: new Date(`${year.endDate}T00:00:00.000Z`),
+        isCurrent: false,
+        isActive: true,
+      },
+    });
+  }
+  await prisma.academicYear.updateMany({ data: { isCurrent: false } });
+  await prisma.academicYear.update({
+    where: { name: '2026-2027' },
+    data: { isCurrent: true },
   });
 
   const adminId = createdUsers['admin@colegio.edu'];

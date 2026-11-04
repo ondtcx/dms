@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentModule } from '../document/document.module';
 import { DocumentTemplateModule } from '../document-template/document-template.module';
@@ -10,7 +11,7 @@ import { AuthoringRendererService } from './authoring-renderer.service';
 import { AuthoringTemplateService } from './authoring-template.service';
 
 @Module({
-  imports: [SettingsModule, DocumentTemplateModule, DocumentModule],
+  imports: [SettingsModule, DocumentTemplateModule, DocumentModule, AuditModule],
   controllers: [AuthoringController],
   providers: [
     AuthoringAssetService,

@@ -123,6 +123,7 @@ enum DocumentReviewAction {
   APPROVED
   RETURNED
   ARCHIVED
+  UPDATED
 }
 
 enum AuthoringStatus {
@@ -534,9 +535,15 @@ model Notification {
   emailSentAt DateTime? // Fecha de envío de email
   readAt      DateTime? // Fecha de lectura
 
+  // Snapshot inmutable del actor que produjo la notificación.
+  actorId   String?
+  actorName String?
+  actorRole String?
+
   createdAt DateTime @default(now())
 
   @@index([userId])
+  @@index([actorId])
   @@index([type])
   @@index([status])
   @@index([createdAt])
@@ -1258,6 +1265,7 @@ model DocumentTemplate {
   orientation     String          @default("portrait") // Orientación: portrait, landscape
   isActive        Boolean         @default(true) // Si la plantilla está activa
   isPredefined    Boolean         @default(false) // Si es una plantilla predefinida del sistema
+  isBlank         Boolean         @default(false) // Plantilla de sistema para crear documentos en blanco
   previewImageUrl String? // URL de imagen de preview de la plantilla
   usageCount      Int             @default(0) // Contador de uso de la plantilla
   variableSchema  Json? // JSON Schema para validación de variables

@@ -30,7 +30,15 @@ jest.mock('fs', () => ({
     };
     prisma.$transaction = jest.fn(async (callback) => callback(prisma));
     storage = { fileExists: jest.fn().mockReturnValue(true), deleteFile: jest.fn() };
-    service = new CleanupService(prisma, storage, new SettingsService(prisma));
+    const authoringAssets = { cleanupOrphans: jest.fn() };
+    const audit = { record: jest.fn().mockResolvedValue(undefined) };
+    service = new CleanupService(
+      prisma,
+      storage,
+      new SettingsService(prisma),
+      authoringAssets as any,
+      audit as any,
+    );
     (service as any).isReady = true;
   });
   const run = () => (service as any).cleanDocumentVersions(now);

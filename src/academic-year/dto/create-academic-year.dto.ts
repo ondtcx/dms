@@ -36,7 +36,7 @@ export class CreateAcademicYearDto {
   name: string;
 
   @ApiProperty({
-    example: '2025-03-01',
+    example: '2025-09-01',
     description: 'Fecha de inicio del año lectivo',
   })
   @Validate(IsCalendarDate)
@@ -44,7 +44,7 @@ export class CreateAcademicYearDto {
   startDate: string;
 
   @ApiProperty({
-    example: '2026-02-28',
+    example: '2026-06-30',
     description: 'Fecha de fin del año lectivo',
   })
   @Validate(IsCalendarDate)

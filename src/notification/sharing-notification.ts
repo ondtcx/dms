@@ -17,11 +17,20 @@ export async function notifySharingGrant(db: any, kind: 'document' | 'directory'
     (previous.expiresAt ? new Date(previous.expiresAt).getTime() : null) ===
     (granted.expiresAt ? new Date(granted.expiresAt).getTime() : null);
   if (same) return;
+  const actor = granted.grantedById
+    ? await db.user.findUnique({
+        where: { id: granted.grantedById },
+        select: { name: true, role: true },
+      })
+    : null;
   await db.notification.create({ data: {
     userId: recipientId, type: 'DOCUMENT_SHARED',
     title: kind === 'document' ? 'Documento compartido contigo' : 'Carpeta compartida contigo',
     message: `${resource.name || (kind === 'document' ? 'Documento' : 'Carpeta')}${text ? `\n${text}` : ''}`,
     documentId: kind === 'document' ? resource.id : null,
     actionUrl: kind === 'document' ? `/dashboard/documents/${resource.id}` : `/dashboard/directories?directoryId=${resource.id}`,
+    actorId: granted.grantedById ?? null,
+    actorName: actor?.name ?? null,
+    actorRole: actor?.role ?? null,
   } });
 }

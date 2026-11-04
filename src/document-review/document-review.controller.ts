@@ -53,4 +53,12 @@ export class DocumentReviewController {
   ) {
     return this.reviews.returnDocument(documentId, user, dto.observation);
   }
+
+  @Post(':documentId/archive')
+  archive(
+    @Param('documentId', ParseIntPipe) documentId: number,
+    @CurrentUser() user: any,
+  ) {
+    return this.reviews.archive(documentId, user);
+  }
 }

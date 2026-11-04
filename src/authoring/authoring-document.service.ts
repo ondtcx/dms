@@ -8,17 +8,40 @@ import { createHash, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import {
+  AuditAction,
+  AuditResource,
   AuthoringAction,
   AuthoringStatus,
   ContentVersionReason,
   NotificationType,
   TemplateVersionStatus,
 } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DocumentGeneratorService } from '../document-template/document-generator.service';
 import { DocumentNumberingService } from '../document/document-numbering.service';
+import {
+  calendarDate,
+  inferAcademicYear,
+  periodDay,
+} from '../document/upload-date';
 import { AuthoringRendererService } from './authoring-renderer.service';
 import { AuthoringTemplateService } from './authoring-template.service';
+import {
+  BLANK_TEMPLATE_BODY_HTML,
+  BLANK_TEMPLATE_DESCRIPTION,
+  BLANK_TEMPLATE_FIELDS,
+  BLANK_TEMPLATE_FOOTER_HTML,
+  BLANK_TEMPLATE_HEADER_HTML,
+  BLANK_TEMPLATE_INSTITUTIONAL_DESCRIPTION,
+  BLANK_TEMPLATE_INSTITUTIONAL_NAME,
+  BLANK_TEMPLATE_MARGINS,
+  BLANK_TEMPLATE_NAME,
+  BLANK_TEMPLATE_NUMBER_PREFIX,
+  BLANK_TEMPLATE_STYLES,
+  getInstitutionalBlankFrame,
+} from './blank-template';
+import { canReviewDocument } from './authoring-review-authority';
 import {
   applyDefaults,
   cloneJson,
@@ -102,6 +125,7 @@ export class AuthoringDocumentService {
     private readonly renderer: AuthoringRendererService,
     private readonly generator: DocumentGeneratorService,
     private readonly numbering: DocumentNumberingService,
+    private readonly audit: AuditService,
   ) {}
 
   private async findDocument(id: number) {
@@ -363,6 +387,8 @@ export class AuthoringDocumentService {
     title: string,
     message: string,
     actionUrl: string,
+    documentId?: number | null,
+    actor?: AuthoringUser,
   ) {
     if (!recipientId) return;
     try {
@@ -372,18 +398,251 @@ export class AuthoringDocumentService {
       });
       if (preference && !preference.inAppEnabled) return;
       await this.prisma.notification.create({
-        data: { userId: recipientId, type, title, message, actionUrl },
+        data: {
+          userId: recipientId,
+          type,
+          title,
+          message,
+          actionUrl,
+          documentId: documentId ?? null,
+          actorId: actor?.id ?? null,
+          actorName: actor?.name ?? null,
+          actorRole: actor?.role ?? null,
+        },
       });
     } catch {
       // La notificación no debe bloquear la transición del documento.
     }
   }
 
+  private blankTemplateConfig(institutional: boolean) {
+    if (!institutional) {
+      return {
+        name: BLANK_TEMPLATE_NAME,
+        description: BLANK_TEMPLATE_DESCRIPTION,
+        pageFrame: null,
+        headerHtml: BLANK_TEMPLATE_HEADER_HTML,
+        footerHtml: BLANK_TEMPLATE_FOOTER_HTML,
+        margins: BLANK_TEMPLATE_MARGINS,
+        pageSize: 'A4',
+      };
+    }
+    return {
+      name: BLANK_TEMPLATE_INSTITUTIONAL_NAME,
+      description: BLANK_TEMPLATE_INSTITUTIONAL_DESCRIPTION,
+      pageFrame: getInstitutionalBlankFrame(),
+      headerHtml: null,
+      footerHtml: null,
+      margins: { marginTop: '0', marginBottom: '0', marginLeft: '0', marginRight: '0' },
+      pageSize: 'Letter',
+    };
+  }
+
+  private async ensureBlankTemplate(
+    user: AuthoringUser,
+    institutional = false,
+  ) {
+    const config = this.blankTemplateConfig(institutional);
+    const findBlank = () =>
+      this.prisma.documentTemplate.findFirst({
+        where: { catalog: 'institutional', isBlank: true, name: config.name },
+        include: {
+          versions: { orderBy: { version: 'desc' as const }, take: 1 },
+        },
+      });
+
+    let template = await findBlank();
+    if (!template) {
+      const legacy = await this.prisma.documentTemplate.findFirst({
+        where: { catalog: 'institutional', name: config.name },
+        include: {
+          versions: { orderBy: { version: 'desc' as const }, take: 1 },
+        },
+      });
+      if (legacy) {
+        template = await this.prisma.documentTemplate.update({
+          where: { id: legacy.id },
+          data: { isBlank: true, isActive: true, isPredefined: true },
+          include: {
+            versions: { orderBy: { version: 'desc' as const }, take: 1 },
+          },
+        });
+      }
+    }
+
+    if (!template) {
+      const [category, defaultType] = await Promise.all([
+        this.prisma.category.findFirst({
+          where: { name: 'Documentos Institucionales' },
+          select: { id: true },
+        }),
+        this.prisma.documentType.findFirst({
+          where: { isDefault: true, isActive: true },
+          orderBy: { id: 'asc' },
+          select: { id: true },
+        }),
+      ]);
+      template = await this.prisma.$transaction(async (tx) => {
+        const created = await tx.documentTemplate.create({
+          data: {
+            name: config.name,
+            description: config.description,
+            categoryId: category?.id ?? null,
+            documentTypeId: defaultType?.id ?? null,
+            fields: BLANK_TEMPLATE_FIELDS as any,
+            htmlTemplate: BLANK_TEMPLATE_BODY_HTML,
+            styles: BLANK_TEMPLATE_STYLES,
+            outputFormat: 'pdf',
+            pageSize: config.pageSize,
+            orientation: 'portrait',
+            isActive: true,
+            isPredefined: true,
+            isBlank: true,
+            catalog: 'institutional',
+            createdById: user.id,
+          },
+        });
+        await tx.documentTemplateVersion.create({
+          data: {
+            templateId: created.id,
+            version: 1,
+            status: TemplateVersionStatus.PUBLISHED,
+            bodyHtml: BLANK_TEMPLATE_BODY_HTML,
+            styles: BLANK_TEMPLATE_STYLES,
+            headerHtml: config.headerHtml,
+            footerHtml: config.footerHtml,
+            marginTop: config.margins.marginTop,
+            marginBottom: config.margins.marginBottom,
+            marginLeft: config.margins.marginLeft,
+            marginRight: config.margins.marginRight,
+            pageFrame: config.pageFrame,
+            signatures: null,
+            fields: BLANK_TEMPLATE_FIELDS as any,
+            pageSize: config.pageSize,
+            orientation: 'portrait',
+            numberPrefix: BLANK_TEMPLATE_NUMBER_PREFIX,
+            createdById: user.id,
+            publishedAt: new Date(),
+          },
+        });
+        return tx.documentTemplate.findUniqueOrThrow({
+          where: { id: created.id },
+          include: {
+            versions: { orderBy: { version: 'desc' as const }, take: 1 },
+          },
+        });
+      });
+    }
+
+    const latest = template.versions[0];
+    if (!latest || latest.status !== TemplateVersionStatus.PUBLISHED) {
+      const nextVersion = (latest?.version ?? 0) + 1;
+      const created = await this.prisma.documentTemplateVersion.create({
+        data: {
+          templateId: template.id,
+          version: nextVersion,
+          status: TemplateVersionStatus.PUBLISHED,
+          bodyHtml: BLANK_TEMPLATE_BODY_HTML,
+          styles: BLANK_TEMPLATE_STYLES,
+          headerHtml: config.headerHtml,
+          footerHtml: config.footerHtml,
+          marginTop: config.margins.marginTop,
+          marginBottom: config.margins.marginBottom,
+          marginLeft: config.margins.marginLeft,
+          marginRight: config.margins.marginRight,
+          pageFrame: config.pageFrame,
+          signatures: null,
+          fields: BLANK_TEMPLATE_FIELDS as any,
+          pageSize: config.pageSize,
+          orientation: 'portrait',
+          numberPrefix: BLANK_TEMPLATE_NUMBER_PREFIX,
+          createdById: user.id,
+          publishedAt: new Date(),
+        },
+      });
+      return this.templates.getVersion(created.id);
+    }
+
+    return this.templates.getVersion(latest.id);
+  }
+
+  private async resolveDocumentType(
+    requestedId?: number | null,
+    fallbackId?: number | null,
+  ) {
+    const id = requestedId ?? fallbackId ?? null;
+    if (id != null) {
+      const type = await this.prisma.documentType.findUnique({
+        where: { id },
+        select: { id: true, isActive: true, categoryId: true },
+      });
+      if (!type) {
+        throw new BadRequestException('El tipo de documento no existe');
+      }
+      if (!type.isActive) {
+        throw new BadRequestException('El tipo de documento está inactivo');
+      }
+      return type;
+    }
+    return this.prisma.documentType.findFirst({
+      where: { isDefault: true, isActive: true },
+      orderBy: { id: 'asc' },
+      select: { id: true, isActive: true, categoryId: true },
+    });
+  }
+
+  private async inferAcademicYearId(day: Date) {
+    const years = await this.prisma.academicYear.findMany({
+      select: { id: true, startDate: true, endDate: true },
+    });
+    return inferAcademicYear(periodDay(day), years).academicYearId;
+  }
+
+  private async resolveAcademicYearId(requestedId?: number | null) {
+    if (requestedId != null) {
+      const year = await this.prisma.academicYear.findUnique({
+        where: { id: requestedId },
+        select: { id: true },
+      });
+      if (!year) {
+        throw new BadRequestException('El año lectivo no existe');
+      }
+      return year.id;
+    }
+    const current = await this.prisma.academicYear.findFirst({
+      where: { isCurrent: true, isActive: true },
+      select: { id: true },
+    });
+    return current?.id ?? null;
+  }
+
   async createDraft(dto: CreateAuthoringDocumentDto, user: AuthoringUser) {
-    const version = await this.templates.getVersion(dto.templateVersionId);
+    if (Boolean(dto.blank) === (dto.templateVersionId != null)) {
+      throw new BadRequestException(
+        'Indica una plantilla o crea un documento en blanco, no ambos',
+      );
+    }
+    const version = dto.blank
+      ? await this.ensureBlankTemplate(user, dto.institutionalFrame === true)
+      : await this.templates.getVersion(dto.templateVersionId!);
     if (version.status !== TemplateVersionStatus.PUBLISHED) {
       throw new BadRequestException('La plantilla no tiene una versión publicada');
     }
+    const documentType = await this.resolveDocumentType(
+      dto.documentTypeId,
+      version.template.documentTypeId,
+    );
+    const originDate = dto.originDate
+      ? calendarDate(dto.originDate)
+      : undefined;
+    const inferredAcademicYearId =
+      dto.academicYearId == null && originDate
+        ? await this.inferAcademicYearId(originDate)
+        : null;
+    const academicYearId =
+      (await this.resolveAcademicYearId(
+        dto.academicYearId ?? inferredAcademicYearId ?? undefined,
+      )) ?? null;
 
     const fields = normalizeFields(version.fields).fields;
     const activeYear = await this.activeAcademicYear();
@@ -403,14 +662,21 @@ export class AuthoringDocumentService {
     try {
       const document = await this.prisma.document.create({
         data: {
-          name: `${version.template.name} - ${new Date().toISOString().slice(0, 10)}`,
-          description: `Borrador de ${version.template.name}`,
+          name:
+            dto.name?.trim() ||
+            `${version.template.name} - ${new Date().toISOString().slice(0, 10)}`,
+          description:
+            dto.description?.trim() ||
+            `Borrador de ${version.template.name}`,
           uploadedById: user.id,
-          categoryId: version.template.categoryId,
-          documentTypeId: version.template.documentTypeId,
+          categoryId:
+            documentType?.categoryId ?? version.template.categoryId ?? null,
+          documentTypeId: documentType?.id ?? null,
+          ...(originDate ? { originDate } : {}),
           directoryId,
           isPublic: false,
           checksumSHA256: checksum,
+          academic: { create: { academicYearId } },
           versions: {
             create: {
               version: 1,
@@ -450,6 +716,28 @@ export class AuthoringDocumentService {
         },
         include: DOCUMENT_INCLUDE,
       });
+
+      try {
+        await this.audit.record({
+          action: AuditAction.CREATE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(document.id),
+          documentId: document.id,
+          metadata: {
+            origin: dto.blank ? 'EDITOR' : 'TEMPLATE',
+            templateId: version.templateId,
+            templateVersionId: version.id,
+            templateName: version.template.name,
+            documentTypeId: documentType?.id ?? null,
+            academicYearId,
+            directoryId,
+            name: document.name,
+            originDate: dto.originDate ?? null,
+          },
+        });
+      } catch {
+        // La creación no debe fallar si la bitácora no está disponible.
+      }
 
       await this.createContentVersion(
         document.id,
@@ -607,6 +895,21 @@ export class AuthoringDocumentService {
         reviewerName,
         tx,
       );
+      await this.audit.record(
+        {
+          action: AuditAction.SUBMIT,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(id),
+          documentId: id,
+          metadata: {
+            fromStatus: document.authoring.status,
+            toStatus: AuthoringStatus.IN_REVIEW,
+            reviewerId: dto.reviewerId ?? null,
+            reviewerName,
+          },
+        },
+        tx,
+      );
       return authoring;
     });
 
@@ -618,6 +921,8 @@ export class AuthoringDocumentService {
         'Documento pendiente de revisión',
         `${document.name} está listo para revisar.`,
         `/dashboard/elaboracion/${id}`,
+        id,
+        user,
       );
     }
     return saved;
@@ -631,6 +936,12 @@ export class AuthoringDocumentService {
     const document = await this.findDocument(id);
     if (document.authoring.status !== AuthoringStatus.IN_REVIEW) {
       throw new BadRequestException('El documento no está en revisión');
+    }
+
+    if (!canReviewDocument(document.authoring, user)) {
+      throw new ForbiddenException(
+        'No tienes autoridad para revisar este documento',
+      );
     }
 
     const fields = this.fieldsFor(document);
@@ -681,6 +992,21 @@ export class AuthoringDocumentService {
         dto.observation ?? null,
         tx,
       );
+      await this.audit.record(
+        {
+          action: AuditAction.APPROVE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(id),
+          documentId: id,
+          metadata: {
+            fromStatus: AuthoringStatus.IN_REVIEW,
+            toStatus: AuthoringStatus.APPROVED,
+            observation: dto.observation ?? null,
+            reviewerName: user.name ?? null,
+          },
+        },
+        tx,
+      );
     });
 
     await this.notify(
@@ -689,6 +1015,8 @@ export class AuthoringDocumentService {
       'Documento aprobado',
       `${document.name} fue aprobado${dto.observation ? `: ${dto.observation}` : '.'}`,
       `/dashboard/elaboracion/${id}`,
+      id,
+      user,
     );
     return this.findDocument(id);
   }
@@ -701,6 +1029,12 @@ export class AuthoringDocumentService {
     const document = await this.findDocument(id);
     if (document.authoring.status !== AuthoringStatus.IN_REVIEW) {
       throw new BadRequestException('El documento no está en revisión');
+    }
+
+    if (!canReviewDocument(document.authoring, user)) {
+      throw new ForbiddenException(
+        'No tienes autoridad para revisar este documento',
+      );
     }
     if (!dto.observation?.trim()) {
       throw new BadRequestException('La observación es obligatoria');
@@ -754,6 +1088,20 @@ export class AuthoringDocumentService {
         dto.observation.trim(),
         tx,
       );
+      await this.audit.record(
+        {
+          action: AuditAction.REQUEST_CHANGES,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(id),
+          documentId: id,
+          metadata: {
+            fromStatus: AuthoringStatus.IN_REVIEW,
+            toStatus: AuthoringStatus.CHANGES_REQUESTED,
+            observation: dto.observation.trim(),
+          },
+        },
+        tx,
+      );
     });
 
     await this.notify(
@@ -762,6 +1110,8 @@ export class AuthoringDocumentService {
       'Documento devuelto para corrección',
       `${document.name}: ${dto.observation.trim()}`,
       `/dashboard/elaboracion/${id}`,
+      id,
+      user,
     );
     return this.findDocument(id);
   }
@@ -774,6 +1124,11 @@ export class AuthoringDocumentService {
     if (document.authoring.status !== AuthoringStatus.APPROVED) {
       throw new BadRequestException(
         'El documento debe estar aprobado para emitirse',
+      );
+    }
+    if (document.uploadedById !== user.id) {
+      throw new ForbiddenException(
+        'Solo el creador puede emitir y numerar este documento',
       );
     }
 
@@ -839,6 +1194,21 @@ export class AuthoringDocumentService {
         where: { id },
         data: { documentNumber: number },
       });
+      await this.audit.record(
+        {
+          action: AuditAction.COMPLETE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(id),
+          documentId: id,
+          metadata: {
+            fromStatus: document.authoring.status,
+            toStatus: AuthoringStatus.EMITTED,
+            documentNumber: number,
+            emittedAt: authoring.emittedAt,
+          },
+        },
+        tx,
+      );
     });
 
     await this.notify(
@@ -847,6 +1217,8 @@ export class AuthoringDocumentService {
       'Documento emitido',
       `${document.name} fue emitido con el número ${number}.`,
       `/dashboard/elaboracion/${id}`,
+      id,
+      user,
     );
     return this.findDocument(id);
   }
@@ -873,6 +1245,20 @@ export class AuthoringDocumentService {
         AuthoringStatus.ARCHIVED,
         user,
         null,
+        tx,
+      );
+      await this.audit.record(
+        {
+          action: AuditAction.ARCHIVE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(id),
+          documentId: id,
+          metadata: {
+            fromStatus: AuthoringStatus.EMITTED,
+            toStatus: AuthoringStatus.ARCHIVED,
+            archivedAt: new Date().toISOString(),
+          },
+        },
         tx,
       );
     });
@@ -1000,11 +1386,26 @@ export class AuthoringDocumentService {
   }
 
   async listUsers() {
-    return this.prisma.user.findMany({
+    const users = await this.prisma.user.findMany({
       where: { isActive: true },
-      select: { id: true, name: true, email: true, role: true },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        roleAssignments: {
+          where: { role: { isActive: true } },
+          select: {
+            role: { select: { id: true, key: true, label: true } },
+          },
+        },
+      },
       orderBy: { name: 'asc' },
     });
+    return users.map(({ roleAssignments, ...user }) => ({
+      ...user,
+      roles: (roleAssignments ?? []).map(({ role }) => role),
+    }));
   }
 
   private deepMerge(base: any, override: any): any {

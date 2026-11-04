@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { AuditAction, AuditResource } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { SettingsService } from '../settings/settings.service';
@@ -18,6 +20,7 @@ export class CleanupService implements OnModuleInit {
     private storage: StorageService,
     private settingsService: SettingsService,
     private authoringAssets: AuthoringAssetService,
+    private audit: AuditService,
   ) {}
 
   onModuleInit() {
@@ -292,10 +295,30 @@ export class CleanupService implements OnModuleInit {
               data: { path: newPath },
             });
           }
+          const archivedAt = new Date();
           await this.prisma.document.update({
             where: { id: doc.id },
-            data: { archivedAt: new Date() },
+            data: { archivedAt },
           });
+          try {
+            await this.audit.record({
+              action: AuditAction.ARCHIVE,
+              resource: AuditResource.DOCUMENT,
+              resourceId: String(doc.id),
+              documentId: doc.id,
+              metadata: {
+                automatic: true,
+                reason: 'Documento activo con más de 90 días',
+                archivedAt,
+                movedVersions: doc.versions.map((version) => ({
+                  from: version.path,
+                  to: version.path.replace('/active/', '/archive/'),
+                })),
+              },
+            });
+          } catch {
+            // El archivado automático no debe fallar si la bitácora no responde.
+          }
 
           archived++;
         } catch (error) {

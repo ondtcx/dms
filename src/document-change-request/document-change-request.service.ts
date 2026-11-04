@@ -73,9 +73,24 @@ export class DocumentChangeRequestService {
     return result;
   }
 
-  private async notify(db: any, recipientId: string, documentId: number, title: string, message: string, type: 'CHANGES_REQUESTED' | 'DOCUMENT_SHARED' = 'CHANGES_REQUESTED') {
-    await db.notification.create({ data: { userId: recipientId, documentId, type, title, message,
-      actionUrl: `/dashboard/documents/${documentId}` } });
+  private async notify(db: any, recipientId: string, documentId: number, title: string, message: string, type: 'CHANGES_REQUESTED' | 'DOCUMENT_SHARED' = 'CHANGES_REQUESTED', actorId?: string) {
+    const actor = actorId
+      ? await db.user.findUnique({
+          where: { id: actorId },
+          select: { name: true, role: true },
+        })
+      : null;
+    await db.notification.create({ data: {
+      userId: recipientId,
+      documentId,
+      type,
+      title,
+      message,
+      actionUrl: `/dashboard/documents/${documentId}`,
+      actorId: actorId ?? null,
+      actorName: actor?.name ?? null,
+      actorRole: actor?.role ?? null,
+    } });
   }
 
   async get(documentId: number, actorId: string) {
@@ -131,11 +146,11 @@ export class DocumentChangeRequestService {
         // conserva al ADMIN que actuó; no se concede delegación ni actualización.
         await tx.accessGrant.create({ data: { documentId, userId: recipient.id,
           grantedById: document.uploadedById, canView: true, canEdit: false, canUploadVersion: false, canShare: false } });
-        await this.notify(tx, recipient.id, documentId, 'Documento compartido contigo', 'Se te concedió acceso de lectura para atender una solicitud de cambios.', 'DOCUMENT_SHARED');
+        await this.notify(tx, recipient.id, documentId, 'Documento compartido contigo', 'Se te concedió acceso de lectura para atender una solicitud de cambios.', 'DOCUMENT_SHARED', actorId);
       }
       const request = await tx.documentChangeRequest.create({ data: { documentId, requestedById: actorId, recipientId: recipient.id,
         message: dto.message.trim(), status: 'PENDING', baseVersionId: current.id } });
-      await this.notify(tx, recipient.id, documentId, 'Solicitud de cambios', dto.message.trim());
+      await this.notify(tx, recipient.id, documentId, 'Solicitud de cambios', dto.message.trim(), 'CHANGES_REQUESTED', actorId);
       return this.safe(request);
     });
   }
@@ -167,7 +182,7 @@ export class DocumentChangeRequestService {
       const result = await tx.documentChangeRequest.update({ where: { id }, data: { status: 'CORRECTION_SUBMITTED', revision: { increment: 1 },
         stagedPath: path, filename, mimetype: file.mimetype, size: file.size, submittedAt: new Date() } });
       for (const recipientId of new Set([request.requestedById, document.uploadedById])) {
-        await this.notify(tx, recipientId, documentId, 'Corrección pendiente de revisión', filename);
+        await this.notify(tx, recipientId, documentId, 'Corrección pendiente de revisión', filename, 'CHANGES_REQUESTED', actorId);
       }
       return this.safe(result);
     });
@@ -195,7 +210,8 @@ export class DocumentChangeRequestService {
       cleanup(request.stagedPath);
       await this.notify(tx, request.recipientId, documentId,
         dto.action === 'accept' ? 'Corrección aceptada' : dto.action === 'cancel' ? 'Solicitud cancelada' : 'Se requieren más cambios',
-        dto.message?.trim() || (dto.action === 'accept' ? 'La corrección es ahora la versión principal.' : 'La solicitud se cerró.'));
+        dto.message?.trim() || (dto.action === 'accept' ? 'La corrección es ahora la versión principal.' : 'La solicitud se cerró.'),
+        'CHANGES_REQUESTED', actorId);
       return this.safe(result);
     });
     if (promoted) this.documents.refreshAcceptedCorrection(promoted);

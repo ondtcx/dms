@@ -1,13 +1,17 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  AuditAction,
+  AuditResource,
   DocumentReviewAction,
   DocumentReviewStatus,
   NotificationType,
 } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { buildDocumentAccessFilter } from '../auth/utils/document-access.filter';
 import { UserRole } from '../auth/role.enum';
 import { PrismaService } from '../prisma/prisma.service';
@@ -16,7 +20,10 @@ type ReviewUser = { id: string; name?: string | null; role?: string | null };
 
 @Injectable()
 export class DocumentReviewService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   private async accessFilter(user: ReviewUser) {
     if (!user?.id) return { id: -1 };
@@ -84,6 +91,12 @@ export class DocumentReviewService {
             uploadedBy: { select: { id: true, name: true } },
             currentVersion: true,
             createdAt: true,
+            documentType: { select: { id: true, name: true } },
+            templateData: {
+              select: {
+                template: { select: { id: true, name: true } },
+              },
+            },
           },
         },
       },
@@ -98,6 +111,8 @@ export class DocumentReviewService {
     title: string,
     message: string,
     actionUrl: string,
+    documentId?: number | null,
+    actor?: ReviewUser,
   ) {
     if (!userId) return;
     try {
@@ -107,7 +122,17 @@ export class DocumentReviewService {
       });
       if (preference && !preference.inAppEnabled) return;
       await this.prisma.notification.create({
-        data: { userId, type, title, message, actionUrl },
+        data: {
+          userId,
+          type,
+          title,
+          message,
+          actionUrl,
+          documentId: documentId ?? null,
+          actorId: actor?.id ?? null,
+          actorName: actor?.name ?? null,
+          actorRole: actor?.role ?? null,
+        },
       });
     } catch {
       // La notificación no debe bloquear la revisión.
@@ -162,6 +187,22 @@ export class DocumentReviewService {
           observation: nextReviewerName ? `Revisor: ${nextReviewerName}` : null,
         },
       });
+      await this.audit.record(
+        {
+          action: AuditAction.SUBMIT,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: {
+            origin: 'UPLOAD',
+            fromStatus: review.status,
+            toStatus: DocumentReviewStatus.IN_REVIEW,
+            reviewerId: reviewerId ?? null,
+            reviewerName: nextReviewerName,
+          },
+        },
+        tx,
+      );
       return saved;
     });
     if (reviewerId) {
@@ -171,6 +212,8 @@ export class DocumentReviewService {
         'Documento pendiente de revisión',
         `${review.document.name} está listo para revisar.`,
         `/dashboard/documents/${documentId}`,
+        documentId,
+        user,
       );
     }
     return updated;
@@ -203,6 +246,21 @@ export class DocumentReviewService {
           observation: observation ?? null,
         },
       });
+      await this.audit.record(
+        {
+          action: AuditAction.APPROVE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: {
+            fromStatus: review.status,
+            toStatus: DocumentReviewStatus.APPROVED,
+            observation: observation ?? null,
+            reviewerName: user.name ?? null,
+          },
+        },
+        tx,
+      );
       return saved;
     });
     await this.notify(
@@ -211,6 +269,75 @@ export class DocumentReviewService {
       'Documento aprobado',
       `${review.document.name} fue aprobado.`,
       `/dashboard/documents/${documentId}`,
+      documentId,
+      user,
+    );
+    return updated;
+  }
+
+  async archive(documentId: number, user: ReviewUser) {
+    const review = await this.find(documentId, user);
+    if (review.status !== DocumentReviewStatus.APPROVED) {
+      throw new BadRequestException(
+        'Solo se puede archivar un documento aprobado',
+      );
+    }
+    const isOwner = review.document.uploadedById === user.id;
+    const isAdmin = user.role === 'admin' || user.role === 'rector';
+    if (!isOwner && !isAdmin) {
+      throw new ForbiddenException(
+        'No tienes autoridad para archivar este documento',
+      );
+    }
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const saved = await tx.documentReview.update({
+        where: { documentId },
+        data: {
+          status: DocumentReviewStatus.ARCHIVED,
+          reviewedAt: new Date(),
+          reviewedById: user.id,
+          reviewedByName: user.name ?? null,
+        },
+      });
+      await tx.documentReviewEvent.create({
+        data: {
+          reviewId: saved.id,
+          action: DocumentReviewAction.ARCHIVED,
+          fromStatus: DocumentReviewStatus.APPROVED,
+          toStatus: DocumentReviewStatus.ARCHIVED,
+          actorId: user.id,
+          actorName: user.name ?? null,
+          observation: 'Documento archivado',
+        },
+      });
+      await tx.document.update({
+        where: { id: documentId },
+        data: { archivedAt: new Date() },
+      });
+      await this.audit.record(
+        {
+          action: AuditAction.ARCHIVE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: {
+            automatic: false,
+            fromStatus: DocumentReviewStatus.APPROVED,
+            toStatus: DocumentReviewStatus.ARCHIVED,
+          },
+        },
+        tx,
+      );
+      return saved;
+    });
+    await this.notify(
+      review.document.uploadedById,
+      NotificationType.DOCUMENT_UPDATED,
+      'Documento archivado',
+      `${review.document.name ?? 'El documento'} fue archivado.`,
+      `/dashboard/documents/${documentId}`,
+      documentId,
+      user,
     );
     return updated;
   }
@@ -249,6 +376,20 @@ export class DocumentReviewService {
           observation: observation.trim(),
         },
       });
+      await this.audit.record(
+        {
+          action: AuditAction.REQUEST_CHANGES,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: {
+            fromStatus: review.status,
+            toStatus: DocumentReviewStatus.CHANGES_REQUESTED,
+            observation: observation.trim(),
+          },
+        },
+        tx,
+      );
       return saved;
     });
     await this.notify(
@@ -257,6 +398,8 @@ export class DocumentReviewService {
       'Documento devuelto para corrección',
       `${review.document.name}: ${observation.trim()}`,
       `/dashboard/documents/${documentId}`,
+      documentId,
+      user,
     );
     return updated;
   }

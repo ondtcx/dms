@@ -8,7 +8,16 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
-import { AuditAction, AuditResource, AuthoringStatus, Prisma, WorkflowStatus } from '@prisma/client';
+import {
+  AuditAction,
+  AuditResource,
+  AuthoringStatus,
+  DocumentReviewAction,
+  DocumentReviewStatus,
+  NotificationType,
+  Prisma,
+  WorkflowStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { AuditLogPage, AuditWriter } from '../audit/audit.types';
@@ -585,6 +594,9 @@ export class DocumentService {
       excludeComposites,
       directoryId,
       view,
+      sortBy,
+      sortOrder,
+      transferableOnly,
     } = query;
     const isUnfilteredView =
       view === 'recent-accessed' || view === 'recent-created' || view === 'all';
@@ -706,6 +718,16 @@ export class DocumentService {
     const skipYearFilter = (
       [UserRole.PADRE, UserRole.ESTUDIANTE] as string[]
     ).includes(userRole as string);
+    if (transferableOnly) {
+      where.AND.push({ receptionOriginDirectoryId: null });
+      where.AND.push({
+        OR: [
+          { directoryId: null },
+          { directory: { is: { receptionEnabled: false } } },
+        ],
+      });
+    }
+
     if (query.academicYearId && !skipYearFilter && !isUnfilteredView) {
       where.AND.push({
         OR: [
@@ -748,7 +770,7 @@ export class DocumentService {
       skip: undefined as number | undefined,
       take: undefined as number | undefined,
       include: {
-        directory: { select: { id: true, receptionEnabled: true } },
+        directory: { select: { id: true, name: true, receptionEnabled: true } },
         academic: true,
         search: true,
         templateData: {
@@ -788,6 +810,9 @@ export class DocumentService {
         documentType: {
           select: { id: true, name: true },
         },
+        authoring: {
+          select: { status: true },
+        },
         workflow: {
           select: {
             id: true,
@@ -796,7 +821,9 @@ export class DocumentService {
           },
         },
       },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: sortBy
+        ? [{ [sortBy]: sortOrder ?? 'asc' }, { id: 'desc' }]
+        : [{ createdAt: 'desc' }, { id: 'desc' }],
     } satisfies Prisma.DocumentFindManyArgs;
     if (view !== 'recent-accessed') {
       documentQuery.skip = skip;
@@ -875,8 +902,11 @@ export class DocumentService {
         ...(accessFilter ?? {}),
       },
       include: {
-        directory: { select: { id: true, receptionEnabled: true } },
-        academic: true,
+        directory: { select: { id: true, name: true, receptionEnabled: true } },
+        receptionOriginDirectory: { select: { id: true, name: true } },
+        academic: {
+          include: { academicYear: { select: { id: true, name: true } } },
+        },
         search: true,
         templateData: {
           include: {
@@ -884,6 +914,7 @@ export class DocumentService {
               select: {
                 id: true,
                 name: true,
+                isBlank: true,
                 documentType: { select: { id: true, name: true } },
               },
             },
@@ -891,6 +922,11 @@ export class DocumentService {
           },
         },
         versions: { orderBy: { version: 'desc' }, take: 1 },
+        authoring: {
+          include: {
+            events: { orderBy: { createdAt: 'desc' as const }, take: 100 },
+          },
+        },
         review: {
           include: {
             events: { orderBy: { createdAt: 'desc' as const }, take: 100 },
@@ -901,6 +937,7 @@ export class DocumentService {
             id: true,
             name: true,
             email: true,
+            role: true,
           },
         },
         category: {
@@ -1726,6 +1763,66 @@ export class DocumentService {
       });
     }
 
+    // Una nueva versión invalida una revisión en curso o aprobada. La
+    // devolución previa se conserva para que el autor pueda corregir y reenviar.
+    const review = await tx.documentReview.findUnique({
+      where: { documentId: id },
+    });
+    if (review) {
+      const resetsReview =
+        review.status === DocumentReviewStatus.IN_REVIEW ||
+        review.status === DocumentReviewStatus.APPROVED;
+      const actor = await tx.user.findUnique({
+        where: { id: userId },
+        select: { name: true, role: true },
+      });
+      const nextStatus = resetsReview
+        ? DocumentReviewStatus.DRAFT
+        : review.status;
+      await tx.documentReview.update({
+        where: { documentId: id },
+        data: {
+          status: nextStatus,
+          documentVersionId: newVersion,
+          ...(resetsReview
+            ? {
+                submittedAt: null,
+                reviewedAt: null,
+                reviewedById: null,
+                reviewedByName: null,
+                observation: null,
+              }
+            : {}),
+        },
+      });
+      await tx.documentReviewEvent.create({
+        data: {
+          reviewId: review.id,
+          action: DocumentReviewAction.UPDATED,
+          fromStatus: review.status,
+          toStatus: nextStatus,
+          actorId: userId,
+          actorName: actor?.name ?? null,
+          observation: `Nueva versión ${newVersion}`,
+        },
+      });
+      if (resetsReview && review.reviewerId && review.reviewerId !== userId) {
+        await tx.notification.create({
+          data: {
+            userId: review.reviewerId,
+            type: NotificationType.DOCUMENT_UPDATED,
+            title: 'Documento actualizado',
+            message: `${updatedDocument.name ?? 'El documento'} fue actualizado a la versión ${newVersion}. La revisión volvió a borrador y requiere un nuevo envío.`,
+            documentId: id,
+            actionUrl: `/dashboard/documents/${id}`,
+            actorId: userId,
+            actorName: actor?.name ?? null,
+            actorRole: actor?.role ?? null,
+          },
+        });
+      }
+    }
+
     // 9. Registrar auditoría.
     await tx.documentAccess.create({
       data: {
@@ -1744,6 +1841,16 @@ export class DocumentService {
           filename: createdVersion.filename,
           mimetype: createdVersion.mimetype,
           size: createdVersion.size,
+          ...(review
+            ? {
+                reviewFromStatus: review.status,
+                reviewToStatus:
+                  review.status === DocumentReviewStatus.IN_REVIEW ||
+                  review.status === DocumentReviewStatus.APPROVED
+                    ? DocumentReviewStatus.DRAFT
+                    : review.status,
+              }
+            : {}),
         },
       },
       tx,
@@ -2444,6 +2551,7 @@ export class DocumentService {
       orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
       select: {
         id: true,
+        name: true,
         description: true,
         documentNumber: true,
         createdAt: true,
@@ -2464,6 +2572,9 @@ export class DocumentService {
             mimetype: true,
             size: true,
           },
+        },
+        authoring: {
+          select: { status: true },
         },
         workflow: {
           where: { active: true },

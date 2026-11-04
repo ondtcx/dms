@@ -103,6 +103,11 @@ export class CreateAuthoringTemplateDto {
   @MaxLength(12)
   numberPrefix: string;
 
+  @ApiPropertyOptional({ description: 'Tipo de documento institucional de la plantilla' })
+  @IsInt()
+  @IsOptional()
+  documentTypeId?: number;
+
   @ApiPropertyOptional({ description: 'Plantilla de origen si es una copia' })
   @IsInt()
   @IsOptional()
@@ -186,9 +191,52 @@ export class CreateAuthoringTemplateVersionDto {
 }
 
 export class CreateAuthoringDocumentDto {
-  @ApiProperty()
+  @ApiPropertyOptional({ description: 'Versión publicada de la plantilla' })
   @IsInt()
-  templateVersionId: number;
+  @IsOptional()
+  templateVersionId?: number;
+
+  @ApiPropertyOptional({
+    description: 'Crea el borrador con la plantilla de sistema en blanco',
+  })
+  @IsBoolean()
+  @IsOptional()
+  blank?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Usa el marco institucional del Acta de entrega-recepción para el documento en blanco',
+  })
+  @IsBoolean()
+  @IsOptional()
+  institutionalFrame?: boolean;
+
+  @ApiPropertyOptional({ description: 'Nombre del documento' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  name?: string;
+
+  @ApiPropertyOptional({ description: 'Descripción del documento' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(500)
+  description?: string;
+
+  @ApiPropertyOptional({ description: 'Tipo de documento' })
+  @IsInt()
+  @IsOptional()
+  documentTypeId?: number;
+
+  @ApiPropertyOptional({ description: 'Año lectivo del documento' })
+  @IsInt()
+  @IsOptional()
+  academicYearId?: number;
+
+  @ApiPropertyOptional({ description: 'Fecha de origen del documento' })
+  @IsString()
+  @IsOptional()
+  originDate?: string;
 
   @ApiPropertyOptional()
   @IsObject()

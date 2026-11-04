@@ -13,7 +13,7 @@ describe('NotificationService', () => {
     db.notificationPreference.findUnique.mockResolvedValue(null);
     db.notification.findMany.mockResolvedValue([]);
     db.notification.count.mockResolvedValue(2);
-    expect(await service.list('actor', 2, 20)).toEqual({ data: [], unreadCount: 2, page: 2, limit: 20 });
+    expect(await service.list('actor', 2, 20)).toEqual({ data: [], unreadCount: 2, page: 2, limit: 20, filter: 'all' });
     expect(db.notification.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { userId: 'actor', status: { not: 'ARCHIVED' } }, skip: 20, take: 20 }));
     expect(db.notification.count).toHaveBeenCalledWith({ where: { userId: 'actor', status: 'UNREAD' } });
     await expect(service.list('actor', 0, 100)).rejects.toBeInstanceOf(BadRequestException);
@@ -21,7 +21,7 @@ describe('NotificationService', () => {
 
   it('returns an empty page when in-app notifications are disabled', async () => {
     db.notificationPreference.findUnique.mockResolvedValue({ inAppEnabled: false });
-    expect(await service.list('actor')).toEqual({ data: [], unreadCount: 0, page: 1, limit: 20 });
+    expect(await service.list('actor')).toEqual({ data: [], unreadCount: 0, page: 1, limit: 20, filter: 'all' });
     expect(db.notification.findMany).not.toHaveBeenCalled();
   });
 
@@ -51,6 +51,63 @@ describe('NotificationService', () => {
       create: { userId: 'actor', inAppEnabled: false },
       update: { inAppEnabled: false },
       select: { inAppEnabled: true },
+    });
+  });
+
+  it('filters unread and read notifications without losing the unread count', async () => {
+    db.notificationPreference.findUnique.mockResolvedValue(null);
+    db.notification.findMany.mockResolvedValue([]);
+    db.notification.count.mockResolvedValue(3);
+
+    await service.list('actor', 1, 20, 'unread');
+    expect(db.notification.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { userId: 'actor', status: 'UNREAD' },
+      }),
+    );
+
+    await service.list('actor', 1, 20, 'read');
+    expect(db.notification.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { userId: 'actor', status: 'READ' },
+      }),
+    );
+    expect(db.notification.count).toHaveBeenCalledWith({
+      where: { userId: 'actor', status: 'UNREAD' },
+    });
+  });
+
+  it('marks an owned notification unread and clears readAt', async () => {
+    db.notification.updateMany.mockResolvedValue({ count: 1 });
+    expect(await service.unread('actor', 7)).toEqual({ read: false });
+    expect(db.notification.updateMany).toHaveBeenCalledWith({
+      where: { id: 7, userId: 'actor', status: { not: 'ARCHIVED' } },
+      data: { status: 'UNREAD', readAt: null },
+    });
+  });
+
+  it('archives only an owned notification', async () => {
+    db.notification.updateMany.mockResolvedValue({ count: 0 });
+    await expect(service.archive('actor', 8)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+    db.notification.updateMany.mockResolvedValue({ count: 1 });
+    expect(await service.archive('actor', 8)).toEqual({ deleted: true });
+    expect(db.notification.updateMany).toHaveBeenCalledWith({
+      where: { id: 8, userId: 'actor', status: { not: 'ARCHIVED' } },
+      data: { status: 'ARCHIVED' },
+    });
+  });
+
+  it('archives all read notifications for the actor', async () => {
+    db.notification.updateMany.mockResolvedValue({ count: 4 });
+    expect(await service.archiveRead('actor')).toEqual({
+      deleted: true,
+      count: 4,
+    });
+    expect(db.notification.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'actor', status: 'READ' },
+      data: { status: 'ARCHIVED' },
     });
   });
 });

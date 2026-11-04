@@ -12,6 +12,15 @@ export const DOCUMENT_LIST_VIEWS = [
 
 export type DocumentListView = (typeof DOCUMENT_LIST_VIEWS)[number];
 
+export const DOCUMENT_SORT_FIELDS = [
+  'createdAt',
+  'updatedAt',
+  'name',
+  'documentNumber',
+] as const;
+
+export type DocumentSortField = (typeof DOCUMENT_SORT_FIELDS)[number];
+
 export class QueryDocumentDto {
   @ApiPropertyOptional({ enum: DOCUMENT_LIST_VIEWS, description: 'Vista documental solicitada' })
   @IsIn(DOCUMENT_LIST_VIEWS)
@@ -139,4 +148,25 @@ export class QueryDocumentDto {
   @IsBoolean()
   @Transform(({ value }) => value === 'true' || value === true)
   excludeComposites?: boolean;
+
+  @ApiPropertyOptional({
+    enum: DOCUMENT_SORT_FIELDS,
+    description: 'Campo de ordenamiento',
+  })
+  @IsIn(DOCUMENT_SORT_FIELDS)
+  @IsOptional()
+  sortBy?: DocumentSortField;
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'], description: 'Dirección de ordenamiento' })
+  @IsIn(['asc', 'desc'])
+  @IsOptional()
+  sortOrder?: 'asc' | 'desc';
+
+  @ApiPropertyOptional({
+    description: 'Solo documentos transferibles (excluye recepción)',
+  })
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  transferableOnly?: boolean;
 }

@@ -197,6 +197,8 @@ export class TransferService {
           toUserId: input.toUserId,
           documentCount: created.length,
           comment: transferComment(input.comment),
+          actorId,
+          actorName: fromName,
         });
       } catch {
         // The batch is already persisted; notification delivery is best-effort.
@@ -259,6 +261,7 @@ export class TransferService {
             documentCount: pending.length,
             acceptedCount: accepted,
             failedCount: failed.length,
+            actorId,
           });
         } catch {
           // Notification delivery must not hide the persisted ownership changes.
@@ -326,6 +329,7 @@ export class TransferService {
           documentCount: canceled,
           userIds,
           canceledByRecipient,
+          actorId,
         });
       } catch {
         // Notification delivery must not hide the persisted cancellations.
@@ -431,6 +435,8 @@ export class TransferService {
           fromName: fromUser.name?.trim() || fromUser.email,
           toUserId: recipient.id,
           comment,
+          actorId,
+          actorName: fromUser.name?.trim() || fromUser.email,
         });
       }
       await this.audit.record(
@@ -526,6 +532,8 @@ export class TransferService {
           documentName: this.documentName(document),
           fromUserId: transfer.fromUserId,
           toName: recipient.name?.trim() || recipient.email,
+          actorId,
+          actorName: recipient.name?.trim() || recipient.email,
         });
       }
       await this.audit.record(
@@ -611,6 +619,7 @@ export class TransferService {
           documentName,
           userIds: notificationUserIds,
           canceledByRecipient,
+          actorId,
         });
       }
       await this.audit.record(

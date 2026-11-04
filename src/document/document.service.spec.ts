@@ -40,6 +40,9 @@ describe('reception mutation entrypoints', () => {
       documentWorkflow: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() },
       workflowApproval: { findFirst: jest.fn().mockResolvedValue({ id: 3 }) },
       documentAuthoring: { findUnique: jest.fn().mockResolvedValue(null) },
+      documentReview: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+      documentReviewEvent: { create: jest.fn() },
+      notification: { create: jest.fn() },
       documentAccess: { create: jest.fn() },
     };
     db.$transaction = jest.fn(async cb => cb(db));
@@ -236,6 +239,54 @@ describe('reception mutation entrypoints', () => {
     expect(db.document.update).not.toHaveBeenCalled();
     expect(db.$transaction).toHaveBeenCalledWith(expect.any(Function), expect.objectContaining({ isolationLevel: 'Serializable' }));
   });
+  it('resets an in-review uploaded document to draft after a file update', async () => {
+    const { service, db } = fixture('author');
+    db.documentReview.findUnique.mockResolvedValue({
+      id: 4,
+      documentId: 1,
+      status: 'IN_REVIEW',
+      reviewerId: 'reviewer',
+      reviewerName: 'Revisor',
+      submittedAt: new Date('2026-10-01T10:00:00Z'),
+      reviewedAt: null,
+      reviewedById: null,
+      reviewedByName: null,
+      observation: null,
+    });
+
+    await service.replaceFile(
+      1,
+      { path: '/incoming/a.txt', originalname: 'a.txt', mimetype: 'text/plain', size: 2 } as any,
+      'author',
+      UserRole.USER,
+    );
+
+    expect(db.documentReview.update).toHaveBeenCalledWith({
+      where: { documentId: 1 },
+      data: expect.objectContaining({
+        status: 'DRAFT',
+        submittedAt: null,
+        reviewedAt: null,
+        reviewedById: null,
+        reviewedByName: null,
+        observation: null,
+      }),
+    });
+    expect(db.documentReviewEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'UPDATED',
+        fromStatus: 'IN_REVIEW',
+        toStatus: 'DRAFT',
+      }),
+    });
+    expect(db.notification.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        userId: 'reviewer',
+        type: 'DOCUMENT_UPDATED',
+        documentId: 1,
+      }),
+    });
+  });
 });
 
 describe('version retention API', () => {
@@ -402,6 +453,12 @@ describe('DocumentService', () => {
               create: jest.fn(),
               findMany: jest.fn().mockResolvedValue([]),
             },
+            documentReview: {
+              findUnique: jest.fn().mockResolvedValue(null),
+              update: jest.fn(),
+            },
+            documentReviewEvent: { create: jest.fn() },
+            notification: { create: jest.fn() },
             workflowApproval: {
               findFirst: jest.fn().mockResolvedValue(null),
               findMany: jest.fn().mockResolvedValue([]),
@@ -1603,6 +1660,7 @@ describe('DocumentService', () => {
         expect.objectContaining({
           include: expect.objectContaining({
             academic: true,
+            authoring: expect.any(Object),
             search: true,
             templateData: expect.any(Object),
             versions: expect.any(Object),
@@ -1871,7 +1929,8 @@ describe('DocumentService', () => {
       expect(prisma.document.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           include: expect.objectContaining({
-            academic: true,
+            academic: expect.any(Object),
+            authoring: expect.any(Object),
             search: true,
             templateData: expect.any(Object),
             versions: expect.any(Object),
@@ -3268,6 +3327,9 @@ describe('document lifecycle audit trail', () => {
         findMany: jest.fn().mockResolvedValue([]),
       },
       documentAccess: { create: jest.fn() },
+      documentReview: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+      documentReviewEvent: { create: jest.fn() },
+      notification: { create: jest.fn() },
       documentPermission: { findMany: jest.fn().mockResolvedValue([]) },
       directory: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -3599,7 +3661,11 @@ describe('ordinary inherited mutation boundaries', () => {
       user: { findUnique: jest.fn(async ({ where }) => ({ id: where.id, role: UserRole.USER })), findMany: jest.fn().mockResolvedValue([{ id: 'owner', name: 'Owner' }]) },
       documentWorkflow: { findFirst: jest.fn().mockResolvedValue(null) }, workflowApproval: { findFirst: jest.fn().mockResolvedValue(null) },
       documentVersion: { update: jest.fn(), create: jest.fn(async ({ data }) => ({ id: 11, ...data })) },
-      documentAccess: { create: jest.fn() }, $queryRaw: jest.fn(),
+      documentAccess: { create: jest.fn() },
+      documentReview: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+      documentReviewEvent: { create: jest.fn() },
+      notification: { create: jest.fn() },
+      $queryRaw: jest.fn(),
     };
     db.$transaction = jest.fn(cb => cb(db));
     const storage: any = { generateStructuredPath: jest.fn().mockReturnValue({ path: '/ordinary/new.txt' }), copyFile: jest.fn(),
@@ -3702,4 +3768,5 @@ describe('transaction-aware correction promotion', () => {
     await expect(service.promoteChangeRequestCorrection(tx, 8, 'owner', jest.fn())).rejects.toThrow('pendiente');
     expect(storage.copyFile).not.toHaveBeenCalled();
   });
+
 });

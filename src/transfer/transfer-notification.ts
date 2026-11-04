@@ -16,6 +16,9 @@ export async function notifyTransferRequested(
     fromName: string;
     toUserId: string;
     comment: string | null;
+    actorId?: string | null;
+    actorName?: string | null;
+    actorRole?: string | null;
   },
 ): Promise<void> {
   await db.notification.create({
@@ -26,6 +29,9 @@ export async function notifyTransferRequested(
       message: `${input.fromName} te propone recibir "${input.documentName}"${input.comment ? `\n${input.comment}` : ''}`,
       documentId: input.documentId,
       actionUrl: '/dashboard/transfers/received',
+      actorId: input.actorId ?? null,
+      actorName: input.actorName ?? null,
+      actorRole: input.actorRole ?? null,
     },
   });
 }
@@ -37,6 +43,9 @@ export async function notifyTransferCompleted(
     documentName: string;
     fromUserId: string;
     toName: string;
+    actorId?: string | null;
+    actorName?: string | null;
+    actorRole?: string | null;
   },
 ): Promise<void> {
   await db.notification.create({
@@ -47,6 +56,9 @@ export async function notifyTransferCompleted(
       message: `"${input.documentName}" fue transferido a ${input.toName}`,
       documentId: input.documentId,
       actionUrl: `/dashboard/documents/${input.documentId}`,
+      actorId: input.actorId ?? null,
+      actorName: input.actorName ?? null,
+      actorRole: input.actorRole ?? null,
     },
   });
 }
@@ -58,6 +70,9 @@ export async function notifyTransferCanceled(
     documentName: string;
     userIds: string[];
     canceledByRecipient: boolean;
+    actorId?: string | null;
+    actorName?: string | null;
+    actorRole?: string | null;
   },
 ): Promise<void> {
   const message = input.canceledByRecipient
@@ -73,6 +88,9 @@ export async function notifyTransferCanceled(
         message,
         documentId: input.documentId,
         actionUrl: '/dashboard/transfers/sent',
+        actorId: input.actorId ?? null,
+        actorName: input.actorName ?? null,
+        actorRole: input.actorRole ?? null,
       },
     });
   }
@@ -85,6 +103,9 @@ export async function notifyTransferBatchRequested(
     toUserId: string;
     documentCount: number;
     comment: string | null;
+    actorId?: string | null;
+    actorName?: string | null;
+    actorRole?: string | null;
   },
 ): Promise<void> {
   await db.notification.create({
@@ -95,6 +116,9 @@ export async function notifyTransferBatchRequested(
       message: `${input.fromName} te propone recibir ${input.documentCount} documento(s)${input.comment ? `\n${input.comment}` : ''}`,
       documentId: null,
       actionUrl: '/dashboard/transfers/received',
+      actorId: input.actorId ?? null,
+      actorName: input.actorName ?? null,
+      actorRole: input.actorRole ?? null,
     },
   });
 }
@@ -106,6 +130,9 @@ export async function notifyTransferBatchCompleted(
     documentCount: number;
     acceptedCount: number;
     failedCount: number;
+    actorId?: string | null;
+    actorName?: string | null;
+    actorRole?: string | null;
   },
 ): Promise<void> {
   await db.notification.create({
@@ -116,6 +143,9 @@ export async function notifyTransferBatchCompleted(
       message: `${input.acceptedCount} de ${input.documentCount} documento(s) fueron transferidos${input.failedCount ? `; ${input.failedCount} quedaron pendientes` : ''}`,
       documentId: null,
       actionUrl: '/dashboard/transfers/sent',
+      actorId: input.actorId ?? null,
+      actorName: input.actorName ?? null,
+      actorRole: input.actorRole ?? null,
     },
   });
 }
@@ -126,6 +156,9 @@ export async function notifyTransferBatchCanceled(
     documentCount: number;
     userIds: string[];
     canceledByRecipient: boolean;
+    actorId?: string | null;
+    actorName?: string | null;
+    actorRole?: string | null;
   },
 ): Promise<void> {
   const message = input.canceledByRecipient
@@ -140,6 +173,9 @@ export async function notifyTransferBatchCanceled(
         message,
         documentId: null,
         actionUrl: '/dashboard/transfers/sent',
+        actorId: input.actorId ?? null,
+        actorName: input.actorName ?? null,
+        actorRole: input.actorRole ?? null,
       },
     });
   }
