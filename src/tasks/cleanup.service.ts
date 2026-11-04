@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { SettingsService } from '../settings/settings.service';
+import { AuthoringAssetService } from '../authoring/authoring-asset.service';
 import { readdirSync, statSync, unlinkSync, existsSync } from 'fs';
 import { join } from 'path';
 import { canUnlinkVersionBlob, DAY_MS, getVersionRetention, retentionEvidenceInclude } from '../document/document-version-retention';
@@ -16,6 +17,7 @@ export class CleanupService implements OnModuleInit {
     private prisma: PrismaService,
     private storage: StorageService,
     private settingsService: SettingsService,
+    private authoringAssets: AuthoringAssetService,
   ) {}
 
   onModuleInit() {
@@ -58,6 +60,28 @@ export class CleanupService implements OnModuleInit {
     } catch (error) {
       this.logger.error(
         `❌ Error en limpieza de archivos temporales: ${error.message}`,
+      );
+    }
+  }
+
+  /**
+   * Elimina imágenes de plantilla no referenciadas por plantillas,
+   * documentos o snapshots. Conserva archivos recientes para no borrar
+   * subidas que aún no se han guardado.
+   * Ejecuta diariamente a las 3:30 AM.
+   */
+  @Cron('30 3 * * *')
+  async cleanAuthoringAssets() {
+    if (!this.isReady) return;
+    this.logger.log('🧹 Iniciando limpieza de imágenes de plantilla...');
+    try {
+      const result = await this.authoringAssets.cleanupOrphans();
+      this.logger.log(
+        `✅ Imágenes de plantilla: ${result.scanned} revisadas, ${result.deleted} eliminadas, ${result.kept} conservadas`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `❌ Error en limpieza de imágenes de plantilla: ${error.message}`,
       );
     }
   }
