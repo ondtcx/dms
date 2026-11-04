@@ -10,15 +10,22 @@ import {
   Query,
   Res,
   StreamableFile,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
+import { memoryStorage } from 'multer';
 import type { Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { RequirePermission } from '../auth/decorators/permission.decorator';
+import { AuthoringAssetService } from './authoring-asset.service';
 import { AuthoringDocumentService } from './authoring-document.service';
 import { AuthoringTemplateService } from './authoring-template.service';
 import {
@@ -54,6 +61,7 @@ export class AuthoringController {
   constructor(
     private readonly templates: AuthoringTemplateService,
     private readonly documents: AuthoringDocumentService,
+    private readonly assets: AuthoringAssetService,
   ) {}
 
   @Get('templates')
@@ -66,6 +74,35 @@ export class AuthoringController {
   @ApiOperation({ summary: 'Consultar una plantilla de elaboración' })
   getTemplate(@Param('id', ParseIntPipe) id: number) {
     return this.templates.get(id);
+  }
+
+  @Post('assets')
+  @RequirePermission('authoring.templates.design')
+  @ApiOperation({ summary: 'Subir una imagen o SVG para una plantilla' })
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', format: 'binary' } },
+    },
+  })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: memoryStorage(),
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.match(/^image\/(jpeg|png|gif|webp|svg\+xml)$/)) {
+          return cb(
+            new Error('Solo se permiten imágenes PNG, JPEG, GIF, WEBP o SVG'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
+  uploadAsset(@UploadedFile() file: Express.Multer.File) {
+    return this.assets.store(file);
   }
 
   @Post('templates')
