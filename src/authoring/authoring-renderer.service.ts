@@ -5,6 +5,7 @@ import { DocumentGeneratorService } from '../document-template/document-generato
 import type { AuthoringField } from './authoring.types';
 import { getByPath, normalizeFields, ROLE_LABELS } from './authoring-fields';
 import { fullPageFlowFrame, fullPageFrameHtml } from './page-frame-html';
+import { resolveFrameAssets, resolveLocalAssets } from './authoring-asset.util';
 import { renderTiptapDoc } from './tiptap-renderer';
 import {
   buildInstitutionContext,
@@ -242,11 +243,12 @@ export class AuthoringRendererService {
       `</div>`;
 
     if (template.pageFrame?.mode === 'fullPage') {
-      const hasBoxes = (template.pageFrame?.body?.boxes ?? []).length > 0;
+      const frame = resolveFrameAssets(template.pageFrame);
+      const hasBoxes = (frame?.body?.boxes ?? []).length > 0;
       const frameHtml = hasBoxes
-        ? fullPageFrameHtml(template.pageFrame)
-        : template.bodyHtml;
-      const hasRichTextBody = (template.pageFrame?.body?.boxes ?? []).some(
+        ? fullPageFrameHtml(frame)
+        : resolveLocalAssets(template.bodyHtml);
+      const hasRichTextBody = (frame?.body?.boxes ?? []).some(
         (box: any) => box.type === 'richText',
       );
       if (hasBoxes && hasRichTextBody) {
@@ -256,7 +258,7 @@ export class AuthoringRendererService {
           selector: '.richtext',
         });
         if (metrics && metrics.scrollHeight > metrics.clientHeight + 1) {
-          const flow = fullPageFlowFrame(template.pageFrame);
+          const flow = fullPageFlowFrame(frame);
           const headerTemplate =
             this.compilePageFragment(flow.headerTemplate, context) ??
             '<div></div>';
@@ -283,7 +285,9 @@ export class AuthoringRendererService {
       }
       return this.generator.generatePDF({
         htmlTemplate: frameHtml,
-        styles: hasBoxes ? undefined : template.styles ?? undefined,
+        styles: hasBoxes
+          ? undefined
+          : resolveLocalAssets(template.styles ?? '') || undefined,
         data: context,
         pageSize: (template.pageSize as any) || 'Letter',
         orientation: (template.orientation as any) || 'portrait',
@@ -293,13 +297,24 @@ export class AuthoringRendererService {
       });
     }
 
-    const headerTemplate = this.compilePageFragment(template.headerHtml, context);
-    const customFooter = this.compilePageFragment(template.footerHtml, context);
+    const headerTemplate = this.compilePageFragment(
+      template.headerHtml
+        ? resolveLocalAssets(template.headerHtml)
+        : template.headerHtml,
+      context,
+    );
+    const customFooter = this.compilePageFragment(
+      template.footerHtml
+        ? resolveLocalAssets(template.footerHtml)
+        : template.footerHtml,
+      context,
+    );
     const footerTemplate = customFooter ?? defaultFooter;
 
     return this.generator.generatePDF({
-      htmlTemplate: this.bodyHtmlForRender(template),
-      styles: this.stylesForRender(template),
+      htmlTemplate: resolveLocalAssets(this.bodyHtmlForRender(template)),
+      styles:
+        resolveLocalAssets(this.stylesForRender(template) ?? '') || undefined,
       data: context,
       pageSize: (template.pageSize as any) || 'A4',
       orientation: (template.orientation as any) || 'portrait',

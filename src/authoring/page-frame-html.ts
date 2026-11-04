@@ -114,7 +114,9 @@ function textBox(box: any, position: 'absolute' | 'fixed' = 'absolute'): string 
 }
 
 function imageBox(box: any, position: 'absolute' | 'fixed' = 'absolute'): string {
-  return `<img class="flow-fixed" src="${box.content}" style="position:${position};left:${box.x}pt;top:${box.y}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:contain;" />`;
+  const fit = box.fit === 'cover' ? 'cover' : 'contain';
+  const objectPosition = box.objectPosition ?? 'center';
+  return `<img class="flow-fixed" src="${box.content}" style="position:${position};left:${box.x}pt;top:${box.y}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};" />`;
 }
 
 function richTextBox(box: any): string {
@@ -171,7 +173,9 @@ function backgroundCrop(background: string, y: number, height: number): string {
 
 function flowBoxAt(box: any, top: number, position: 'absolute' | 'fixed' = 'absolute'): string {
   if (box.type === 'image') {
-    return `<img src="${box.content}" style="position:${position};left:${box.x}pt;top:${top}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:contain;" />`;
+    const fit = box.fit === 'cover' ? 'cover' : 'contain';
+    const objectPosition = box.objectPosition ?? 'center';
+    return `<img src="${box.content}" style="position:${position};left:${box.x}pt;top:${top}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};" />`;
   }
   const target = Number(box.width) > 0 && !box.center ? ` data-target-width="${box.width}"` : '';
   const content =

@@ -256,6 +256,12 @@ export function normalizeDocumentPageFrame(
         : 'left',
       center: Boolean(box.center),
       raw: Boolean(box.raw),
+      fit: box.fit === 'cover' ? 'cover' : 'contain',
+      objectPosition: ['center', 'top', 'bottom', 'left', 'right'].includes(
+        box.objectPosition,
+      )
+        ? box.objectPosition
+        : 'center',
       content,
     };
   });

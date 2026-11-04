@@ -291,7 +291,9 @@ export const ACTA_BODY_HTML = `<div class="doc">
 
 function frameBoxToHtml(box: any): string {
   if (box.type === 'image') {
-    const image = `<img src="${box.content}" style="position:absolute;left:${box.x}pt;top:${box.y}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:contain;" />`;
+    const fit = box.fit === 'cover' ? 'cover' : 'contain';
+    const objectPosition = box.objectPosition ?? 'center';
+    const image = `<img src="${box.content}" style="position:absolute;left:${box.x}pt;top:${box.y}pt;width:${box.width}pt;height:${box.height ?? 50}pt;object-fit:${fit};object-position:${objectPosition};" />`;
     return box.content === '{{institucion.logo}}'
       ? `{{#if institucion.logo}}${image}{{/if}}`
       : image;
