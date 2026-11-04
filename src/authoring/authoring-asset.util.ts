@@ -28,10 +28,49 @@ export function mimeForExtension(extension: string): string | null {
   return MIME_BY_EXT[extension.toLowerCase()] ?? null;
 }
 
+function decodeEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) =>
+      String.fromCodePoint(parseInt(hex, 16)),
+    )
+    .replace(/&#(\d+);/g, (_match, dec: string) =>
+      String.fromCodePoint(Number(dec)),
+    )
+    .replace(/&colon;/gi, ':')
+    .replace(/&sol;/gi, '/')
+    .replace(/&period;/gi, '.');
+}
+
 export function isSafeSvg(content: string): boolean {
-  return !/<script\b|<foreignObject\b|\bon\w+\s*=|\b(?:href|xlink:href)\s*=\s*["']?(?:https?:|javascript:)|@import\b|url\(\s*["']?(?:https?:|javascript:)/i.test(
-    content,
-  );
+  const normalized = decodeEntities(content);
+  if (
+    /<script\b|<foreignObject\b|\bon\w+\s*=|@import\b|url\(\s*["']?\s*(?:\/\/|https?:|javascript:)/i.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+
+  const hrefPattern =
+    /(?:href|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi;
+  let hrefMatch: RegExpExecArray | null;
+  while ((hrefMatch = hrefPattern.exec(normalized))) {
+    const value = (hrefMatch[1] ?? hrefMatch[2] ?? hrefMatch[3] ?? '').trim();
+    if (!value.startsWith('#') && !value.startsWith('data:')) {
+      return false;
+    }
+  }
+
+  const urlPattern = /url\(\s*["']?([^"')]+)["']?\s*\)/gi;
+  let urlMatch: RegExpExecArray | null;
+  while ((urlMatch = urlPattern.exec(normalized))) {
+    const value = (urlMatch[1] ?? '').trim();
+    if (!value.startsWith('#') && !value.startsWith('data:')) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 export function localFilePath(url: string): string | null {
@@ -50,7 +89,7 @@ export function dataUriForLocalFile(url: string): string | null {
   return `data:${mime};base64,${readFileSync(filePath).toString('base64')}`;
 }
 
-const FILE_URL_PATTERN = /(?<=^|["'(=\s])\/files\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+/g;
+const FILE_URL_PATTERN = /(?<=^|["'(=\s])\/files\/[A-Za-z0-9._~!$&*+,;=:@%/-]+/g;
 
 export function resolveLocalAssets(html: string): string {
   if (!html) return html;

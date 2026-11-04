@@ -66,6 +66,18 @@ describe('authoring asset utilities', () => {
       isSafeSvg('<svg><style>@import url("https://example.com/a.css");</style></svg>'),
     ).toBe(false);
     expect(
+      isSafeSvg('<svg><image href="//evil.example/a.png"/></svg>'),
+    ).toBe(false);
+    expect(
+      isSafeSvg('<svg><image href="https&#58;//evil.example/a.png"/></svg>'),
+    ).toBe(false);
+    expect(
+      isSafeSvg('<svg><style>rect{fill:url(//evil.example/a)}</style></svg>'),
+    ).toBe(false);
+    expect(
+      isSafeSvg('<svg><image href="data:image/png;base64,abc"/></svg>'),
+    ).toBe(true);
+    expect(
       isSafeSvg('<svg><use href="#icon" /></svg>'),
     ).toBe(true);
   });
@@ -82,6 +94,15 @@ describe('authoring asset utilities', () => {
     );
     expect(resolved).toContain('data:image/png;base64,');
     expect(resolved).not.toContain(FIXTURE_URL);
+  });
+
+  it('resolves single-quoted HTML and unquoted CSS URLs', () => {
+    expect(resolveLocalAssets(`<img src='${FIXTURE_URL}'>`)).toContain(
+      'data:image/png;base64,',
+    );
+    expect(resolveLocalAssets(`background:url(${FIXTURE_URL})`)).toContain(
+      'data:image/png;base64,',
+    );
   });
 
   it('resolves image boxes and backgrounds in a page frame', () => {
