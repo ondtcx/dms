@@ -180,7 +180,18 @@ function renderNode(node: TiptapNode): string {
       const src = String(node.attrs?.src ?? '');
       if (!src) return '';
       const alt = escapeHtml(String(node.attrs?.alt ?? ''));
-      return `<img src="${escapeHtml(src)}" alt="${alt}" style="max-width:100%;height:auto;" />`;
+      const rawWidth = Number(node.attrs?.width ?? 100);
+      const width = Number.isFinite(rawWidth)
+        ? Math.min(100, Math.max(10, rawWidth))
+        : 100;
+      const rawAlign = String(node.attrs?.align ?? 'center');
+      const align = ['left', 'center', 'right'].includes(rawAlign)
+        ? rawAlign
+        : 'center';
+      const style = `width:${width}%;max-width:100%;height:auto;display:block;margin-left:${
+        align === 'left' ? '0' : 'auto'
+      };margin-right:${align === 'right' ? '0' : 'auto'};`;
+      return `<img src="${escapeHtml(src)}" alt="${alt}" style="${style}" />`;
     }
     default:
       return children;

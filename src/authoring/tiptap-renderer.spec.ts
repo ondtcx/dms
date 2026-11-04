@@ -71,6 +71,24 @@ describe('tiptap renderer', () => {
     expect(html).toContain(
       '<img src="/files/active/authoring/assets/a.png" alt="A"',
     );
+    expect(html).toContain('width:100%');
+    expect(html).toContain('margin-left:auto');
+
+    const aligned = renderTiptapDoc(
+      doc([
+        {
+          type: 'templateImage',
+          attrs: {
+            src: '/files/active/authoring/assets/a.png',
+            alt: 'A',
+            width: 50,
+            align: 'left',
+          },
+        },
+      ]),
+    );
+    expect(aligned).toContain('width:50%');
+    expect(aligned).toContain('margin-left:0');
     expect(() =>
       validateTiptapDoc(
         doc([
