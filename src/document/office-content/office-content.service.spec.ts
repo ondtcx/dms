@@ -7,6 +7,7 @@ import PizZip from 'pizzip';
 import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import ExcelJS from 'exceljs';
 import puppeteer from 'puppeteer';
 import sharp from 'sharp';
@@ -20,10 +21,7 @@ import { execFile, spawn } from 'node:child_process';
 describe('OfficeContentService', () => {
   it('uses the dedicated DOCX renderer and enforces its PDF output bound', async () => {
     const workspace = await mkdtemp(
-      join(
-        'C:\\Users\\diego\\AppData\\Local\\Temp\\opencode',
-        'office-routing-',
-      ),
+      join(tmpdir(), 'office-routing-'),
     );
     const zip = new PizZip();
     zip.file('word/document.xml', '<document/>');
@@ -138,10 +136,7 @@ describe('OfficeContentService', () => {
 
   it('rejects corrupt file contents, releases the conversion slot and never renders', async () => {
     const workspace = await mkdtemp(
-      join(
-        'C:\\Users\\diego\\AppData\\Local\\Temp\\opencode',
-        'office-corrupt-',
-      ),
+      join(tmpdir(), 'office-corrupt-'),
     );
     const path = join(workspace, 'corrupt.docx');
     await writeFile(path, 'not a ZIP');
@@ -315,10 +310,7 @@ const chromiumAvailable = existsSync(
       'renders actual %s content into PDF and first-page JPEG',
       async (kind) => {
         const workspace = await mkdtemp(
-          join(
-            'C:\\Users\\diego\\AppData\\Local\\Temp\\opencode',
-            'office-smoke-',
-          ),
+          join(tmpdir(), 'office-smoke-'),
         );
         const marker =
           kind === 'docx' ? 'SYNTHETIC DOCX CONTENT' : 'SYNTHETIC XLSX CONTENT';

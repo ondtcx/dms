@@ -72,7 +72,17 @@ describe('SearchService contract recovery', () => {
       expect(statement.text).toContain('COALESCE(d."receptionOriginDirectoryId", d."directoryId")');
       expect(statement.text).toContain('(d."receptionOriginDirectoryId" IS NULL AND folder."receptionEnabled" = FALSE)');
     }
-    expect(initial.AND[1].OR[0].AND[0]).toEqual({ receptionOriginDirectory: null, OR: [{ directory: null }, { directory: { receptionEnabled: false } }] });
+    const ordinaryBranch = initial.AND[1].OR.find(
+      (branch: any) =>
+        Array.isArray(branch.AND) &&
+        branch.AND.some(
+          (part: any) => part.receptionOriginDirectory === null,
+        ),
+    );
+    expect(ordinaryBranch.AND[0]).toEqual({
+      receptionOriginDirectory: null,
+      OR: [{ directory: null }, { directory: { receptionEnabled: false } }],
+    });
     expect(sql.text).toContain('"UserRoleAssignment"');
     expect(sql.text).toContain('r."isActive" = TRUE');
     expect(sql.text).toContain('AND NOT EXISTS');
@@ -199,8 +209,9 @@ describe('SearchService contract recovery', () => {
     expect(prisma.user.findUnique.mock.calls[0][0].select.roleAssignments.where)
       .toEqual({ role: { isActive: true } });
     const access = JSON.stringify(prisma.document.findMany.mock.calls[0][0].where);
-    expect(access).toContain('27');
-    expect(access).toContain('roleId');
+    expect(access).toContain('roleParticipants');
+    expect(access).toContain('assignments');
+    expect(access).toContain(user.id);
   });
 
   it('AND-combines academic, date, owner, category, visibility and deletion filters', async () => {

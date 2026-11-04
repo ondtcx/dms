@@ -107,7 +107,7 @@ describe('effective document access list', () => {
       db.user.findMany.mockResolvedValue([{ ...users[0], role }]);
       await service.getEffectiveAccess(2, 'admin');
       const where = db.document.findFirst.mock.calls[0][0].where;
-      expect(where.OR).toHaveLength(3);
+      expect(where.OR).toHaveLength(4);
       expect(where.OR[2]).toHaveProperty('OR');
       if (role !== UserRole.ADMIN && role !== UserRole.RECTOR) {
         const ordinary = where.OR[0].AND[1].OR;

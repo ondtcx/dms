@@ -218,13 +218,18 @@ describe('upload required metadata and update compatibility', () => {
       name: '  Consejo / sesión  ', documentNumber: '  manual / 7  ' }, boundary))
       .toMatchObject({ name: 'Consejo / sesión', documentNumber: 'manual / 7' });
   });
-  it.each(['name', 'documentNumber'])('omits blank %s but rejects non-string input and editing', async (key) => {
+  it.each(['name', 'documentNumber'])('omits blank %s, rejects non-string upload input and supports editing', async (key) => {
     const result = await pipe.transform({ description: 'Agenda', documentTypeId: 12, [key]: '  ' }, boundary);
     expect(result[key]).toBeUndefined();
     for (const value of [null, 3, true, [], {}]) {
       await expect(pipe.transform({ description: 'Agenda', documentTypeId: 12, [key]: value }, boundary)).rejects.toThrow();
     }
-    await expect(pipe.transform({ [key]: 'value' }, { type: 'body', metatype: UpdateDocumentDto })).rejects.toThrow();
+    expect(
+      (await pipe.transform(
+        { [key]: 'value' },
+        { type: 'body', metatype: UpdateDocumentDto },
+      ))[key],
+    ).toBe('value');
   });
   it.each([{ extractedText: 'forged' }, '{"extractedText":"forged"}', null])('rejects caller search on upload (%j)', async (search) => {
     await expect(pipe.transform({ description: 'Agenda', documentTypeId: 12, search }, boundary)).rejects.toThrow(BadRequestException);

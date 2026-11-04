@@ -17,7 +17,7 @@ import { QueryDocumentTemplateDto } from './dto/query-document-template.dto';
 import { CreateDocumentFromTemplateDto } from './dto/create-document-from-template.dto';
 import { UpdateDocumentFromTemplateDto } from './dto/update-document-from-template.dto';
 import { CreateBatchFromTemplateDto } from './dto/create-batch-from-template.dto';
-import { sharingManagerSelect, assertSharingManager, assertSharingDocumentAvailable } from '../auth/utils/document-sharing.policy';
+import { sharingManagerSelect, isSharingAdmin, assertSharingManager, assertSharingDocumentAvailable } from '../auth/utils/document-sharing.policy';
 import { UserRole } from '../auth/role.enum';
 import { Prisma, WorkflowStatus } from '@prisma/client';
 import { randomUUID } from 'crypto';
@@ -1066,7 +1066,12 @@ export class DocumentTemplateService {
       throw new ForbiddenException('No tienes permiso para editar este documento');
     if (dto.isPublic !== undefined && dto.isPublic !== document.isPublic) {
       const manager = await db.user.findUnique({ where: { id: userId }, select: sharingManagerSelect });
-      assertSharingManager(document, manager);
+      const ordinaryAdmin =
+        isSharingAdmin(manager) &&
+        !reception &&
+        document.receptionOriginDirectoryId == null &&
+        !document.directory?.receptionEnabled;
+      if (!ordinaryAdmin) assertSharingManager(document, manager);
     }
     if (!reception) return;
     const workflow = await db.documentWorkflow.findFirst({ where: {
