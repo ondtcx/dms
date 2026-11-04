@@ -105,17 +105,21 @@ export class AuthoringAssetService {
       throw new BadRequestException('No se pudo leer la imagen');
     }
 
-    if (payload.x >= sourceWidth || payload.y >= sourceHeight) {
+    if (
+      payload.x < 0 ||
+      payload.y < 0 ||
+      payload.width < 1 ||
+      payload.height < 1 ||
+      payload.x + payload.width > sourceWidth ||
+      payload.y + payload.height > sourceHeight
+    ) {
       throw new BadRequestException('El recorte está fuera de la imagen');
     }
 
     const x = payload.x;
     const y = payload.y;
-    const width = Math.min(payload.width, sourceWidth - x);
-    const height = Math.min(payload.height, sourceHeight - y);
-    if (width < 1 || height < 1) {
-      throw new BadRequestException('El recorte no es válido');
-    }
+    const width = payload.width;
+    const height = payload.height;
 
     const buffer = await sharp(filePath)
       .extract({ left: x, top: y, width, height })
@@ -148,7 +152,7 @@ export class AuthoringAssetService {
         select: { pageFrame: true },
       }),
       this.prisma.documentContentVersion.findMany({
-        select: { htmlSnapshot: true, pageFrame: true },
+        select: { formData: true, htmlSnapshot: true, pageFrame: true },
       }),
     ]);
 

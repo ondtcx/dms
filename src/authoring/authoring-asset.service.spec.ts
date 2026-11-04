@@ -15,10 +15,12 @@ const SOURCE_NAME = 'spec-crop-source.png';
 const REFERENCED_NAME = 'spec-cleanup-referenced.png';
 const ORPHAN_NAME = 'spec-cleanup-orphan.png';
 const FRESH_NAME = 'spec-cleanup-fresh.png';
+const SNAPSHOT_NAME = 'spec-cleanup-snapshot.png';
 const SOURCE_URL = `/files/active/authoring/assets/${SOURCE_NAME}`;
+const SNAPSHOT_URL = `/files/active/authoring/assets/${SNAPSHOT_NAME}`;
 const created: string[] = [];
 
-function mockPrisma(referenced: string) {
+function mockPrisma(referenced: string, snapshot?: string) {
   return {
     documentTemplateVersion: {
       findMany: jest.fn().mockResolvedValue([
@@ -34,7 +36,19 @@ function mockPrisma(referenced: string) {
       ]),
     },
     documentAuthoring: { findMany: jest.fn().mockResolvedValue([]) },
-    documentContentVersion: { findMany: jest.fn().mockResolvedValue([]) },
+    documentContentVersion: {
+      findMany: jest.fn().mockResolvedValue(
+        snapshot
+          ? [
+              {
+                formData: { image: { src: `/files/active/authoring/assets/${snapshot}` } },
+                htmlSnapshot: '',
+                pageFrame: null,
+              },
+            ]
+          : [],
+      ),
+    },
   } as any;
 }
 
@@ -84,6 +98,26 @@ describe('AuthoringAssetService', () => {
     expect(metadata.height).toBe(2);
   });
 
+  it('rejects a crop that exceeds the image bounds', async () => {
+    const source = await sharp({
+      create: {
+        width: 4,
+        height: 4,
+        channels: 4,
+        background: { r: 0, g: 255, b: 0, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+    writeFileSync(join(ASSET_DIR, SOURCE_NAME), source);
+    created.push(SOURCE_NAME);
+
+    const service = new AuthoringAssetService(mockPrisma(REFERENCED_NAME));
+    await expect(
+      service.crop({ url: SOURCE_URL, x: 2, y: 0, width: 4, height: 2 }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
   it('rejects crops outside the image bounds', async () => {
     const source = await sharp({
       create: {
@@ -108,18 +142,23 @@ describe('AuthoringAssetService', () => {
     writeFileSync(join(ASSET_DIR, REFERENCED_NAME), 'referenced');
     writeFileSync(join(ASSET_DIR, ORPHAN_NAME), 'orphan');
     writeFileSync(join(ASSET_DIR, FRESH_NAME), 'fresh');
-    created.push(REFERENCED_NAME, ORPHAN_NAME, FRESH_NAME);
+    writeFileSync(join(ASSET_DIR, SNAPSHOT_NAME), 'snapshot');
+    created.push(REFERENCED_NAME, ORPHAN_NAME, FRESH_NAME, SNAPSHOT_NAME);
 
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
     utimesSync(join(ASSET_DIR, REFERENCED_NAME), twoDaysAgo, twoDaysAgo);
     utimesSync(join(ASSET_DIR, ORPHAN_NAME), twoDaysAgo, twoDaysAgo);
+    utimesSync(join(ASSET_DIR, SNAPSHOT_NAME), twoDaysAgo, twoDaysAgo);
 
-    const service = new AuthoringAssetService(mockPrisma(REFERENCED_NAME));
+    const service = new AuthoringAssetService(
+      mockPrisma(REFERENCED_NAME, SNAPSHOT_NAME),
+    );
     const result = await service.cleanupOrphans();
 
     expect(result.deleted).toBe(1);
     expect(existsSync(join(ASSET_DIR, REFERENCED_NAME))).toBe(true);
     expect(existsSync(join(ASSET_DIR, ORPHAN_NAME))).toBe(false);
     expect(existsSync(join(ASSET_DIR, FRESH_NAME))).toBe(true);
+    expect(existsSync(join(ASSET_DIR, SNAPSHOT_NAME))).toBe(true);
   });
 });
