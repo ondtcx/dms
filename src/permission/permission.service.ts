@@ -19,13 +19,17 @@ import { validateSync } from 'class-validator';
 import { ManageDocumentSharingDto, DocumentVisibilityDto, LegacyDocumentShareDto } from './dto/manage-document-sharing.dto';
 import { SearchSharingRecipientsDto } from './dto/search-sharing-recipients.dto';
 import { sharingManagerSelect, assertSharingDocumentAvailable } from '../auth/utils/document-sharing.policy';
-import { Prisma, WorkflowStatus } from '@prisma/client';
+import { AuditAction, AuditResource, Prisma, WorkflowStatus } from '@prisma/client';
 import { requireResourceAccess, grantResourceAccess, revokeResourceGrant, resourceSharing } from '../directory/inherited-access.policy';
 import { notifySharingGrant } from '../notification/sharing-notification';
+import { AuditService } from '../audit/audit.service';
 
 @Injectable()
 export class PermissionService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private readonly audit?: AuditService,
+  ) {}
 
   getCatalog(): Promise<PermissionCatalogItemDto[]> {
     return this.prisma.permission.findMany({
@@ -97,6 +101,21 @@ export class PermissionService {
         ? await tx.accessGrant.findFirst({ where: { documentId, userId: dto.userId, grantedById: actorId, revokedAt: null } })
         : await tx.accessGrant.findUnique({ where: { id: grantId } });
       const grant = await grantResourceAccess(tx, document, actorId, 'document', grantInput, grantId);
+      await this.audit?.record(
+        {
+          action: AuditAction.SHARE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: {
+            userId: dto.userId,
+            canEdit: grantInput.canEdit === true,
+            canUploadVersion: grantInput.canUploadVersion === true,
+            canShare: grantInput.canShare === true,
+          },
+        },
+        tx,
+      );
       await notifySharingGrant(tx, 'document', document, dto.userId, previous, grant, comment);
       return grant;
     });
@@ -108,6 +127,16 @@ export class PermissionService {
       if (recipientId === actorId || recipientId === document.uploadedById) throw new BadRequestException('Destinatario inválido');
       const owner = document.uploadedById === actorId;
       await tx.accessGrant.updateMany({ where: { documentId, userId: recipientId, revokedAt: null, ...(!owner ? { grantedById: actorId } : {}) }, data: { revokedAt: new Date() } });
+      await this.audit?.record(
+        {
+          action: AuditAction.REVOKE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: { userId: recipientId },
+        },
+        tx,
+      );
       if (!owner) return { revoked: true, independentAccessMayRemain: true };
       await tx.documentPermission.updateMany({ where: { documentId, userId: recipientId, role: null, roleId: null }, data: { canView: false } });
       await tx.documentPermission.updateMany({ where: { documentId, userId: recipientId, OR: [{ role: { not: null } }, { roleId: { not: null } }] }, data: { userId: null } });
@@ -181,7 +210,20 @@ export class PermissionService {
   }
 
   async revokeSharingGrant(documentId: number, grantId: number, actorId: string) {
-    return this.sharingWrite(documentId, actorId, (tx, document) => revokeResourceGrant(tx, document, actorId, 'document', grantId));
+    return this.sharingWrite(documentId, actorId, async (tx, document) => {
+      const result = await revokeResourceGrant(tx, document, actorId, 'document', grantId);
+      await this.audit?.record(
+        {
+          action: AuditAction.REVOKE,
+          resource: AuditResource.DOCUMENT,
+          resourceId: String(documentId),
+          documentId,
+          metadata: { grantId },
+        },
+        tx,
+      );
+      return result;
+    });
   }
 
   async explainPermission(dto: ExplainPermissionDto, actorId: string) {

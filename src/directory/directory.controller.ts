@@ -28,7 +28,7 @@ export class DirectoryController {
   @Get('accessible')
   @ApiOperation({ summary: 'Listar directorios accesibles con paginación' })
   getAccessible(@Query() query: AccessibleDirectoryQueryDto, @CurrentUser() user: any) {
-    return this.directoryService.getAccessibleDirectories(query.page, query.limit, user);
+    return this.directoryService.getAccessibleDirectories(query.page, query.limit, user, query.q);
   }
 
   @Get()

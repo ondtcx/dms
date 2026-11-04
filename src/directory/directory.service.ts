@@ -209,7 +209,7 @@ export class DirectoryService {
     return { recent, mostUsed };
   }
 
-  async getAccessibleDirectories(page: number | undefined, limit: number | undefined, user: DirectoryUser) {
+  async getAccessibleDirectories(page: number | undefined, limit: number | undefined, user: DirectoryUser, q?: string) {
     const resolvedPage = page ?? 1;
     const resolvedLimit = limit ?? 50;
     if (!Number.isInteger(resolvedPage) || resolvedPage < 1) {
@@ -220,13 +220,20 @@ export class DirectoryService {
     }
 
     const ids = [...(await this.getDiscoverableIds(user))];
-    const total = ids.length;
+    const query = q?.trim();
+    const where = {
+      id: { in: ids },
+      ...(query ? { name: { contains: query, mode: 'insensitive' as const } } : {}),
+    };
     const data = await this.prisma.directory.findMany({
-      where: { id: { in: ids } },
+      where,
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       skip: (resolvedPage - 1) * resolvedLimit,
       take: resolvedLimit,
     });
+    const total = query
+      ? await this.prisma.directory.count({ where })
+      : ids.length;
     return {
       data: await this.withAccess(data, user),
       meta: { page: resolvedPage, limit: resolvedLimit, total, totalPages: Math.ceil(total / resolvedLimit) },

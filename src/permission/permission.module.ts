@@ -1,4 +1,5 @@
 import { Module, Global } from '@nestjs/common';
+import { AuditModule } from '../audit/audit.module';
 import { PermissionService } from './permission.service';
 import { PermissionController } from './permission.controller';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,7 +8,8 @@ import { SettingsModule } from '../settings/settings.module';
 
 @Global() // Hacer el módulo global para que esté disponible en toda la aplicación
 @Module({
-  imports: [SettingsModule],
+  imports: [
+    AuditModule,SettingsModule],
   controllers: [PermissionController],
   providers: [PermissionService, PrismaService, AuthorizationService],
   exports: [PermissionService], // Exportar el servicio para uso en guards y otros módulos

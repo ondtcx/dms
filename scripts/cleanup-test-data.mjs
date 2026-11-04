@@ -27,6 +27,7 @@ const documentPatterns = [
 ];
 
 const templatePatterns = ['Prueba ', 'E2E '];
+const directoryPatterns = ['Recepción E2E ', 'searchdir-'];
 
 const documents = await prisma.document.findMany({
   where: {
@@ -55,6 +56,18 @@ for (const document of documents) console.log(`  ${document.id} ${document.name}
 console.log(`non-predefined templates matched: ${templates.length}`);
 for (const template of templates) console.log(`  ${template.id} ${template.isActive ? 'active' : 'inactive'} ${template.name}`);
 
+const directories = await prisma.directory.findMany({
+  where: {
+    OR: directoryPatterns.map((pattern) => ({
+      name: { contains: pattern, mode: 'insensitive' },
+    })),
+  },
+  select: { id: true, name: true },
+  orderBy: { id: 'asc' },
+});
+console.log(`directories matched: ${directories.length}`);
+for (const directory of directories) console.log(`  ${directory.id} ${directory.name}`);
+
 if (!apply) {
   console.log('Dry run. Re-run with --confirm to soft-delete documents and deactivate templates.');
   await prisma.$disconnect();
@@ -69,6 +82,26 @@ const deactivatedTemplates = await prisma.documentTemplate.updateMany({
   where: { id: { in: templates.map((template) => template.id) } },
   data: { isActive: false },
 });
+let deletedDirectories = 0;
+for (const directory of directories) {
+  const references = await prisma.document.count({
+    where: {
+      OR: [
+        { directoryId: directory.id },
+        { receptionOriginDirectoryId: directory.id },
+      ],
+    },
+  });
+  if (references > 0) {
+    console.log(
+      `kept directory ${directory.id} ${directory.name}: ${references} document(s) still reference it`,
+    );
+    continue;
+  }
+  await prisma.directory.delete({ where: { id: directory.id } });
+  deletedDirectories += 1;
+}
 console.log(`soft-deleted documents: ${deletedDocuments.count}`);
 console.log(`deactivated templates: ${deactivatedTemplates.count}`);
+console.log(`deleted test directories: ${deletedDirectories}`);
 await prisma.$disconnect();
